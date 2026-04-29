@@ -233,6 +233,9 @@ spawn-at-startup "wl-paste" "--watch" "cliphist" "store"
 // Polkit agent
 spawn-at-startup "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
 
+// Z13 lighting: apply rainbow on session start.
+spawn-at-startup "z13ctl" "apply" "--mode" "rainbow" "--speed" "slow" "--brightness" "high"
+
 // ---------------------------------------------------------------------------
 // Animations
 // ---------------------------------------------------------------------------
