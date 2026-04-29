@@ -1,0 +1,8 @@
+[Unit]
+Description=ROG Z13 High-Performance Fan Curve
+
+[Service]
+ExecStart=/usr/bin/z13ctl fancurve 2 60 75 82 90 98 100 100 100 100 100 100 100 100
+
+[Install]
+WantedBy=default.target
