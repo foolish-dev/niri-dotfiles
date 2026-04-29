@@ -1,0 +1,12 @@
+[Unit]
+Description=Quarterly Z13 webcam pipeline re-test
+
+[Timer]
+# 1st of Jan/Apr/Jul/Oct at 10:00 local. Fires alongside fwupd-check
+# on Apr 1; the 15-min jitter spreads them out.
+OnCalendar=*-01,04,07,10-01 10:00:00
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

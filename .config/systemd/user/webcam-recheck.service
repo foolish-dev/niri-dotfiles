@@ -1,0 +1,7 @@
+[Unit]
+Description=Re-test AMD ISP4 / MIPI webcam pipeline (Z13)
+ConditionVirtualization=!container
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/webcam-recheck
