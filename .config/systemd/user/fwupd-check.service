@@ -1,0 +1,9 @@
+[Unit]
+Description=Check LVFS for firmware updates (report-only)
+After=network-online.target
+Wants=network-online.target
+ConditionVirtualization=!container
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/fwupd-check

@@ -1,0 +1,14 @@
+[Unit]
+Description=Monthly LVFS firmware check
+
+[Timer]
+# 10:00 local time on the 1st of each month. systemd user timers default
+# to the user's local timezone, so no UTC conversion needed.
+OnCalendar=*-*-01 10:00:00
+# If the laptop was off/asleep at fire time, run on next login.
+Persistent=true
+# Spread requests so LVFS doesn't see a thundering herd at exactly 10:00.
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target
