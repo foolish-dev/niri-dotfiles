@@ -12,7 +12,7 @@ Type=oneshot
 #   [Service]
 #   Environment=Z13_CHARGE_LIMIT=100
 Environment=Z13_CHARGE_LIMIT=80
-ExecStart=/usr/bin/z13ctl batterylimit $Z13_CHARGE_LIMIT
+ExecStart=/usr/bin/z13ctl batterylimit --set $Z13_CHARGE_LIMIT
 RemainAfterExit=yes
 
 [Install]
