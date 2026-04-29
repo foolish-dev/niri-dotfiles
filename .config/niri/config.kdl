@@ -454,6 +454,11 @@ binds {
     // ── AI / Local LLM ────────────────────────────────────────────────
     Mod+Ctrl+A           { spawn "lm-studio"; }
 
+    // ── On-screen keyboard (tablet mode) ──────────────────────────────
+    // Toggle wvkbd: kill if running, otherwise spawn. Useful when the
+    // GZ302 keyboard is detached.
+    Mod+O                { spawn-sh "pkill -x wvkbd-mobintl || wvkbd-mobintl"; }
+
     // ── Noctalia shell toggle (overview / control center) ────────────
     // Launcher already bound above (Mod+D, Mod+Space).
     Mod+S     { spawn-sh "qs -c noctalia-shell ipc call controlCenter toggle"; }
