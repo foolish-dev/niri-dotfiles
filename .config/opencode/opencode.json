@@ -63,14 +63,15 @@
           "name": "Crow 9B Heretic (LM Studio) — Security-focused coding assistant",
           "tool_call": true
         },
-        // Gemma 3 12B heretic ablation — verified tool-calling via LM Studio endpoint.
-        "gemma-3-12b-it-heretic": {
-          "name": "Gemma 3 12B IT Heretic — Uncensored coding/chat (12B)",
+        // Crow 9B Heretic 4.6 — i1 imatrix quant (mradermacher's crownelius repack).
+        // Verified tool-calling via LM Studio endpoint.
+        "crownelius-crow-9b-heretic-4.6-i1": {
+          "name": "Crow 9B Heretic i1 — Security-focused coding (imatrix quant)",
           "tool_call": true
         },
-        // Qwen 3.5 9B heretic thinking variant — verified tool-calling via LM Studio endpoint.
-        "qwen3.5-9b-claude-4.6-os-auto-variable-heretic-uncensored-thinking-max-neocode-imatrix": {
-          "name": "Qwen 3.5 9B Heretic Thinking — Bilingual reasoning (EN/Chinese), tools-capable",
+        // Qwen3 14B — official release, verified tool-calling + reasoning via LM Studio.
+        "qwen/qwen3-14b": {
+          "name": "Qwen3 14B — Reasoning + tool calling",
           "tool_call": true,
           "reasoning": true
         }
