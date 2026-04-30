@@ -140,9 +140,14 @@ else
   ok "Existing ~/.gitconfig.local kept as-is."
 fi
 
-# ── Starship config (lives at ~/.config/starship.toml) ─────────────────────
+# ── Single-file ~/.config/* drops ──────────────────────────────────────────
+# CONFIG_DIRS above only handles per-tool directories. Lone files in .config/
+# need an explicit link line each.
 if [[ -f "$DOTFILES/.config/starship.toml" ]]; then
   link_item "$DOTFILES/.config/starship.toml" "$HOME/.config/starship.toml"
+fi
+if [[ -f "$DOTFILES/.config/gamemode.ini" ]]; then
+  link_item "$DOTFILES/.config/gamemode.ini" "$HOME/.config/gamemode.ini"
 fi
 
 # ── Scripts ────────────────────────────────────────────────────────────────
