@@ -1,0 +1,10 @@
+[Unit]
+Description=Sync Noctalia shell wallpaper into SDDM theme assets
+Documentation=https://github.com/noctalia-dev/noctalia-shell
+ConditionPathExists=/usr/share/sddm/themes/noctalia/sync-shell-wallpaper.sh
+ConditionPathExists=/home/fool/.cache/noctalia/wallpapers.json
+
+[Service]
+Type=oneshot
+Environment=HOME=/home/fool
+ExecStart=/usr/share/sddm/themes/noctalia/sync-shell-wallpaper.sh

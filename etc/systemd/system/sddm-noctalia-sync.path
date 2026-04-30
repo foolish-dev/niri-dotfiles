@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch Noctalia wallpapers.json and resync SDDM theme background
+ConditionPathExists=/usr/share/sddm/themes/noctalia/sync-shell-wallpaper.sh
+
+[Path]
+PathChanged=/home/fool/.cache/noctalia/wallpapers.json
+Unit=sddm-noctalia-sync.service
+
+[Install]
+WantedBy=multi-user.target

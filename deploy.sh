@@ -237,6 +237,29 @@ if [[ -f "$DOTFILES/etc/systemd/system/ollama.service.d/gpu.conf" ]]; then
   sudo systemctl daemon-reload 2>/dev/null || true
 fi
 
+# ── SDDM noctalia background sync (path + oneshot service) ────────────────
+# Watches ~/.cache/noctalia/wallpapers.json; on change, runs the noctalia
+# theme's sync-shell-wallpaper.sh as root (it writes into
+# /usr/share/sddm/themes/noctalia/Assets/). Both the path and service have
+# ConditionPathExists guards so they no-op on machines where the noctalia
+# SDDM theme or the noctalia shell cache aren't present.
+if [[ -f "$DOTFILES/etc/systemd/system/sddm-noctalia-sync.path" ]]; then
+  info "Deploying SDDM noctalia background-sync units ..."
+  sudo cp "$DOTFILES/etc/systemd/system/sddm-noctalia-sync.path" \
+    /etc/systemd/system/sddm-noctalia-sync.path
+  sudo cp "$DOTFILES/etc/systemd/system/sddm-noctalia-sync.service" \
+    /etc/systemd/system/sddm-noctalia-sync.service
+  ok "  Copied sddm-noctalia-sync.{path,service}"
+  sudo systemctl daemon-reload 2>/dev/null || true
+  if [[ -d /usr/share/sddm/themes/noctalia ]]; then
+    sudo systemctl enable --now sddm-noctalia-sync.path 2>/dev/null ||
+      warn "  sddm-noctalia-sync.path failed to enable"
+    ok "  sddm-noctalia-sync.path enabled"
+  else
+    warn "  /usr/share/sddm/themes/noctalia not found -- skipping enable"
+  fi
+fi
+
 # ── mkinitcpio (produces the initramfs boot image) ────────────────────────
 # Deploying the config alone does not rebuild the image. Run
 # `sudo mkinitcpio -P` after changes, or let a kernel/package upgrade
