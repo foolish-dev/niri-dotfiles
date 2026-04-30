@@ -61,7 +61,6 @@ CONFIG_DIRS=(
   gtk-4.0
   qt5ct
   qt6ct
-  z13gui
 )
 
 for dir in "${CONFIG_DIRS[@]}"; do
@@ -147,9 +146,6 @@ fi
 if [[ -f "$DOTFILES/.config/starship.toml" ]]; then
   link_item "$DOTFILES/.config/starship.toml" "$HOME/.config/starship.toml"
 fi
-if [[ -f "$DOTFILES/.config/gamemode.ini" ]]; then
-  link_item "$DOTFILES/.config/gamemode.ini" "$HOME/.config/gamemode.ini"
-fi
 
 # ── Scripts ────────────────────────────────────────────────────────────────
 mkdir -p "$HOME/.local/bin"
@@ -187,64 +183,6 @@ systemctl --user daemon-reload 2>/dev/null || true
 systemctl --user enable --now hexstrike-server.service 2>/dev/null ||
   warn "  hexstrike-server.service failed to start (run install.sh first)"
 
-# Z13-specific: only enable if DMI matches AND the binary exists, so
-# deploying this repo on non-Z13 hardware is a no-op instead of a failure.
-if [[ "$(cat /sys/class/dmi/id/product_name 2>/dev/null || true)" =~ ^ROG\ Flow\ Z13 ]] \
-  && command -v z13ctl &>/dev/null; then
-  info "Enabling z13ctl socket + service (ROG Flow Z13 hardware controller) ..."
-  systemctl --user enable --now z13ctl.socket z13ctl.service 2>/dev/null ||
-    warn "  z13ctl units failed to enable"
-  info "Enabling z13-battery-limit.service (charge ceiling 80%) ..."
-  systemctl --user enable --now z13-battery-limit.service 2>/dev/null ||
-    warn "  z13-battery-limit.service failed to enable"
-  # z13gui (GTK4 overlay drawer) ships its own user unit at
-  # /usr/lib/systemd/user/z13gui.service; enable it when the binary is present.
-  if command -v z13gui &>/dev/null; then
-    info "Enabling z13gui.service (GTK4 overlay drawer) ..."
-    systemctl --user enable --now z13gui.service 2>/dev/null ||
-      warn "  z13gui.service failed to enable"
-  fi
-fi
-
-# ── sysctl (VM tuning for zram + Strix Halo APU) ──────────────────────────
-# /etc/sysctl.d/*.conf is read at boot and by `sysctl --system` at any time.
-# Copying files here is idempotent; sysctl --system picks up live changes.
-if [[ -d "$DOTFILES/etc/sysctl.d" ]]; then
-  info "Deploying sysctl drop-ins to /etc/sysctl.d/ ..."
-  for conf in "$DOTFILES/etc/sysctl.d"/*.conf; do
-    [[ -f "$conf" ]] || continue
-    sudo cp "$conf" "/etc/sysctl.d/$(basename "$conf")"
-    ok "  Copied $(basename "$conf")"
-  done
-  sudo sysctl --system >/dev/null 2>&1 || warn "  sysctl --system reported warnings"
-fi
-
-# ── zram-generator config ─────────────────────────────────────────────────
-# systemd-zram-generator watches /etc/systemd/zram-generator.conf and the
-# tracked config declares /dev/zram0 with zstd compression at ~50% of RAM.
-# The generator creates the swap device on next boot; `systemctl daemon-reload`
-# + `systemctl start systemd-zram-setup@zram0` applies it now.
-if [[ -f "$DOTFILES/etc/systemd/zram-generator.conf" ]]; then
-  info "Deploying zram-generator config ..."
-  sudo cp "$DOTFILES/etc/systemd/zram-generator.conf" /etc/systemd/zram-generator.conf
-  ok "  Copied zram-generator.conf"
-  sudo systemctl daemon-reload 2>/dev/null || true
-fi
-
-# ── ollama systemd drop-in (Strix Halo Vulkan offload) ────────────────────
-# `extra/ollama` ships only CPU GGML libs, but the binary honours the env
-# vars below once the AUR `ollama-vulkan-bin` package is installed (handled
-# by install.sh on Z13). Drop-in is harmless on machines without the GPU
-# build -- ollama just falls back to CPU.
-if [[ -f "$DOTFILES/etc/systemd/system/ollama.service.d/gpu.conf" ]]; then
-  info "Deploying ollama Vulkan drop-in ..."
-  sudo mkdir -p /etc/systemd/system/ollama.service.d
-  sudo cp "$DOTFILES/etc/systemd/system/ollama.service.d/gpu.conf" \
-    /etc/systemd/system/ollama.service.d/gpu.conf
-  ok "  Copied ollama gpu.conf"
-  sudo systemctl daemon-reload 2>/dev/null || true
-fi
-
 # ── SDDM noctalia background sync (path + oneshot service) ────────────────
 # Watches ~/.cache/noctalia/wallpapers.json; on change, runs the noctalia
 # theme's sync-shell-wallpaper.sh as root (it writes into
@@ -266,43 +204,6 @@ if [[ -f "$DOTFILES/etc/systemd/system/sddm-noctalia-sync.path" ]]; then
   else
     warn "  /usr/share/sddm/themes/noctalia not found -- skipping enable"
   fi
-fi
-
-# ── mkinitcpio (produces the initramfs boot image) ────────────────────────
-# Deploying the config alone does not rebuild the image. Run
-# `sudo mkinitcpio -P` after changes, or let a kernel/package upgrade
-# trigger the pacman hook.
-if [[ -d "$DOTFILES/etc/mkinitcpio" ]]; then
-  info "Deploying mkinitcpio config ..."
-  if [[ -f "$DOTFILES/etc/mkinitcpio/mkinitcpio.conf" ]]; then
-    sudo cp "$DOTFILES/etc/mkinitcpio/mkinitcpio.conf" /etc/mkinitcpio.conf
-    ok "  Copied mkinitcpio.conf"
-    warn "  !!! IMPORTANT: You must run 'sudo mkinitcpio -P' to rebuild the initramfs image.
-          The current boot image has NOT been updated and will still use the old config."
-  fi
-  if [[ -f "$DOTFILES/etc/mkinitcpio/linux.preset" ]]; then
-    sudo mkdir -p /etc/mkinitcpio.d
-    sudo cp "$DOTFILES/etc/mkinitcpio/linux.preset" /etc/mkinitcpio.d/linux.preset
-    ok "  Copied linux.preset"
-    warn "  !!! IMPORTANT: You must run 'sudo mkinitcpio -P' to rebuild the initramfs image.
-          The current boot image has NOT been updated and will still use the old config."
-  fi
-fi
-
-# ── systemd-boot (GUARDED: set DEPLOY_LOADER=1 to apply) ──────────────────
-# The tracked entry pins this machine's PARTUUID + kernel cmdline. Applying
-# it on a different install would leave the system unbootable on next
-# reboot. Opt in explicitly once you've confirmed the entry matches.
-if [[ -d "$DOTFILES/etc/loader" && "${DEPLOY_LOADER:-0}" == "1" ]]; then
-  info "Deploying systemd-boot config to /boot/loader/ ..."
-  sudo cp "$DOTFILES/etc/loader/loader.conf" /boot/loader/loader.conf
-  ok "  Copied loader.conf"
-  sudo mkdir -p /boot/loader/entries
-  for entry in "$DOTFILES/etc/loader/entries"/*.conf; do
-    [[ -f "$entry" ]] || continue
-    sudo cp "$entry" "/boot/loader/entries/$(basename "$entry")"
-    ok "  Copied $(basename "$entry")"
-  done
 fi
 
 # ── SDDM config (system-wide, requires sudo) ─────────────────────────────
@@ -367,8 +268,6 @@ info "  Prompt:  ~/.config/starship.toml"
 info "  Scripts: ~/.local/bin/ (${script_count} scripts)"
 info "  Apps:    ~/.local/share/applications/ (${desktop_count} desktop entries)"
 info "  Walls:   ~/Pictures/Wallpapers/ (${wallpaper_count} wallpapers)"
-info "  Boot:    /boot/loader/ (tracked; deploy with DEPLOY_LOADER=1)"
-info "  Image:   /etc/mkinitcpio.conf + linux.preset (run mkinitcpio -P to rebuild)"
 info "  SDDM:    /etc/sddm.conf.d/niri.conf + astronaut cyberpunk theme"
 info ""
 if [[ -d "$BACKUP_DIR" ]]; then

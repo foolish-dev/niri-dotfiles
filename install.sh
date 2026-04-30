@@ -113,10 +113,6 @@ fi
 
 # Core Wayland / Niri / Noctalia
 PKG_CORE=(
-  # amd-ucode: CPU microcode updates. Loaded by the `microcode` hook in
-  # mkinitcpio.conf (no separate initrd line needed). Safe no-op if a given
-  # machine is Intel -- Intel users should swap to `intel-ucode` manually.
-  amd-ucode
   niri
   noctalia-qs
   noctalia-shell
@@ -163,12 +159,9 @@ PKG_CORE=(
   sof-firmware
   pavucontrol
   pwvucontrol
-  # Power + tablet-mode integration. power-profiles-daemon feeds the
-  # Noctalia battery widget + provides balanced/performance profiles via
-  # D-Bus. iio-sensor-proxy surfaces the Z13 accelerometer so auto-rotate
-  # and ambient-light sensor work (2-in-1 convertible form factor).
+  # power-profiles-daemon feeds the Noctalia battery widget + provides
+  # balanced/performance profiles via D-Bus.
   power-profiles-daemon
-  iio-sensor-proxy
 )
 
 # Terminal / Shell / Prompt
@@ -240,14 +233,14 @@ PKG_DEV=(
   tree-sitter-cli
   opencode-bin
   lmstudio-bin
-  # GPU + media acceleration for Strix Halo's Radeon 8060S (RDNA 3.5):
-  #   vulkan-radeon     -> RADV, the Vulkan ICD used by LM Studio /
-  #                        llama.cpp Vulkan backend for iGPU inference.
-  #   vulkan-tools      -> vulkaninfo (verify the ICD is loaded).
-  #   libva-utils       -> vainfo (verify VA-API hardware decode).
-  #   mesa-utils        -> glxinfo + eglinfo for OpenGL diagnostics.
-  #   mangohud          -> overlay for CPU/GPU/framerate during testing.
-  vulkan-radeon
+  # GPU + media diagnostic utilities (vendor-agnostic):
+  #   vulkan-tools  -> vulkaninfo (verify the Vulkan ICD is loaded).
+  #   libva-utils   -> vainfo (verify VA-API hardware decode).
+  #   mesa-utils    -> glxinfo + eglinfo for OpenGL diagnostics.
+  #   mangohud      -> overlay for CPU/GPU/framerate during testing.
+  # NOTE: install your GPU's Vulkan ICD separately (vulkan-radeon /
+  # vulkan-intel / nvidia-utils) -- not pinned here so the script stays
+  # hardware-neutral.
   vulkan-tools
   libva-utils
   mesa-utils
@@ -591,25 +584,6 @@ install_pkgs "Development" "${PKG_DEV[@]}"
 install_pkgs "Cybersecurity" "${PKG_SEC[@]}"
 install_pkgs "BlackArch" "${PKG_BLACKARCH[@]}"
 
-# ── Hardware-specific: ASUS ROG Flow Z13 (GZ302) ──────────────────────────
-# z13ctl drives keyboard/lightbar RGB, fan curves, battery charge limit,
-# boot sound, and panel overdrive on the 2025 Strix Halo Z13. The tracked
-# systemd user units in .config/systemd/user/z13ctl.{service,socket} rely
-# on this binary. Gate by DMI so non-Z13 machines stay clean.
-if [[ "$(cat /sys/class/dmi/id/product_name 2>/dev/null || true)" =~ ^ROG\ Flow\ Z13 ]]; then
-  install_pkgs "ROG Flow Z13 hardware control" z13ctl-bin
-  # GTK4 overlay drawer that fronts z13ctl (fan curves, RGB, charge limit,
-  # boot sound). Ships /usr/lib/systemd/user/z13gui.service; deploy.sh
-  # enables it on this DMI gate.
-  install_pkgs "ROG Flow Z13 overlay UI" z13gui-bin
-  # extra/ollama is CPU-only; the AUR variant ships libggml-vulkan.so so the
-  # Strix Halo iGPU (Radeon 8060S) can be offloaded to via RADV. Pair with
-  # /etc/systemd/system/ollama.service.d/gpu.conf (deployed by deploy.sh).
-  install_pkgs "Local LLM (Vulkan iGPU offload)" ollama-vulkan-bin
-else
-  info "Skipping Z13 hardware packages (DMI product != 'ROG Flow Z13 *')."
-fi
-
 # ── Set default shell ──────────────────────────────────────────────────────
 if [[ "$SHELL" != */zsh ]]; then
   info "Setting zsh as default shell ..."
@@ -634,7 +608,6 @@ sudo systemctl enable --now bluetooth 2>/dev/null || true
 sudo systemctl enable --now docker 2>/dev/null || true
 sudo systemctl enable sddm 2>/dev/null || true
 sudo systemctl enable --now power-profiles-daemon 2>/dev/null || true
-sudo systemctl enable --now iio-sensor-proxy 2>/dev/null || true
 systemctl --user enable --now pipewire pipewire-pulse wireplumber 2>/dev/null || true
 sudo usermod -aG docker "$USER" 2>/dev/null || true
 sudo usermod -aG wireshark "$USER" 2>/dev/null || true

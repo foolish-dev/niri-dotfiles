@@ -30,11 +30,12 @@ input {
         accel-profile "flat"
     }
 
-    // 2-in-1 convertible (GZ302): pen + touchscreen must map to the
-    // built-in display so pointer coordinates line up with what the user
-    // is touching/drawing on. Without `map-to-output`, niri spans the
-    // tablet surface across all connected outputs, which makes pen input
-    // unusable whenever an external monitor is plugged in.
+    // On 2-in-1 / convertible / touchscreen laptops: pen + touchscreen
+    // must map to the built-in display so pointer coordinates line up
+    // with what the user is touching/drawing on. Without `map-to-output`,
+    // niri spans the tablet surface across all connected outputs, which
+    // makes pen input unusable whenever an external monitor is plugged
+    // in. Adjust the output name (typically eDP-1) for your hardware.
     tablet {
         map-to-output "eDP-1"
     }
@@ -50,17 +51,18 @@ input {
 // ---------------------------------------------------------------------------
 // Outputs
 // ---------------------------------------------------------------------------
-// Tuned for the ASUS ROG Flow Z13 (GZ302): 2560x1600 @ 180Hz touch panel,
-// AMD FreeSync. VRR eliminates frame tearing across 48-180Hz without
-// locking to a single refresh, and scale=1.333 is the sweet spot for the
-// 13.4" physical size (1920x1200 logical). Adjust for external monitors.
-output "eDP-1" {
-    mode "2560x1600@180.000"
-    scale 1.333
-    transform "normal"
-    position x=0 y=0
-    variable-refresh-rate
-}
+// No outputs declared by default. niri will use sensible auto-detected
+// modes. Uncomment and adjust per your hardware -- run `niri msg outputs`
+// to see available connectors and modes. variable-refresh-rate enables
+// FreeSync/G-Sync if the panel + driver support it.
+//
+// output "eDP-1" {
+//     mode "2560x1600@180.000"
+//     scale 1.333
+//     transform "normal"
+//     position x=0 y=0
+//     variable-refresh-rate
+// }
 // Example second monitor -- uncomment and adjust:
 // output "HDMI-A-1" {
 //     scale 1.0
@@ -188,7 +190,7 @@ environment {
     MOZ_ENABLE_WAYLAND "1"
     // Electron apps (LM Studio, VSCode, Discord, Slack) default to XWayland
     // unless told otherwise, which burns a second compositor hop and breaks
-    // HiDPI on the 2.5K Z13 panel. Forcing the Wayland Ozone backend gives
+    // HiDPI on high-density panels. Forcing the Wayland Ozone backend gives
     // native scaling + better touch input.
     ELECTRON_OZONE_PLATFORM_HINT "wayland"
     // Prefer Wayland for SDL (games, emulators) with an X11 fallback for
@@ -232,9 +234,6 @@ spawn-at-startup "wl-paste" "--watch" "cliphist" "store"
 
 // Polkit agent
 spawn-at-startup "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
-
-// Z13 lighting: apply rainbow on session start.
-spawn-at-startup "z13ctl" "apply" "--mode" "rainbow" "--speed" "slow" "--brightness" "high"
 
 // ---------------------------------------------------------------------------
 // Animations
@@ -455,8 +454,8 @@ binds {
     Mod+Ctrl+A           { spawn "lm-studio"; }
 
     // ── On-screen keyboard (tablet mode) ──────────────────────────────
-    // Toggle wvkbd: kill if running, otherwise spawn. Useful when the
-    // GZ302 keyboard is detached.
+    // Toggle wvkbd: kill if running, otherwise spawn. Useful on
+    // convertibles when the keyboard is detached/folded.
     Mod+O                { spawn-sh "pkill -x wvkbd-mobintl || wvkbd-mobintl"; }
 
     // ── Noctalia shell toggle (overview / control center) ────────────

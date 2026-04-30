@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # dotfiles-check -- post-deploy health check.
-# Verifies that user systemd units actually came up, key symlinks resolve
-# into the dotfiles repo, and Z13-specific services are active. Designed
-# to catch silent failures like the z13-high-performance.service breakage
-# fixed in 493885e -- a unit that was "enabled" but failing on every
-# session start, undetected for a day.
+# Verifies that user systemd units actually came up and that key symlinks
+# resolve into the dotfiles repo. Designed to catch silent failures --
+# units that were "enabled" but fail on every session start, or symlinks
+# that point at a stale path after a repo move.
 #
 # Usage: dotfiles-check        (run any time; exits 1 if anything is red)
 # Override repo path: DOTFILES=/path/to/repo dotfiles-check
@@ -26,21 +25,12 @@ else
   for u in "${failed[@]}"; do bad "$u (systemctl --user status $u)"; done
 fi
 
-echo "==> Scheduled timers"
-for timer in fwupd-check.timer webcam-recheck.timer; do
-  if systemctl --user list-timers --all --no-legend 2>/dev/null | grep -qw "$timer"; then
-    ok "$timer scheduled"
-  else
-    bad "$timer not scheduled (re-run deploy.sh)"
-  fi
-done
-
 echo "==> Symlinks resolve into \$DOTFILES ($DOTFILES)"
 if [[ ! -d "$DOTFILES" ]]; then
   skip "\$DOTFILES does not exist; export DOTFILES=/path/to/repo"
 else
   for path in "$HOME/.config/niri" "$HOME/.config/noctalia" "$HOME/.zshrc" \
-              "$HOME/.config/starship.toml" "$HOME/.config/gamemode.ini"; do
+              "$HOME/.config/starship.toml"; do
     if [[ ! -L "$path" ]]; then
       bad "$path is not a symlink"
     elif [[ "$(readlink -f "$path")" != "$DOTFILES"/* ]]; then
@@ -48,30 +38,6 @@ else
     else
       ok "$path"
     fi
-  done
-fi
-
-echo "==> Kernel cmdline (tracked params from etc/loader/entries)"
-# Catches drift between the repo-tracked boot entry and live /proc/cmdline --
-# e.g. after a re-archinstall regenerates a stock entry and DEPLOY_LOADER=1
-# was never opted into (PARTUUID guard, see deploy.sh).
-for opt in amd_pstate=active amdgpu.dcdebugmask=0xe12 zswap.enabled=0; do
-  if grep -qw -- "$opt" /proc/cmdline; then
-    ok "$opt"
-  else
-    bad "$opt missing from /proc/cmdline (live boot drifted; see etc/loader/entries/)"
-  fi
-done
-
-if [[ "$(cat /sys/class/dmi/id/product_name 2>/dev/null || true)" =~ ^ROG\ Flow\ Z13 ]]; then
-  echo "==> Z13 services"
-  for svc in z13ctl.service z13-battery-limit.service z13-high-performance.service z13gui.service; do
-    state=$(systemctl --user show -p ActiveState --value "$svc" 2>/dev/null || true)
-    case "$state" in
-      active)   ok "$svc ($state)" ;;
-      "")       skip "$svc not installed" ;;
-      *)        bad "$svc state=$state (expected active)" ;;
-    esac
   done
 fi
 

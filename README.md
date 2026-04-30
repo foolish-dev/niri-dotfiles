@@ -36,7 +36,6 @@
 
 | Layer | Tool |
 |---|---|
-| Hardware | ASUS ROG Flow Z13 (GZ302EA, AMD Ryzen AI Max+ 395 "Strix Halo") — tuned but distro-agnostic everywhere except Z13-specific units |
 | Distro | Arch Linux + [BlackArch](https://blackarch.org) + [Chaotic AUR](https://aur.chaotic.cx) repos |
 | Compositor | [Niri](https://github.com/YaLTeR/niri) (scrollable tiling, Wayland) |
 | Desktop Shell | [Noctalia](https://github.com/noctalia-dev/noctalia-shell) (bar, dock, panels, notifications, lock screen) |
@@ -49,7 +48,6 @@
 | AI Security | [HexStrike AI](https://github.com/0x4m4/hexstrike-ai) MCP (150+ security tools via MCP) |
 | Audio | PipeWire + WirePlumber (pipewire-pulse, pipewire-alsa, pipewire-jack) |
 | Network | NetworkManager + iwd backend |
-| Laptop HW control | [z13ctl](https://github.com/dahui/z13ctl) — keyboard RGB, fan curves, battery charge limit, boot sound (DMI-gated, Z13 only) |
 | Git | delta side-by-side diffs, 30+ aliases, lazygit TUI |
 | Launcher | Noctalia app launcher (`Mod+Space` / `Mod+D`) + Fuzzel |
 | Display Manager | [SDDM](https://github.com/sddm/sddm) (5 themes, cyberpunk default, `sddm-theme` switcher) |
@@ -90,7 +88,7 @@ git clone https://github.com/foolish-dev/niri-dotfiles.git ~/niri-dotfiles
 cd ~/niri-dotfiles
 ./install.sh         # Arch only -- adds BlackArch + Chaotic AUR repos, installs 250+ packages
 ./deploy.sh          # symlinks all configs into ~/.config/
-dotfiles-check       # verify the deploy took (failed units, broken symlinks, Z13 services)
+dotfiles-check       # verify the deploy took (failed units, broken symlinks)
 ```
 
 First `nvim` launch auto-installs all plugins and LSP servers.
@@ -142,7 +140,7 @@ First `nvim` launch auto-installs all plugins and LSP servers.
   colorbars                    display full 256-color terminal palette
   colorblocks                  display basic 16-color palette
   pipes                        animated pipes screensaver
-  dotfiles-check               post-deploy health check (failed units, symlinks, Z13 services)
+  dotfiles-check               post-deploy health check (failed units, symlinks)
 .local/share/applications/     147 BlackArch .desktop entries (all 21 categories)
 wallpapers/                    23 curated Tokyo Night wallpapers (4K)
 assets/                        README SVG images (header, dividers, palette, architecture)
@@ -308,25 +306,6 @@ The installer clones the repo to `~/tools/hexstrike-ai`, sets up a Python venv, 
 sysu status hexstrike-server   # check service status
 sysu restart hexstrike-server  # restart the backend
 ```
-
-<img src="assets/divider.svg" alt="" width="900"/>
-
-## GZ302 / Strix Halo Tuning
-
-This repo ships hardware-aware defaults for the ROG Flow Z13 GZ302EA (AMD Ryzen AI Max+ 395 "Strix Halo"). All of it is DMI-gated or benign on other hardware.
-
-| Area | What ships |
-|---|---|
-| Boot | `amd-ucode` installed + `microcode` mkinitcpio hook (no separate initrd line); `MODULES=(amdgpu)` for early KMS; loader entry sets `amd_pstate=active amdgpu.dcdebugmask=0xe12 zswap.enabled=0` |
-| Memory | `systemd/zram-generator.conf` creates `/dev/zram0` at ~50% of RAM with zstd compression; `sysctl.d/99-gz302-zram.conf` tunes `vm.swappiness=180`, `vm.page-cluster=0`, and dirty-ratio bounds for a zram-only swap topology |
-| Power | `power-profiles-daemon` enabled (drives the Noctalia battery widget / profile switcher); `iio-sensor-proxy` enabled for Z13 accelerometer auto-rotate + ambient-light sensor |
-| Hardware control | `z13ctl` (AUR) drives keyboard RGB, fan curves, battery charge limit, boot sound -- installed + `z13ctl.socket`/`z13ctl.service` auto-enabled when DMI reports `ROG Flow Z13*`. `z13-battery-limit.service` caps charge at 80% on boot (override via `systemctl --user edit`). `z13gui` (AUR, GTK4) provides an overlay drawer fronting z13ctl; `z13gui.service` auto-enabled on the same DMI gate |
-| Display | Niri output block pre-configured for eDP-1: `2560x1600@180 scale 1.333 variable-refresh-rate` (FreeSync 48-180Hz) |
-| GPU / Media | `vulkan-radeon` (RADV) for iGPU compute -- LM Studio / llama.cpp Vulkan backend runs inference on the Radeon 8060S. `libva-utils`, `vulkan-tools`, `mesa-utils`, `mangohud` for diagnostics + perf overlays |
-
-`deploy.sh` applies the system-side bits (sysctl, zram config, loader entry behind `DEPLOY_LOADER=1`) and enables the user-level z13ctl units. `install.sh` pulls `amd-ucode`, `power-profiles-daemon`, `iio-sensor-proxy`, and -- only when DMI matches -- `z13ctl-bin`.
-
-> **BIOS gotcha — UMA Frame Buffer.** Strix Halo is a unified-memory APU but the iGPU only sees what BIOS carves out as VRAM (`UMA Frame Buffer Size` under Advanced). On a fresh GZ302 install this defaults to **4 GB** -- any LLM bigger than that silently falls back to CPU inference (e.g. a 20 GB Q4 model runs at 0% iGPU, 800%+ CPU). Set it to ≥24 GB in firmware on first boot. Verify with `cat /sys/class/drm/card1/device/mem_info_vram_total`.
 
 <img src="assets/divider.svg" alt="" width="900"/>
 
