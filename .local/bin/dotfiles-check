@@ -51,6 +51,18 @@ else
   done
 fi
 
+echo "==> Kernel cmdline (tracked params from etc/loader/entries)"
+# Catches drift between the repo-tracked boot entry and live /proc/cmdline --
+# e.g. after a re-archinstall regenerates a stock entry and DEPLOY_LOADER=1
+# was never opted into (PARTUUID guard, see deploy.sh).
+for opt in amd_pstate=active amdgpu.dcdebugmask=0xe12 zswap.enabled=0; do
+  if grep -qw -- "$opt" /proc/cmdline; then
+    ok "$opt"
+  else
+    bad "$opt missing from /proc/cmdline (live boot drifted; see etc/loader/entries/)"
+  fi
+done
+
 if [[ "$(cat /sys/class/dmi/id/product_name 2>/dev/null || true)" =~ ^ROG\ Flow\ Z13 ]]; then
   echo "==> Z13 services"
   for svc in z13ctl.service z13-battery-limit.service z13-high-performance.service; do
