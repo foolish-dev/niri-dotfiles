@@ -33,7 +33,7 @@ you care about.
 ## Reporting a vulnerability
 
 Open a private advisory on GitHub:
-<https://github.com/foolish-dev/dotfiles/security/advisories/new>
+<https://github.com/foolish-dev/niri-dotfiles/security/advisories/new>
 
 Or email <cardoffools@gmail.com>. Please include:
 

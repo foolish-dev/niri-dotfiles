@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Bootstrap -- One-liner installer for foolish-dev/dotfiles
-# curl -fsSL https://raw.githubusercontent.com/foolish-dev/dotfiles/main/bootstrap.sh | bash
+# Bootstrap -- One-liner installer for foolish-dev/niri-dotfiles
+# curl -fsSL https://raw.githubusercontent.com/foolish-dev/niri-dotfiles/main/bootstrap.sh | bash
 # =============================================================================
 set -euo pipefail
 
@@ -62,7 +62,7 @@ done
 ok "Dependencies ready."
 
 # ── Clone dotfiles ────────────────────────────────────────────────────────────
-DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
+DOTFILES_DIR="${DOTFILES_DIR:-$HOME/niri-dotfiles}"
 
 if [[ -d "$DOTFILES_DIR" ]]; then
   warn "Dotfiles directory already exists: $DOTFILES_DIR"
@@ -79,7 +79,7 @@ if [[ ! -d "$DOTFILES_DIR" ]]; then
   # --recurse-submodules pulls heimdall_opencode (agent pack + MCP source).
   # --shallow-submodules keeps the submodule to the pinned commit (no history).
   git clone --recurse-submodules --shallow-submodules \
-    https://github.com/foolish-dev/dotfiles.git "$DOTFILES_DIR"
+    https://github.com/foolish-dev/niri-dotfiles.git "$DOTFILES_DIR"
   ok "Cloned."
 fi
 

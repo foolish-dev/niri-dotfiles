@@ -80,14 +80,14 @@
 **One-liner (fresh Arch install):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/foolish-dev/dotfiles/main/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/foolish-dev/niri-dotfiles/main/bootstrap.sh | bash
 ```
 
 **Manual install:**
 
 ```bash
-git clone https://github.com/foolish-dev/dotfiles.git ~/dotfiles
-cd ~/dotfiles
+git clone https://github.com/foolish-dev/niri-dotfiles.git ~/niri-dotfiles
+cd ~/niri-dotfiles
 ./install.sh         # Arch only -- adds BlackArch + Chaotic AUR repos, installs 250+ packages
 ./deploy.sh          # symlinks all configs into ~/.config/
 dotfiles-check       # verify the deploy took (failed units, broken symlinks, Z13 services)
