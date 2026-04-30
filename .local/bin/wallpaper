@@ -42,4 +42,15 @@ if [[ -f "$WAL_COLORS" ]]; then
   echo "[+] Noctalia colors updated"
 fi
 
+# ── 5. Reload tmux status bar / borders in every running server ──────────
+# tmux servers are per-socket; iterate over all live sockets to cover
+# nested servers, detached sessions, and foreground sessions alike.
+if command -v tmux &>/dev/null && [[ -f "$HOME/.cache/wal/colors-tmux.conf" ]]; then
+  for sock in /tmp/tmux-"$UID"/*; do
+    [[ -S "$sock" ]] || continue
+    tmux -S "$sock" source-file "$HOME/.cache/wal/colors-tmux.conf" 2>/dev/null || true
+  done
+  echo "[+] tmux colors reloaded"
+fi
+
 echo "[+] Done. New colors active."
