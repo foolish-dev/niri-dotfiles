@@ -376,12 +376,12 @@ Five SDDM themes are installed, with two custom Tokyo Night configs for the [ast
 
 | Theme | Style |
 |---|---|
-| `cyberpunk` | Built-in astronaut variant **(default)** |
+| `noctalia` | Built for Noctalia Shell, follows shell wallpaper via `sync-shell-wallpaper.sh` **(default)** |
+| `cyberpunk` | Built-in astronaut variant |
 | `tokyo-night` | Tokyo Night palette, blurred form, JetBrainsMono, samurai background |
 | `tokyo-night-cyberpunk` | Neon red/cyan accents, sharp edges, matrix background |
 | `astronaut` | Default astronaut (space theme) |
 | `japanese_aesthetic` | Built-in astronaut variant |
-| `sddm-theme-noctalia` | Made for Noctalia Shell |
 | `tokyo-night-sddm` | Original Tokyo Night SDDM (Qt5) |
 | `sddm-sugar-dark` | Clean minimal dark |
 | `sddm-lain-wired` | Serial Experiments Lain / cyberpunk |
