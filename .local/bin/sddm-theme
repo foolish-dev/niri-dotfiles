@@ -5,7 +5,7 @@
 # =============================================================================
 set -euo pipefail
 
-DOTFILES="${DOTFILES:-$HOME/dotfiles}"
+DOTFILES="${DOTFILES:-$HOME/niri-dotfiles}"
 SDDM_THEMES="/usr/share/sddm/themes"
 # deploy.sh creates an upgrade-proof local copy of the packaged theme; fall
 # back to the upstream dir so `sddm-theme` still works pre-deploy.
