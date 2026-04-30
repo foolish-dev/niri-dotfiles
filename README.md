@@ -326,6 +326,8 @@ This repo ships hardware-aware defaults for the ROG Flow Z13 GZ302EA (AMD Ryzen 
 
 `deploy.sh` applies the system-side bits (sysctl, zram config, loader entry behind `DEPLOY_LOADER=1`) and enables the user-level z13ctl units. `install.sh` pulls `amd-ucode`, `power-profiles-daemon`, `iio-sensor-proxy`, and -- only when DMI matches -- `z13ctl-bin`.
 
+> **BIOS gotcha — UMA Frame Buffer.** Strix Halo is a unified-memory APU but the iGPU only sees what BIOS carves out as VRAM (`UMA Frame Buffer Size` under Advanced). On a fresh GZ302 install this defaults to **4 GB** -- any LLM bigger than that silently falls back to CPU inference (e.g. a 20 GB Q4 model runs at 0% iGPU, 800%+ CPU). Set it to ≥24 GB in firmware on first boot. Verify with `cat /sys/class/drm/card1/device/mem_info_vram_total`.
+
 <img src="assets/divider.svg" alt="" width="900"/>
 
 ## OpenCode Agents
