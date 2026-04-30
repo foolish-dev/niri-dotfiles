@@ -65,7 +65,7 @@ done
 
 if [[ "$(cat /sys/class/dmi/id/product_name 2>/dev/null || true)" =~ ^ROG\ Flow\ Z13 ]]; then
   echo "==> Z13 services"
-  for svc in z13ctl.service z13-battery-limit.service z13-high-performance.service; do
+  for svc in z13ctl.service z13-battery-limit.service z13-high-performance.service z13gui.service; do
     state=$(systemctl --user show -p ActiveState --value "$svc" 2>/dev/null || true)
     case "$state" in
       active)   ok "$svc ($state)" ;;

@@ -320,7 +320,7 @@ This repo ships hardware-aware defaults for the ROG Flow Z13 GZ302EA (AMD Ryzen 
 | Boot | `amd-ucode` installed + `microcode` mkinitcpio hook (no separate initrd line); `MODULES=(amdgpu)` for early KMS; loader entry sets `amd_pstate=active amdgpu.dcdebugmask=0xe12 zswap.enabled=0` |
 | Memory | `systemd/zram-generator.conf` creates `/dev/zram0` at ~50% of RAM with zstd compression; `sysctl.d/99-gz302-zram.conf` tunes `vm.swappiness=180`, `vm.page-cluster=0`, and dirty-ratio bounds for a zram-only swap topology |
 | Power | `power-profiles-daemon` enabled (drives the Noctalia battery widget / profile switcher); `iio-sensor-proxy` enabled for Z13 accelerometer auto-rotate + ambient-light sensor |
-| Hardware control | `z13ctl` (AUR) drives keyboard RGB, fan curves, battery charge limit, boot sound -- installed + `z13ctl.socket`/`z13ctl.service` auto-enabled when DMI reports `ROG Flow Z13*`. `z13-battery-limit.service` caps charge at 80% on boot (override via `systemctl --user edit`) |
+| Hardware control | `z13ctl` (AUR) drives keyboard RGB, fan curves, battery charge limit, boot sound -- installed + `z13ctl.socket`/`z13ctl.service` auto-enabled when DMI reports `ROG Flow Z13*`. `z13-battery-limit.service` caps charge at 80% on boot (override via `systemctl --user edit`). `z13gui` (AUR, GTK4) provides an overlay drawer fronting z13ctl; `z13gui.service` auto-enabled on the same DMI gate |
 | Display | Niri output block pre-configured for eDP-1: `2560x1600@180 scale 1.333 variable-refresh-rate` (FreeSync 48-180Hz) |
 | GPU / Media | `vulkan-radeon` (RADV) for iGPU compute -- LM Studio / llama.cpp Vulkan backend runs inference on the Radeon 8060S. `libva-utils`, `vulkan-tools`, `mesa-utils`, `mangohud` for diagnostics + perf overlays |
 

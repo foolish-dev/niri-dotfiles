@@ -61,6 +61,7 @@ CONFIG_DIRS=(
   gtk-4.0
   qt5ct
   qt6ct
+  z13gui
 )
 
 for dir in "${CONFIG_DIRS[@]}"; do
@@ -196,6 +197,13 @@ if [[ "$(cat /sys/class/dmi/id/product_name 2>/dev/null || true)" =~ ^ROG\ Flow\
   info "Enabling z13-battery-limit.service (charge ceiling 80%) ..."
   systemctl --user enable --now z13-battery-limit.service 2>/dev/null ||
     warn "  z13-battery-limit.service failed to enable"
+  # z13gui (GTK4 overlay drawer) ships its own user unit at
+  # /usr/lib/systemd/user/z13gui.service; enable it when the binary is present.
+  if command -v z13gui &>/dev/null; then
+    info "Enabling z13gui.service (GTK4 overlay drawer) ..."
+    systemctl --user enable --now z13gui.service 2>/dev/null ||
+      warn "  z13gui.service failed to enable"
+  fi
 fi
 
 # ── sysctl (VM tuning for zram + Strix Halo APU) ──────────────────────────
