@@ -88,8 +88,9 @@ curl -fsSL https://raw.githubusercontent.com/foolish-dev/dotfiles/main/bootstrap
 ```bash
 git clone https://github.com/foolish-dev/dotfiles.git ~/dotfiles
 cd ~/dotfiles
-./install.sh    # Arch only -- adds BlackArch + Chaotic AUR repos, installs 250+ packages
-./deploy.sh     # symlinks all configs into ~/.config/
+./install.sh         # Arch only -- adds BlackArch + Chaotic AUR repos, installs 250+ packages
+./deploy.sh          # symlinks all configs into ~/.config/
+dotfiles-check       # verify the deploy took (failed units, broken symlinks, Z13 services)
 ```
 
 First `nvim` launch auto-installs all plugins and LSP servers.
@@ -141,6 +142,7 @@ First `nvim` launch auto-installs all plugins and LSP servers.
   colorbars                    display full 256-color terminal palette
   colorblocks                  display basic 16-color palette
   pipes                        animated pipes screensaver
+  dotfiles-check               post-deploy health check (failed units, symlinks, Z13 services)
 .local/share/applications/     147 BlackArch .desktop entries (all 21 categories)
 wallpapers/                    23 curated Tokyo Night wallpapers (4K)
 assets/                        README SVG images (header, dividers, palette, architecture)
