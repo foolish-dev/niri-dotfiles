@@ -101,6 +101,8 @@ First `nvim` launch auto-installs all plugins and LSP servers.
 >
 > Edit `~/.gitconfig.local` any time — it's `[include]`d by the tracked `.gitconfig`. Commit signing is opt-in (uncomment `signingkey` + `[commit] gpgsign`).
 
+> **Per-machine zsh overrides.** The tracked `.zshrc` sources `~/.zshrc.local` (untracked) as its final step, so anything you put there wins. Use it for hardware-specific env (ROCm `HSA_OVERRIDE_GFX_VERSION`, CUDA paths), private aliases, work secrets, etc. Create it by hand — `deploy.sh` does not generate one.
+
 <img src="assets/divider.svg" alt="" width="900"/>
 
 ## Layout

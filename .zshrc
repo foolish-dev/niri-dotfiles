@@ -406,6 +406,13 @@ if command -v direnv &>/dev/null; then
   eval "$(direnv hook zsh)"
 fi
 
+# ── Local overrides (~/.zshrc.local) ──────────────────────────────────────
+# Per-machine settings live here: hardware-specific env vars (ROCm/CUDA,
+# HSA_OVERRIDE_GFX_VERSION), private aliases, work secrets, etc. Mirrors
+# the ~/.gitconfig.local pattern. Sourced last so it can override anything
+# above. Untracked -- create it manually on each machine.
+[[ -r "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"
+
 # ── Greeting ───────────────────────────────────────────────────────────────
 if command -v fastfetch &>/dev/null; then
   fastfetch
