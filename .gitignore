@@ -24,6 +24,11 @@ secrets.*
 .config/systemd/user/*.wants/
 # systemd-generated Alias= symlinks (e.g. wireplumber → pipewire-session-manager)
 .config/systemd/user/pipewire-session-manager.service
+# Per-machine, hardware-specific user systemd units. The repo is hardware
+# neutral, but ~/.config/systemd/user/ is a symlink into this dir, so any
+# machine-specific units a user drops in get gitignored rather than tracked.
+.config/systemd/user/z13-*.service
+.config/systemd/user/gz302-*.service
 *.log
 *.swp
 *.swo
