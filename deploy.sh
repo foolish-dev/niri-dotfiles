@@ -189,7 +189,13 @@ systemctl --user enable --now hexstrike-server.service 2>/dev/null ||
 # /usr/share/sddm/themes/noctalia/Assets/). Both the path and service have
 # ConditionPathExists guards so they no-op on machines where the noctalia
 # SDDM theme or the noctalia shell cache aren't present.
-if [[ -f "$DOTFILES/etc/systemd/system/sddm-noctalia-sync.path" ]]; then
+#
+# Set DOTFILES_SKIP_SDDM_SYNC=1 to skip this block -- useful when you want
+# the SDDM login wallpaper pinned to a static image, independent of the
+# desktop wallpaper.
+if [[ "${DOTFILES_SKIP_SDDM_SYNC:-0}" == "1" ]]; then
+  info "Skipping SDDM noctalia background-sync (DOTFILES_SKIP_SDDM_SYNC=1)"
+elif [[ -f "$DOTFILES/etc/systemd/system/sddm-noctalia-sync.path" ]]; then
   info "Deploying SDDM noctalia background-sync units ..."
   sudo cp "$DOTFILES/etc/systemd/system/sddm-noctalia-sync.path" \
     /etc/systemd/system/sddm-noctalia-sync.path
