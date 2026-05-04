@@ -1,0 +1,27 @@
+[Unit]
+Description=llama.cpp server for Crow-9B-Heretic (Qwen3.5 dense, Vulkan)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=LD_LIBRARY_PATH=/home/fool/.local/llama.cpp
+ExecStart=/home/fool/.local/llama.cpp/llama-server \
+  --model /home/fool/.local/share/llama-models/crow-9b-heretic.Q8_0.gguf \
+  --mmproj /home/fool/.local/share/llama-models/crow-9b-heretic.mmproj-Q8_0.gguf \
+  --host 127.0.0.1 --port 18081 \
+  --ctx-size 32768 \
+  --n-gpu-layers 99 \
+  --jinja \
+  --alias crow-9b-heretic \
+  --cache-ram 4096
+Restart=on-failure
+RestartSec=5
+
+# Lower priority than user-interactive work
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=5
+
+[Install]
+WantedBy=default.target

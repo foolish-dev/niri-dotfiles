@@ -22,6 +22,27 @@
           "name": "Crow",
           "tool_call": true
         },
+        // Crow 9B Heretic Q8_0 — Qwen3.5 9B base, 9.5 GB, 262K ctx.
+        // Modelfile bakes Qwen-style <tool_call> template so tools work
+        // through /v1/chat/completions. Capabilities=[completion, tools, thinking].
+        "crow-9b-heretic:q8_0": {
+          "name": "Crow 9B Heretic Q8_0 — Tools + thinking (Qwen3.5)",
+          "tool_call": true,
+          "reasoning": true
+        },
+        // Same model, smaller quant for faster inference / lower VRAM.
+        "crow-9b-heretic:q5_k_m": {
+          "name": "Crow 9B Heretic Q5_K_M — Tools + thinking (lighter quant)",
+          "tool_call": true,
+          "reasoning": true
+        },
+        // Tuned coder variant: temp 0.3, num_ctx 32768, baked SYSTEM prompt.
+        // Built from Modelfile.q8.coder — see ~/models/crow-9b-heretic/.
+        "crow-9b-heretic:q8_0-coder": {
+          "name": "Crow 9B Heretic Q8_0 Coder — Tuned (32K ctx, low temp)",
+          "tool_call": true,
+          "reasoning": true
+        },
         // Supports tools + thinking — use this for agent workflows.
         "jaahas/crow:9b": {
           "name": "Crow 9B — General coding assistant",
@@ -46,6 +67,21 @@
         "deckard-9b": {
           "name": "Deckard 9B — Qwen3.5 Opus thinking (non-tool; baked system prompt)",
           "tool_call": false,
+          "reasoning": true
+        },
+        // Janus — FoolDev's Qwen 3.6 35B-A3B MoE (3B active, Q4_K_M, 18 GB).
+        // Rebuilt locally at ~/models/janus-35b/Modelfile because the upstream
+        // hf.co/FoolDev/janus:Q4_K_M ships a broken template (missing user role
+        // marker -- `{{ if .Prompt }} .Prompt }}<|im_end|>`) and declares only
+        // capabilities=[completion]. Local `janus:latest` adds:
+        //   - Proper Qwen3 ChatML template w/ <tool_call> XML format
+        //   - Capabilities=[completion, tools, thinking] (verified via curl)
+        //   - HF README sampling defaults (temp 0.6, top_p 0.95, top_k 20)
+        //   - num_ctx=32768 (Ollama default 4K is useless for agent work)
+        //   - Baked Janus system prompt from upstream README
+        "janus:latest": {
+          "name": "Janus 35B-A3B MoE — Qwen3.6 distilled w/ Opus 4.7 teacher",
+          "tool_call": true,
           "reasoning": true
         }
       }
