@@ -29,6 +29,7 @@ secrets.*
 # machine-specific units a user drops in get gitignored rather than tracked.
 .config/systemd/user/z13-*.service
 .config/systemd/user/gz302-*.service
+.config/systemd/user/rog-key-daemon.service
 *.log
 *.swp
 *.swo
