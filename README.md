@@ -50,7 +50,7 @@
 | Network | NetworkManager + iwd backend |
 | Git | delta side-by-side diffs, 30+ aliases, lazygit TUI |
 | Launcher | Noctalia app launcher (`Mod+Space` / `Mod+D`) + Fuzzel |
-| Display Manager | [SDDM](https://github.com/sddm/sddm) (5 themes, cyberpunk default, `sddm-theme` switcher) |
+| Display Manager | [SDDM](https://github.com/sddm/sddm) (9 themes, noctalia default, `sddm-theme` switcher) |
 | Theme | Tokyo Night (dark, transparent) + [pywal](https://github.com/dylanaraps/pywal) (wallpaper-driven colors) |
 | Wallpapers | 23 curated Tokyo Night wallpapers (Arch, cyberpunk, Japanese art, minimal) |
 | Fetch | fastfetch (system info on shell start) |
@@ -125,7 +125,7 @@ First `nvim` launch auto-installs all plugins and LSP servers.
   opencode/opencode.json       AI agent config (LM Studio provider, HexStrike MCP)
   wal/templates/               pywal templates (kitty, noctalia)
   neofetch/                    system fetch display (fallback for fastfetch)
-  systemd/user/                cliphist, awww, hexstrike-server services
+  systemd/user/                cliphist, awww, hexstrike-server, llama-crow9b services + fwupd-check service/timer
 .zshrc                         shell -- 80+ aliases, BlackArch tool shortcuts, pywal init
 .gitconfig                     delta diffs, 30+ aliases, nvim mergetool
 .gitignore_global              universal project ignores
@@ -148,7 +148,7 @@ wallpapers/                    23 curated Tokyo Night wallpapers (4K)
 assets/                        README SVG images (header, dividers, palette, architecture)
 etc/
   sddm.conf.d/niri.conf       SDDM display manager config (deployed to /etc)
-  sddm-themes/                 custom Tokyo Night astronaut variants (tokyo-night, cyberpunk)
+  sddm-themes/                 custom Tokyo Night astronaut variants (tokyo-night, tokyo-night-cyberpunk)
 bootstrap.sh                   one-liner installer (curl | bash)
 install.sh                     Arch + BlackArch + Chaotic AUR package bootstrap
 deploy.sh                      symlink deployer with auto-backup
