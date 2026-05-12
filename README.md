@@ -313,7 +313,7 @@ sysu restart hexstrike-server  # restart the backend
 
 ## OpenCode Agents
 
-OpenCode is configured in `.config/opencode/opencode.json` with local providers (LM Studio + Ollama), the HexStrike AI MCP, Context7, and a weather MCP demo server. Agents live in `.config/opencode/agent/`.
+OpenCode is configured in `.config/opencode/opencode.json` with local providers (LM Studio + Ollama) and 10 MCP servers (HexStrike AI, Context7, GitHub, filesystem, fetch, Playwright, sequential-thinking, memory, git, plus a weather demo). Agents live in `.config/opencode/agent/`.
 
 | Agent | Purpose |
 |---|---|
