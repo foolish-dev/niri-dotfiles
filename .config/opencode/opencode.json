@@ -158,7 +158,7 @@
     },
     "filesystem": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/home/fool"]
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "{env:HOME}"]
     },
     "github": {
       "type": "local",
@@ -174,8 +174,8 @@
     "hexstrike-ai": {
       "type": "local",
       "command": [
-        "/home/fool/tools/hexstrike-ai/hexstrike-env/bin/python",
-        "/home/fool/tools/hexstrike-ai/hexstrike_mcp.py",
+        "{env:HOME}/tools/hexstrike-ai/hexstrike-env/bin/python",
+        "{env:HOME}/tools/hexstrike-ai/hexstrike_mcp.py",
         "--server",
         "http://localhost:8888"
       ],
@@ -197,7 +197,7 @@
     },
     "git": {
       "type": "local",
-      "command": ["/home/fool/.local/bin/mcp-server-git"]
+      "command": ["{env:HOME}/.local/bin/mcp-server-git"]
     },
     // From heimdall_opencode — demo MCP, runs via `opencode x`.
     "weather": {
