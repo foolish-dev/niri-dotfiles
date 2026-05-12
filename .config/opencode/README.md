@@ -28,7 +28,7 @@ Both providers are local and must be running before use.
 | Key | Endpoint | Use |
 |---|---|---|
 | `ollama` | `http://127.0.0.1:11434/v1` | Default (`jaahas/crow:9b` tool-capable) |
-| `lmstudio` | `http://127.0.0.1:1234/v1` | Gemma/Qwen/Crow heretic variants (see `opencode.json` for capabilities) |
+| `lmstudio` | `http://127.0.0.1:1234/v1` | Crow 9B Heretic variants + Qwen3 14B (see `opencode.json` for capabilities) |
 
 Commented-out stubs for `anthropic` and `google` exist in `opencode.json` for when API keys are available.
 
@@ -36,9 +36,16 @@ Commented-out stubs for `anthropic` and `google` exist in `opencode.json` for wh
 
 | Server | Type | Notes |
 |---|---|---|
-| `hexstrike-ai` | local stdio | `hexstrike-mcp` bridges to the Flask backend on `127.0.0.1:8888` (managed by `hexstrike-server.service`) |
-| `context7` | remote (streamable HTTP) | Library docs & code samples — `https://mcp.context7.com/mcp` |
-| `weather` | local stdio | `@h1deya/mcp-server-weather` run via `opencode x` (demo, from heimdall_opencode) |
+| `hexstrike-ai` | local stdio | Bridges to the Flask backend on `127.0.0.1:8888` (managed by `hexstrike-server.service`) |
+| `context7` | remote (streamable HTTP) | Library docs & code samples — `https://mcp.context7.com/mcp` (bearer auth via `CONTEXT7_API_KEY`, anonymous also works) |
+| `filesystem` | local stdio | `@modelcontextprotocol/server-filesystem`, rooted at `$HOME` |
+| `github` | local stdio | `@modelcontextprotocol/server-github` (needs `GITHUB_PERSONAL_ACCESS_TOKEN`) |
+| `fetch` | local stdio | `@tokenizin/mcp-npx-fetch` — generic HTTP fetcher |
+| `playwright` | local stdio | `@playwright/mcp@latest` — headless browser automation |
+| `sequential-thinking` | local stdio | `@modelcontextprotocol/server-sequential-thinking` — multi-step reasoning |
+| `memory` | local stdio | `@modelcontextprotocol/server-memory` — session memory store |
+| `git` | local stdio | `mcp-server-git` from `~/.local/bin` |
+| `weather` | local stdio | `@h1deya/mcp-server-weather` via `opencode x` (demo, from heimdall_opencode) |
 
 ## Agents
 
