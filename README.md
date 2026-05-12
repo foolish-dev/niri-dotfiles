@@ -244,7 +244,7 @@ pyright, ruff, clangd, rust_analyzer, gopls, zls, ts_ls, bashls, lua_ls, html, c
 
 **DAP debuggers**: Python (debugpy), C/C++/Rust (GDB)
 
-**Key plugins**: Telescope, Neo-tree, Gitsigns, Trouble, Bufferline, Lualine, Noice, nvim-cmp, LuaSnip, Conform (format-on-save), hex.nvim, rest.nvim, toggleterm, diffview
+**Key plugins**: Telescope, Neo-tree, Gitsigns, Trouble, Bufferline, Lualine, Noice, nvim-cmp, LuaSnip, Conform (format-on-save), hex.nvim, rest.nvim, toggleterm, diffview, opencode.nvim
 
 | Key | Action |
 |---|---|
@@ -275,6 +275,8 @@ pyright, ruff, clangd, rust_analyzer, gopls, zls, ts_ls, bashls, lua_ls, html, c
 | `<leader>rr` / `<leader>rl` | Run HTTP request / Re-run last (rest.nvim) |
 | `<C-\>` / `<leader>tf` | Float terminal |
 | `<leader>th` / `<leader>tv` | Terminal horizontal / vertical |
+| `<leader>oa` / `<leader>ot` | Ask opencode about selection / toggle panel |
+| `<leader>os` | Select opencode action |
 
 <img src="assets/divider.svg" alt="" width="900"/>
 
