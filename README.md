@@ -436,7 +436,7 @@ The Noctalia dock and app launcher are pre-configured with pinned security tools
 | Mobile | MobSF, JADX, APKTool, Objection, Drozer, APKLeaks |
 | Forensics | Autopsy, Volatility3, YARA, Binwalk, Foremost, Bulk Extractor, OLEtools, RegRipper, PDF Parser |
 | Networking / MITM | Ettercap, dSniff, SSLstrip, Hping3, SNMPcheck, Tcpdump, dns2tcp, Iodine, Ptunnel, Proxify |
-| Social Engineering | SET, GoPhish, Evilginx2, King Phisher |
+| Social Engineering | SET, GoPhish, Evilginx, King Phisher |
 | Crypto | HashPump, RsaCtfTool, Xortool, FeatherDuster |
 | Steganography | StegSeek, Steghide, Zsteg, StegSolve, OpenStego, Snow |
 | Fuzzing | AFL++, Boofuzz, Radamsa, zzuf |
@@ -473,7 +473,7 @@ The installer adds the BlackArch repository and pulls 300+ tools across 19 categ
 | Mobile | apktool, jadx, dex2jar, objection, drozer, apkleaks, mobsf |
 | Forensics | autopsy, yara, volatility3, bulk-extractor, oletools, regripper, pdf-parser |
 | Networking / MITM | mitmproxy, ettercap, dsniff, sslstrip, dns2tcp, iodine, ptunnel, hping3, snmpcheck |
-| Social Eng | SET, gophish, evilginx2, king-phisher |
+| Social Eng | SET, gophish, evilginx, king-phisher |
 | Crypto | hashpump, rsactftool, xortool, featherduster |
 | Stego | stegseek, zsteg, stegsolve, openstego, snow |
 | Fuzzing | afl++, boofuzz, radamsa, zzuf |

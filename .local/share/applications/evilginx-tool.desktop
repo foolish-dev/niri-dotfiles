@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=Evilginx2
+Name=Evilginx
 GenericName=Phishing Proxy
 Comment=Standalone MITM attack framework for phishing 2FA credentials
-Exec=kitty --title "Evilginx2" -e zsh -c "echo '  Evilginx2'; echo '  Usage: evilginx2'; echo; exec zsh"
-Icon=evilginx2
+Exec=kitty --title "Evilginx" -e zsh -c "echo '  Evilginx'; echo '  Usage: evilginx'; echo; exec zsh"
+Icon=evilginx
 Terminal=false
 Categories=X-BlackArch-Social;Security;
-Keywords=evilginx2;phishing;2fa;bypass;proxy;
+Keywords=evilginx;phishing;2fa;bypass;proxy;
