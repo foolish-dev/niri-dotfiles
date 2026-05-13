@@ -117,7 +117,7 @@ First `nvim` launch auto-installs all plugins and LSP servers.
     init.lua                   lazy.nvim bootstrap
     lua/config/                options, keymaps, autocmds
     lua/plugins/               colorscheme, treesitter, lsp, editor, ui, coding
-  kitty/kitty.conf             terminal (0.92 opacity, pywal + Tokyo Night fallback)
+  kitty/kitty.conf             terminal (0.90 opacity, pywal + Tokyo Night fallback)
   tmux/tmux.conf               multiplexer (vim nav, popups, Tokyo Night)
   lazygit/config.yml           git TUI (delta pager, Tokyo Night)
   fuzzel/fuzzel.ini            app launcher
