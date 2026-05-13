@@ -415,7 +415,7 @@ Sourced from [tokyo-night/wallpapers](https://github.com/tokyo-night/wallpapers)
 
 The Noctalia dock and app launcher are pre-configured with pinned security tools. Press `Super` (tap) or `Super+D` to open the launcher.
 
-**Dock** (bottom bar): Kitty, Firefox, Thunar, LM Studio, Wireshark, Burp Suite, Metasploit, Nmap, Iaito, Autopsy, btop
+**Dock** (bottom bar): Kitty, Firefox, Thunar, Neovim, LM Studio, Wireshark, Burp Suite, Metasploit, Nmap, Iaito, Autopsy, btop
 
 **Launcher** (157 pinned apps across 21 categories, ordered by workflow):
 
