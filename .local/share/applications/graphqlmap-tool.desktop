@@ -6,5 +6,5 @@ Comment=GraphQL endpoint interaction and exploitation scripting engine
 Exec=kitty --title "GraphQLmap" -e zsh -c "echo '  GraphQLmap'; echo '  Usage: graphqlmap --url <endpoint>'; echo; exec zsh"
 Icon=graphqlmap
 Terminal=false
-Categories=X-BlackArch-WebApp;Security;
+Categories=X-BlackArch-Webapp;Security;
 Keywords=graphqlmap;graphql;api;injection;

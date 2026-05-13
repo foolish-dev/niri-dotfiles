@@ -6,5 +6,5 @@ Comment=Active web application security reconnaissance tool
 Exec=kitty --title "Skipfish" -e zsh -c "echo '  Skipfish'; echo '  Usage: skipfish -o ~/skipfish-out <target>'; echo; exec zsh"
 Icon=skipfish
 Terminal=false
-Categories=X-BlackArch-WebApp;Security;
+Categories=X-BlackArch-Webapp;Security;
 Keywords=skipfish;web;scan;crawler;

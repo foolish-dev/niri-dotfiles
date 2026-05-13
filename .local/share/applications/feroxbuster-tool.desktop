@@ -6,5 +6,5 @@ Comment=Fast, recursive content discovery tool
 Exec=kitty --title "FeroxBuster" -e zsh -c "echo '  FeroxBuster'; echo '  Usage: feroxbuster -u <url> -w /usr/share/seclists/Discovery/Web-Content/common.txt'; echo; exec zsh"
 Icon=feroxbuster
 Terminal=false
-Categories=X-BlackArch-WebApp;Security;
+Categories=X-BlackArch-Webapp;Security;
 Keywords=feroxbuster;directory;brute;recursive;

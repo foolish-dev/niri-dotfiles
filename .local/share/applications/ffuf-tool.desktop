@@ -6,5 +6,5 @@ Comment=Fast web fuzzer for content discovery
 Exec=kitty --title "Ffuf" -e zsh -c "echo '  Ffuf'; echo '  Usage: ffuf -w wordlist.txt -u <url>/FUZZ'; echo; exec zsh"
 Icon=ffuf
 Terminal=false
-Categories=X-BlackArch-WebApp;Security;
+Categories=X-BlackArch-Webapp;Security;
 Keywords=ffuf;fuzz;web;directory;

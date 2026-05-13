@@ -6,5 +6,5 @@ Comment=Toolkit for testing and exploiting JWTs
 Exec=kitty --title "JWT Tool" -e zsh -c "echo '  JWT Tool'; echo '  Usage: jwt_tool <token>'; echo; exec zsh"
 Icon=jwt-tool
 Terminal=false
-Categories=X-BlackArch-WebApp;Security;
+Categories=X-BlackArch-Webapp;Security;
 Keywords=jwt;token;auth;crack;

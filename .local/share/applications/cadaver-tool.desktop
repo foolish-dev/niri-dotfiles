@@ -6,5 +6,5 @@ Comment=Command-line WebDAV client for upload, download, and management
 Exec=kitty --title "Cadaver" -e zsh -c "echo '  Cadaver'; echo '  Usage: cadaver <url>'; echo; exec zsh"
 Icon=cadaver
 Terminal=false
-Categories=X-BlackArch-WebApp;Security;
+Categories=X-BlackArch-Webapp;Security;
 Keywords=cadaver;webdav;upload;exploit;

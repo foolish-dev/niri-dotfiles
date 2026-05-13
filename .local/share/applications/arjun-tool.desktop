@@ -6,5 +6,5 @@ Comment=HTTP parameter discovery suite
 Exec=kitty --title "Arjun" -e zsh -c "echo '  Arjun'; echo '  Usage: arjun -u <url>'; echo; exec zsh"
 Icon=arjun
 Terminal=false
-Categories=X-BlackArch-WebApp;Security;
+Categories=X-BlackArch-Webapp;Security;
 Keywords=arjun;parameter;discovery;http;

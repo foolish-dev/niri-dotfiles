@@ -6,5 +6,5 @@ Comment=Automated command injection exploitation tool
 Exec=kitty --title "Commix" -e zsh -c "echo '  Commix'; echo '  Usage: commix --url <url> --data \"param=value\"'; echo; exec zsh"
 Icon=commix
 Terminal=false
-Categories=X-BlackArch-WebApp;Security;
+Categories=X-BlackArch-Webapp;Security;
 Keywords=commix;command;injection;exploit;
