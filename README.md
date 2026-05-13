@@ -143,7 +143,7 @@ First `nvim` launch auto-installs all plugins and LSP servers.
   colorblocks                  display basic 16-color palette
   pipes                        animated pipes screensaver
   dotfiles-check               post-deploy health check (failed units, symlinks)
-.local/share/applications/     147 BlackArch .desktop entries (all 21 categories)
+.local/share/applications/     147 BlackArch .desktop entries spanning 15 BlackArch categories
 wallpapers/                    23 curated Tokyo Night wallpapers (4K)
 assets/                        README SVG images (header, dividers, palette, architecture)
 etc/
