@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # wallpaper -- set wallpaper and regenerate pywal color scheme
 # Usage: wallpaper <image> [extra awww-img flags]
-# Hooks: kitty (live reload), noctalia colors.json, niri reload
+# Hooks: kitty (SIGUSR1 reload), noctalia colors.json, tmux source-file
 set -euo pipefail
 
 IMAGE="${1:?Usage: wallpaper <image> [awww-img flags]}"
@@ -28,11 +28,12 @@ else
 fi
 
 # ── 3. Reload kitty colors in all running instances ───────────────────────
-if command -v kitty &>/dev/null; then
-  kitty @ --to unix:/tmp/kitty \
-    set-colors --all --configured ~/.cache/wal/colors-kitty.conf \
-    2>/dev/null || true
-fi
+# kitty.conf `include`s ~/.cache/wal/colors-kitty.conf; SIGUSR1 makes every
+# running kitty re-read its config (and any included files), so the new
+# pywal colors take effect immediately in already-open windows. Avoids
+# needing `allow_remote_control` + a fixed `listen_on` socket in
+# kitty.conf, which the previous `kitty @` approach silently required.
+pkill -USR1 -x kitty 2>/dev/null || true
 
 # ── 4. Write noctalia colors.json from pywal output ───────────────────────
 NOCTALIA_COLORS="$HOME/.config/noctalia/colors.json"
