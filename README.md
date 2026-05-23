@@ -38,19 +38,22 @@ For the full Arch + Niri desktop experience, see **[niri-dotfiles](https://githu
 
 ## Install
 
+One-liner:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/foolish-dev/dotfiles/main/bootstrap.sh | bash
+```
+
+Manual:
+
 ```bash
 git clone https://github.com/foolish-dev/dotfiles.git ~/dotfiles
 cd ~/dotfiles
-./install.sh                                                          # cargo-installs grogu, builds HexStrike under ~/tools/hexstrike-ai, pacman-installs Neovim + Noctalia on Arch
-ln -sf ~/dotfiles/.config/telia ~/.config/telia
-ln -sf ~/dotfiles/.config/nvim ~/.config/nvim
-ln -sf ~/dotfiles/.config/noctalia ~/.config/noctalia
-ln -sf ~/dotfiles/.config/fastfetch ~/.config/fastfetch
-ln -sf ~/dotfiles/.local/bin/hexstrike-mcp ~/.local/bin/hexstrike-mcp
-ln -sf ~/dotfiles/.config/systemd/user/hexstrike-server.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now hexstrike-server.service
+./install.sh    # tools: grogu (cargo), HexStrike AI (clone+venv), Neovim/Noctalia/fastfetch (pacman on Arch)
+./deploy.sh     # symlinks .config/* and .local/bin/* into $HOME, enables hexstrike-server.service
 ```
+
+Re-running `deploy.sh` is idempotent: pre-existing non-symlink files are moved to `~/.dotfiles-backup/<timestamp>/` before being replaced.
 
 <img src="https://raw.githubusercontent.com/foolish-dev/niri-dotfiles/main/assets/divider.svg" alt="" width="900"/>
 
@@ -67,5 +70,7 @@ systemctl --user enable --now hexstrike-server.service
     default.target.wants/...              # auto-enable on login
 .local/bin/
   hexstrike-mcp                           # stdio bridge for MCP clients
-install.sh                                # bootstrap grogu + HexStrike + Neovim + Noctalia + fastfetch
+bootstrap.sh                              # one-liner: clone + install.sh + deploy.sh
+install.sh                                # tool installs (grogu, HexStrike, Neovim, Noctalia, fastfetch)
+deploy.sh                                 # symlink configs into $HOME, enable hexstrike service
 ```
