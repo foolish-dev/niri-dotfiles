@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# hexstrike-mcp -- MCP stdio bridge to HexStrike AI server
+# Used by OpenCode (and other MCP clients) as the local command entry point.
+# Requires: hexstrike-server.service running on localhost:8888
+exec "$HOME/tools/hexstrike-ai/hexstrike-env/bin/python3" \
+  "$HOME/tools/hexstrike-ai/hexstrike_mcp.py" \
+  --server http://127.0.0.1:8888 \
+  "$@"

@@ -15,3 +15,24 @@ if ! command -v grogu &>/dev/null; then
 else
   echo "[+] grogu already installed (use 'cargo install --force ...' to rebuild)"
 fi
+
+# ── HexStrike AI MCP ──────────────────────────────────────────────────────
+# Loopback Flask server on :8888; .local/bin/hexstrike-mcp is the stdio
+# bridge MCP clients (opencode, telia) point at. The systemd user unit
+# under .config/systemd/user/ auto-starts it on login.
+HEXSTRIKE_DIR="$HOME/tools/hexstrike-ai"
+if [[ ! -d "$HEXSTRIKE_DIR" ]]; then
+  echo "[*] Cloning HexStrike AI ..."
+  mkdir -p "$HOME/tools"
+  git clone https://github.com/0x4m4/hexstrike-ai.git "$HEXSTRIKE_DIR"
+fi
+
+if [[ ! -d "$HEXSTRIKE_DIR/hexstrike-env" ]]; then
+  echo "[*] Creating HexStrike Python venv ..."
+  python3 -m venv "$HEXSTRIKE_DIR/hexstrike-env"
+fi
+
+echo "[*] Installing HexStrike Python dependencies ..."
+"$HEXSTRIKE_DIR/hexstrike-env/bin/pip" install --quiet --upgrade pip
+"$HEXSTRIKE_DIR/hexstrike-env/bin/pip" install --quiet -r "$HEXSTRIKE_DIR/requirements.txt"
+echo "[+] HexStrike ready (loopback :8888 via hexstrike-server.service)"

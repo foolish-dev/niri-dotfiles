@@ -1,0 +1,33 @@
+[Unit]
+Description=HexStrike AI - Security Tools API Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/tools/hexstrike-ai
+ExecStart=%h/tools/hexstrike-ai/hexstrike-env/bin/python3 %h/tools/hexstrike-ai/hexstrike_server.py --port 8888
+Restart=on-failure
+RestartSec=5
+Environment=HEXSTRIKE_HOST=127.0.0.1
+Environment=HEXSTRIKE_PORT=8888
+
+# Resource limits -- the backend can get heavy when agents fan out across
+# 150+ security tools. Tune these up if you hit ceilings.
+Nice=10
+CPUQuota=80%
+MemoryMax=4G
+TasksMax=512
+
+# Hardening for a loopback-only service
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/tools/hexstrike-ai
+InaccessiblePaths=%h/.ssh %h/.gnupg
+PrivateTmp=true
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressAllow=127.0.0.0/8 ::1
+IPAddressDeny=any
+
+[Install]
+WantedBy=default.target
