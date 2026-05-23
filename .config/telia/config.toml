@@ -1,0 +1,55 @@
+# telia config — MCP servers mirrored from ~/.config/opencode/opencode.json.
+# Deployed via deploy.sh -> ~/.config/telia/config.toml.
+#
+# telia speaks stdio JSON-RPC only; opencode's remote `context7` entry is
+# replaced with the npx-published stdio build. `{env:VAR}` placeholders from
+# opencode are dropped — telia passes the parent env through to children, so
+# CONTEXT7_API_KEY / GITHUB_PERSONAL_ACCESS_TOKEN / etc. are picked up
+# automatically if exported in the shell.
+#
+# Note: telia does no `~` / `$HOME` expansion in command/args, so the
+# host-specific MCPs (filesystem root, hexstrike-ai venv, local mcp-server-git
+# binary) are pinned to /home/fool/... — adjust if cloning to another box.
+
+[mcps.context7]
+command = "npx"
+args    = ["-y", "@upstash/context7-mcp"]
+
+[mcps.filesystem]
+command = "npx"
+args    = ["-y", "@modelcontextprotocol/server-filesystem", "/home/fool"]
+
+[mcps.github]
+command = "npx"
+args    = ["-y", "@modelcontextprotocol/server-github"]
+
+[mcps.fetch]
+command = "npx"
+args    = ["-y", "@tokenizin/mcp-npx-fetch"]
+
+[mcps.hexstrike-ai]
+command = "/home/fool/tools/hexstrike-ai/hexstrike-env/bin/python"
+args    = [
+    "/home/fool/tools/hexstrike-ai/hexstrike_mcp.py",
+    "--server",
+    "http://localhost:8888",
+]
+
+[mcps.playwright]
+command = "npx"
+args    = ["-y", "@playwright/mcp@latest"]
+
+[mcps.sequential-thinking]
+command = "npx"
+args    = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+
+[mcps.memory]
+command = "npx"
+args    = ["-y", "@modelcontextprotocol/server-memory"]
+
+[mcps.git]
+command = "/home/fool/.local/bin/mcp-server-git"
+
+[mcps.weather]
+command = "opencode"
+args    = ["x", "@h1deya/mcp-server-weather"]
