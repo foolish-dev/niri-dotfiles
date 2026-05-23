@@ -17,6 +17,7 @@
   <img src="https://img.shields.io/badge/systemd-e0af68?style=flat-square&logo=linux&logoColor=1a1b26" alt="systemd"/>
   <img src="https://img.shields.io/badge/Rust-bb9af7?style=flat-square&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/Arch_Linux-1793D1?style=flat-square&logo=archlinux&logoColor=white" alt="Arch Linux"/>
+  <img src="https://img.shields.io/badge/Chaotic_AUR-f7768e?style=flat-square&logoColor=white" alt="Chaotic AUR"/>
   <img src="https://img.shields.io/badge/Wayland-FFBc00?style=flat-square&logo=wayland&logoColor=black" alt="Wayland"/>
   <img src="https://img.shields.io/badge/Tokyo_Night-7aa2f7?style=flat-square&logoColor=white" alt="Tokyo Night"/>
 </p>
@@ -33,7 +34,7 @@
 curl -fsSL https://raw.githubusercontent.com/foolish-dev/dotfiles/main/bootstrap.sh | bash
 ```
 
-`bootstrap.sh` ensures `git` and `rust`/`cargo` are present, clones (or pulls) into `~/dotfiles`, builds the **`dotctl`** Rust binary, and runs `dotctl all` end-to-end.
+`bootstrap.sh` ensures `git` and `rust`/`cargo` are present, clones (or pulls) into `~/dotfiles`, builds the **`dotctl`** Rust binary, and runs `dotctl all` end-to-end. `dotctl install` wires [Chaotic AUR](https://aur.chaotic.cx) into `/etc/pacman.conf` before the first pacman call — required for `noctalia-shell` and `noctalia-qs` (and a useful general-purpose AUR mirror).
 
 Manual:
 

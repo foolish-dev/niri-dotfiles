@@ -86,6 +86,51 @@ fn run(prog: &str, args: &[&str]) -> Result<()> {
     Ok(())
 }
 
+fn setup_chaotic_aur() -> Result<()> {
+    if !command_exists("pacman") {
+        return Ok(());
+    }
+    if let Ok(conf) = fs::read_to_string("/etc/pacman.conf") {
+        if conf.lines().any(|l| l.trim() == "[chaotic-aur]") {
+            ok("Chaotic AUR repo already present");
+            return Ok(());
+        }
+    }
+    info("Adding Chaotic AUR repository ...");
+    run(
+        "sudo",
+        &[
+            "pacman-key",
+            "--recv-key",
+            "3056513887B78AEB",
+            "--keyserver",
+            "keyserver.ubuntu.com",
+        ],
+    )?;
+    run("sudo", &["pacman-key", "--lsign-key", "3056513887B78AEB"])?;
+    run(
+        "sudo",
+        &[
+            "pacman",
+            "-U",
+            "--noconfirm",
+            "https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-keyring.pkg.tar.zst",
+            "https://cdn-mirror.chaotic.cx/chaotic-aur/chaotic-mirrorlist.pkg.tar.zst",
+        ],
+    )?;
+    run(
+        "sudo",
+        &[
+            "sh",
+            "-c",
+            "printf '\\n[chaotic-aur]\\nInclude = /etc/pacman.d/chaotic-mirrorlist\\n' >> /etc/pacman.conf",
+        ],
+    )?;
+    run("sudo", &["pacman", "-Sy"])?;
+    ok("Chaotic AUR repo added");
+    Ok(())
+}
+
 fn pacman_install(label: &str, packages: &[&str]) -> Result<()> {
     if !command_exists("pacman") {
         warn(&format!(
@@ -110,6 +155,9 @@ fn install() -> Result<()> {
             "cargo not found — install rust first (https://rustup.rs)"
         ));
     }
+
+    // Chaotic AUR (prereq for noctalia-shell, noctalia-qs on Arch)
+    setup_chaotic_aur()?;
 
     // grogu
     if command_exists("grogu") {
