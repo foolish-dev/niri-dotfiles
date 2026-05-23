@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/header.svg" alt="dotfiles — Telia + grogu + HexStrike AI MCP + Neovim + Noctalia + fastfetch" width="900"/>
+  <img src="assets/header.svg" alt="dotfiles — Telia + grogu + HexStrike AI MCP + Neovim + tmux + Noctalia + fastfetch, installed by a Rust binary" width="900"/>
 </p>
 
 <p align="center">
@@ -13,6 +13,7 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/dotctl-e0af68?style=flat-square&logo=rust&logoColor=1a1b26" alt="dotctl"/>
   <img src="https://img.shields.io/badge/MCP-9ece6a?style=flat-square&logoColor=1a1b26" alt="MCP"/>
   <img src="https://img.shields.io/badge/systemd-e0af68?style=flat-square&logo=linux&logoColor=1a1b26" alt="systemd"/>
   <img src="https://img.shields.io/badge/Rust-bb9af7?style=flat-square&logo=rust&logoColor=white" alt="Rust"/>
@@ -23,7 +24,7 @@
 </p>
 
 <p align="center">
-  Minimal portable config bundle: an AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP backend, and the editor/shell/banner that round out the desktop. <code>curl | bash</code> on a fresh Arch box.
+  Minimal portable config bundle: an AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP backend, and the editor / multiplexer / shell / banner that round out the desktop — all installed and deployed by a single Rust binary.
 </p>
 
 <img src="assets/divider.svg" alt="" width="900"/>
@@ -34,7 +35,7 @@
 curl -fsSL https://raw.githubusercontent.com/foolish-dev/dotfiles/main/bootstrap.sh | bash
 ```
 
-`bootstrap.sh` ensures `git` and `rust`/`cargo` are present, clones (or pulls) into `~/dotfiles`, builds the **`dotctl`** Rust binary, and runs `dotctl all` end-to-end. `dotctl install` wires [Chaotic AUR](https://aur.chaotic.cx) into `/etc/pacman.conf` before the first pacman call — required for `noctalia-shell` and `noctalia-qs` (and a useful general-purpose AUR mirror).
+`bootstrap.sh` ensures `git` and `rust`/`cargo` are present, clones (or pulls) into `~/dotfiles`, builds the `dotctl` Rust binary, and runs `dotctl all` end-to-end.
 
 Manual:
 
@@ -42,32 +43,42 @@ Manual:
 git clone https://github.com/foolish-dev/dotfiles.git ~/dotfiles
 cd ~/dotfiles
 cargo build --release
-./target/release/dotctl install   # tools: grogu (cargo), HexStrike AI (clone+venv), Neovim/tmux/Noctalia/fastfetch (pacman on Arch)
-./target/release/dotctl deploy    # symlinks .config/* and .local/bin/* into $HOME, enables hexstrike-server.service
-# or: dotctl all  — install + deploy
+./target/release/dotctl install   # tools + Chaotic AUR repo, idempotent
+./target/release/dotctl deploy    # symlinks .config/* and .local/bin/* into $HOME, enables hexstrike-server
+# or: dotctl all
 ```
 
-`deploy` is idempotent. Pre-existing non-symlink files are moved to `~/.dotfiles-backup/<unix-ts>/` before being replaced. `--repo <path>` (or `DOTFILES_REPO` env) overrides the default `~/dotfiles` source.
+`deploy` is idempotent — pre-existing non-symlink files are moved to `~/.dotfiles-backup/<unix-ts>/` before being replaced. `--repo <path>` or `DOTFILES_REPO` env overrides the default `~/dotfiles` source.
 
 <img src="assets/divider.svg" alt="" width="900"/>
 
 ## Architecture
 
 <p align="center">
-  <img src="assets/stack.svg" alt="Architecture — Telia drives HexStrike AI MCP; grogu repaints Neovim / Noctalia from the wallpaper; fastfetch banners the terminal" width="900"/>
+  <img src="assets/stack.svg" alt="Architecture — dotctl drives the install/deploy; Telia speaks MCP to HexStrike AI; grogu repaints every themed target; Neovim / tmux / Noctalia / fastfetch round out the workflow" width="900"/>
 </p>
 
 <img src="assets/divider.svg" alt="" width="900"/>
 
 ## Components
 
+<img src="assets/dotctl.svg" alt="dotctl — Rust installer with install/deploy/all subcommands" width="900"/>
+
+**`dotctl`** is the in-tree Rust binary that replaces the old `install.sh` + `deploy.sh` pair. ~250 LoC, clap-derive CLI, anyhow errors. Three subcommands:
+
+| Subcommand | What it does |
+|---|---|
+| `dotctl install` | Wire Chaotic AUR (idempotent), `cargo install` grogu, clone+venv HexStrike AI, `pacman -S` tmux/fastfetch/neovim/noctalia-shell. |
+| `dotctl deploy` | Symlink `.config/{telia,nvim,noctalia,fastfetch,tmux}` and every `.local/bin/*` into `$HOME`. Symlink the hexstrike systemd unit, `daemon-reload`, `enable --now`. Back up displaced files to `~/.dotfiles-backup/<unix-ts>/`. |
+| `dotctl all` | `install` then `deploy`. |
+
 <img src="assets/telia.svg" alt="Telia — TUI coding agent (Rust, MCP-aware), 10 MCP servers wired" width="900"/>
 
-[Telia](https://github.com/foolish-dev/telia) is a single-binary TUI coding agent. The bundled `.config/telia/config.toml` wires `context7`, `filesystem`, `github`, `fetch`, `hexstrike-ai`, `playwright`, `sequential-thinking`, `memory`, `git`, and `weather` — drop-in compatible with any other MCP client.
+[Telia](https://github.com/foolish-dev/telia) is a single-binary TUI coding agent. `.config/telia/config.toml` wires `context7`, `filesystem`, `github`, `fetch`, `hexstrike-ai`, `playwright`, `sequential-thinking`, `memory`, `git`, and `weather` — drop-in compatible with any other MCP client.
 
 <img src="assets/grogu.svg" alt="grogu — wallpaper-driven palette propagator, repaints 7 targets" width="900"/>
 
-[grogu](https://github.com/foolish-dev/grogu) extracts a palette from the current wallpaper and writes themed fragments for niri, kitty, ghostty, tmux, Neovim, Telia, and Noctalia in one shot. `install.sh` cargo-installs it from upstream.
+[grogu](https://github.com/foolish-dev/grogu) extracts a palette from the current wallpaper and writes themed fragments for niri, kitty, ghostty, tmux, Neovim, Telia, and Noctalia in one shot. `dotctl install` cargo-installs it from upstream.
 
 <img src="assets/hexstrike.svg" alt="HexStrike AI — MCP backend, 150+ offensive-security tools" width="900"/>
 
@@ -75,15 +86,15 @@ cargo build --release
 
 <img src="assets/neovim.svg" alt="Neovim — lazy.nvim, Mason, Tokyo Night, LSP, AI plugins" width="900"/>
 
-lazy.nvim + Mason setup. Tokyo Night base, treesitter, LSP, AI plugins (Copilot, Avante). First `nvim` launch auto-installs everything. Generated `colors/grogu.vim` (live-repainted by grogu) and `.luarc.json` stay gitignored.
+lazy.nvim + Mason. Tokyo Night base, treesitter, LSP, AI plugins (Copilot, Avante). First `nvim` launch auto-installs everything. Generated `colors/grogu.vim` (live-repainted by grogu) and `.luarc.json` stay gitignored.
 
 <img src="assets/tmux.svg" alt="tmux — terminal multiplexer, panes, windows, status bar" width="900"/>
 
-Terminal multiplexer config with the `C-a` prefix, `tokyonight` status palette, RAM-bar fragment under `.config/tmux/scripts/mem.sh`, and a `grogu.conf` slot (gitignored) the wallpaper-driven theme propagator writes to.
+`C-a` prefix, Tokyo Night powerline status, RAM-bar fragment under `.config/tmux/scripts/mem.sh`, and a `grogu.conf` slot (gitignored) the wallpaper-driven theme propagator writes to.
 
 <img src="assets/noctalia.svg" alt="Noctalia — Quickshell-based Wayland shell" width="900"/>
 
-[Noctalia](https://github.com/noctalia-dev/noctalia-shell) is a Quickshell-based Wayland shell: bar, dock, panels, notifications, lock screen, app launcher. `settings.json` + `plugins.json` + the bundled `Grogu` color scheme.
+[Noctalia](https://github.com/noctalia-dev/noctalia-shell) is a Quickshell-based Wayland shell: bar, dock, panels, notifications, lock screen, app launcher. `settings.json` + `plugins.json` + bundled `Grogu` color scheme. Bar tuned to transparency-blur (`backgroundOpacity: 0.2`, global `enableBlurBehind: true`) and `ActiveWindow` widget dropped from the layout.
 
 <img src="assets/fastfetch.svg" alt="fastfetch — terminal system info banner" width="900"/>
 
@@ -95,7 +106,7 @@ A Tokyo-Night-tinted `config.jsonc` for [fastfetch](https://github.com/fastfetch
 
 ```
 .
-├── assets/                                  # README artwork
+├── assets/                                  # README artwork (header, stack, divider, per-tool cards)
 ├── .config/
 │   ├── telia/config.toml                    # 10 MCP servers
 │   ├── nvim/                                # lazy.nvim + Mason, Tokyo Night, LSP, AI
@@ -107,8 +118,9 @@ A Tokyo-Night-tinted `config.jsonc` for [fastfetch](https://github.com/fastfetch
 │       └── default.target.wants/...         # auto-enable on login
 ├── .local/bin/
 │   └── hexstrike-mcp                        # stdio bridge for MCP clients
-├── src/main.rs                              # dotctl — Rust installer/deployer
-├── Cargo.toml                               # crate manifest (clap + anyhow)
+├── src/main.rs                              # dotctl — Rust installer/deployer (~250 LoC)
+├── Cargo.toml                               # crate manifest (clap-derive + anyhow)
+├── Cargo.lock                               # locked
 └── bootstrap.sh                             # one-liner: ensure rust → cargo build → dotctl all
 ```
 
@@ -116,4 +128,4 @@ A Tokyo-Night-tinted `config.jsonc` for [fastfetch](https://github.com/fastfetch
 
 ## See also
 
-For the full Arch + Niri + BlackArch desktop bundle (kitty, tmux, ghostty, lazygit, opencode, 147 BlackArch launcher entries, SDDM themes), see **[niri-dotfiles](https://github.com/foolish-dev/niri-dotfiles)**.
+For the full Arch + Niri + BlackArch desktop bundle (kitty, ghostty, lazygit, opencode, 147 BlackArch launcher entries, SDDM themes, 300+ tools), see **[foolish-dev/distro-work](https://github.com/foolish-dev/distro-work)** (formerly `niri-dotfiles`).

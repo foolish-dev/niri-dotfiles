@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="100" viewBox="0 0 900 100">
+  <defs>
+    <linearGradient id="dbg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1b26"/>
+      <stop offset="100%" style="stop-color:#24283b"/>
+    </linearGradient>
+    <linearGradient id="dacc" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#e0af68"/>
+      <stop offset="50%" style="stop-color:#bb9af7"/>
+      <stop offset="100%" style="stop-color:#7aa2f7"/>
+    </linearGradient>
+    <filter id="dglow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="dgrid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#414868" stroke-width="0.2" opacity="0.25"/>
+    </pattern>
+  </defs>
+  <rect width="900" height="100" rx="10" fill="url(#dbg)"/>
+  <rect width="900" height="100" rx="10" fill="url(#dgrid)"/>
+  <rect x="60" y="14" width="780" height="1" rx="0.5" fill="url(#dacc)" opacity="0.55"/>
+
+  <!-- Gear + crab silhouette icon -->
+  <g transform="translate(70, 32)" filter="url(#dglow)">
+    <!-- Outer gear ring -->
+    <circle cx="20" cy="18" r="16" fill="none" stroke="#e0af68" stroke-width="1.5"/>
+    <g stroke="#e0af68" stroke-width="2" stroke-linecap="round" opacity="0.9">
+      <line x1="20" y1="0"  x2="20" y2="4"/>
+      <line x1="20" y1="32" x2="20" y2="36"/>
+      <line x1="2"  y1="18" x2="6"  y2="18"/>
+      <line x1="34" y1="18" x2="38" y2="18"/>
+      <line x1="7"  y1="5"  x2="10" y2="8"/>
+      <line x1="30" y1="28" x2="33" y2="31"/>
+      <line x1="30" y1="8"  x2="33" y2="5"/>
+      <line x1="7"  y1="31" x2="10" y2="28"/>
+    </g>
+    <!-- Inner chevron (Rust nod) -->
+    <path d="M14,14 L22,18 L14,22" fill="none" stroke="#bb9af7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="24" y1="18" x2="30" y2="18" stroke="#7aa2f7" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <text x="130" y="52" font-family="'JetBrains Mono','Fira Code',monospace" font-size="22" font-weight="700" fill="#c0caf5" filter="url(#dglow)">dotctl</text>
+  <text x="130" y="71" font-family="'JetBrains Mono','Fira Code',monospace" font-size="11" fill="#565f89" letter-spacing="2">RUST INSTALLER  ·  INSTALL  ·  DEPLOY  ·  ALL</text>
+
+  <!-- Capability badges -->
+  <g font-family="'JetBrains Mono',monospace" font-size="10">
+    <rect x="498" y="35" width="60" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="528" y="51" text-anchor="middle" fill="#e0af68">cargo</text>
+    <rect x="566" y="35" width="60" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="596" y="51" text-anchor="middle" fill="#bb9af7">pacman</text>
+    <rect x="634" y="35" width="78" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="673" y="51" text-anchor="middle" fill="#7dcfff">chaotic-aur</text>
+    <rect x="720" y="35" width="60" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="750" y="51" text-anchor="middle" fill="#9ece6a">symlink</text>
+    <rect x="788" y="35" width="56" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="816" y="51" text-anchor="middle" fill="#7aa2f7">systemd</text>
+  </g>
+
+  <rect x="60" y="85" width="780" height="1" rx="0.5" fill="url(#dacc)" opacity="0.55"/>
+  <circle cx="840" cy="85" r="2.5" fill="#e0af68" opacity="0.75"/>
+  <circle cx="851" cy="85" r="2.5" fill="#bb9af7" opacity="0.75"/>
+</svg>
