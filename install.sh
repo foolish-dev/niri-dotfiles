@@ -37,6 +37,19 @@ echo "[*] Installing HexStrike Python dependencies ..."
 "$HEXSTRIKE_DIR/hexstrike-env/bin/pip" install --quiet -r "$HEXSTRIKE_DIR/requirements.txt"
 echo "[+] HexStrike ready (loopback :8888 via hexstrike-server.service)"
 
+# ── Fastfetch ──────────────────────────────────────────────────────────────
+if ! command -v fastfetch &>/dev/null; then
+  if command -v pacman &>/dev/null; then
+    echo "[*] Installing fastfetch ..."
+    sudo pacman -S --needed --noconfirm fastfetch
+    echo "[+] fastfetch installed"
+  else
+    echo "[!] fastfetch not installed and pacman not found — install fastfetch manually" >&2
+  fi
+else
+  echo "[+] fastfetch already installed"
+fi
+
 # ── Neovim ─────────────────────────────────────────────────────────────────
 # lazy.nvim auto-bootstraps every plugin + LSP server on first launch; only
 # need the editor itself here.
