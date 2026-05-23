@@ -1,3 +1,6 @@
+# Rust build artifacts (Cargo.lock IS committed for the binary)
+/target/
+
 # Nvim — generated at runtime
 .config/nvim/plugin/
 .config/nvim/.luarc.json

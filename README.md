@@ -33,16 +33,20 @@
 curl -fsSL https://raw.githubusercontent.com/foolish-dev/dotfiles/main/bootstrap.sh | bash
 ```
 
+`bootstrap.sh` ensures `git` and `rust`/`cargo` are present, clones (or pulls) into `~/dotfiles`, builds the **`dotctl`** Rust binary, and runs `dotctl all` end-to-end.
+
 Manual:
 
 ```bash
 git clone https://github.com/foolish-dev/dotfiles.git ~/dotfiles
 cd ~/dotfiles
-./install.sh    # tools: grogu (cargo), HexStrike AI (clone+venv), Neovim/tmux/Noctalia/fastfetch (pacman on Arch)
-./deploy.sh     # symlinks .config/* and .local/bin/* into $HOME, enables hexstrike-server.service
+cargo build --release
+./target/release/dotctl install   # tools: grogu (cargo), HexStrike AI (clone+venv), Neovim/tmux/Noctalia/fastfetch (pacman on Arch)
+./target/release/dotctl deploy    # symlinks .config/* and .local/bin/* into $HOME, enables hexstrike-server.service
+# or: dotctl all  — install + deploy
 ```
 
-Re-running `deploy.sh` is idempotent: pre-existing non-symlink files are moved to `~/.dotfiles-backup/<timestamp>/` before being replaced.
+`deploy` is idempotent. Pre-existing non-symlink files are moved to `~/.dotfiles-backup/<unix-ts>/` before being replaced. `--repo <path>` (or `DOTFILES_REPO` env) overrides the default `~/dotfiles` source.
 
 <img src="assets/divider.svg" alt="" width="900"/>
 
@@ -102,9 +106,9 @@ A Tokyo-Night-tinted `config.jsonc` for [fastfetch](https://github.com/fastfetch
 │       └── default.target.wants/...         # auto-enable on login
 ├── .local/bin/
 │   └── hexstrike-mcp                        # stdio bridge for MCP clients
-├── bootstrap.sh                             # one-liner: clone + install.sh + deploy.sh
-├── install.sh                               # tool installs (grogu, HexStrike, Neovim, tmux, Noctalia, fastfetch)
-└── deploy.sh                                # symlink configs into $HOME, enable hexstrike service
+├── src/main.rs                              # dotctl — Rust installer/deployer
+├── Cargo.toml                               # crate manifest (clap + anyhow)
+└── bootstrap.sh                             # one-liner: ensure rust → cargo build → dotctl all
 ```
 
 <img src="assets/divider.svg" alt="" width="900"/>

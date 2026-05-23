@@ -1,0 +1,21 @@
+[package]
+name = "dotctl"
+version = "0.1.0"
+edition = "2021"
+description = "Installer/deployer for foolish-dev/dotfiles"
+repository = "https://github.com/foolish-dev/dotfiles"
+license = "MIT"
+
+[[bin]]
+name = "dotctl"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive", "env"] }
+anyhow = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
