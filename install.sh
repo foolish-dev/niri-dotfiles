@@ -37,6 +37,19 @@ echo "[*] Installing HexStrike Python dependencies ..."
 "$HEXSTRIKE_DIR/hexstrike-env/bin/pip" install --quiet -r "$HEXSTRIKE_DIR/requirements.txt"
 echo "[+] HexStrike ready (loopback :8888 via hexstrike-server.service)"
 
+# ── tmux ───────────────────────────────────────────────────────────────────
+if ! command -v tmux &>/dev/null; then
+  if command -v pacman &>/dev/null; then
+    echo "[*] Installing tmux ..."
+    sudo pacman -S --needed --noconfirm tmux
+    echo "[+] tmux installed"
+  else
+    echo "[!] tmux not installed and pacman not found — install tmux manually" >&2
+  fi
+else
+  echo "[+] tmux already installed"
+fi
+
 # ── Fastfetch ──────────────────────────────────────────────────────────────
 if ! command -v fastfetch &>/dev/null; then
   if command -v pacman &>/dev/null; then

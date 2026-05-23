@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="100" viewBox="0 0 900 100">
+  <defs>
+    <linearGradient id="xbg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1b26"/>
+      <stop offset="100%" style="stop-color:#24283b"/>
+    </linearGradient>
+    <linearGradient id="xacc" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#7aa2f7"/>
+      <stop offset="100%" style="stop-color:#9ece6a"/>
+    </linearGradient>
+    <filter id="xglow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="xgrid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#414868" stroke-width="0.2" opacity="0.25"/>
+    </pattern>
+  </defs>
+  <rect width="900" height="100" rx="10" fill="url(#xbg)"/>
+  <rect width="900" height="100" rx="10" fill="url(#xgrid)"/>
+  <rect x="60" y="14" width="780" height="1" rx="0.5" fill="url(#xacc)" opacity="0.5"/>
+
+  <!-- tmux: window with vertical split + status bar -->
+  <g transform="translate(68, 30)" filter="url(#xglow)">
+    <rect x="0" y="0" width="44" height="36" rx="4" fill="none" stroke="#7aa2f7" stroke-width="1.5"/>
+    <line x1="22" y1="4" x2="22" y2="26" stroke="#7aa2f7" stroke-width="1" opacity="0.6"/>
+    <!-- Left pane content -->
+    <rect x="4"  y="8"  width="14" height="2" rx="1" fill="#bb9af7" opacity="0.6"/>
+    <rect x="4"  y="12" width="10" height="2" rx="1" fill="#bb9af7" opacity="0.4"/>
+    <rect x="4"  y="16" width="12" height="2" rx="1" fill="#bb9af7" opacity="0.4"/>
+    <!-- Right pane content -->
+    <rect x="26" y="8"  width="14" height="2" rx="1" fill="#7dcfff" opacity="0.6"/>
+    <rect x="26" y="12" width="12" height="2" rx="1" fill="#7dcfff" opacity="0.4"/>
+    <rect x="26" y="16" width="10" height="2" rx="1" fill="#7dcfff" opacity="0.4"/>
+    <!-- Status bar -->
+    <rect x="2" y="28" width="40" height="6" rx="1.5" fill="#9ece6a" opacity="0.35"/>
+    <text x="5" y="33" font-family="monospace" font-size="5" fill="#9ece6a">[0]</text>
+    <text x="35" y="33" font-family="monospace" font-size="5" fill="#e0af68">CPU</text>
+  </g>
+
+  <text x="130" y="52" font-family="'JetBrains Mono','Fira Code',monospace" font-size="22" font-weight="700" fill="#c0caf5" filter="url(#xglow)">tmux</text>
+  <text x="130" y="71" font-family="'JetBrains Mono','Fira Code',monospace" font-size="11" fill="#565f89" letter-spacing="2">TERMINAL MULTIPLEXER  ·  STATUS BAR  ·  PREFIX C-a</text>
+
+  <!-- Feature badges -->
+  <g font-family="'JetBrains Mono',monospace" font-size="10">
+    <rect x="528" y="35" width="60" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="558" y="51" text-anchor="middle" fill="#7aa2f7">panes</text>
+    <rect x="596" y="35" width="62" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="627" y="51" text-anchor="middle" fill="#bb9af7">windows</text>
+    <rect x="666" y="35" width="60" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="696" y="51" text-anchor="middle" fill="#9ece6a">RAM bar</text>
+    <rect x="734" y="35" width="76" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="772" y="51" text-anchor="middle" fill="#7dcfff">tokyo night</text>
+  </g>
+
+  <rect x="60" y="85" width="780" height="1" rx="0.5" fill="url(#xacc)" opacity="0.5"/>
+  <circle cx="840" cy="85" r="2.5" fill="#7aa2f7" opacity="0.7"/>
+  <circle cx="851" cy="85" r="2.5" fill="#9ece6a" opacity="0.7"/>
+</svg>

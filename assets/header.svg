@@ -63,17 +63,19 @@
 
   <!-- Component tags -->
   <g font-family="'JetBrains Mono','Fira Code',monospace" font-size="11" filter="url(#softglow)">
-    <text x="170" y="225" text-anchor="middle" fill="#bb9af7" opacity="0.85">TELIA</text>
-    <text x="218" y="225" text-anchor="middle" fill="#414868">·</text>
-    <text x="262" y="225" text-anchor="middle" fill="#7dcfff" opacity="0.85">GROGU</text>
-    <text x="318" y="225" text-anchor="middle" fill="#414868">·</text>
-    <text x="380" y="225" text-anchor="middle" fill="#f7768e" opacity="0.85">HEXSTRIKE</text>
-    <text x="448" y="225" text-anchor="middle" fill="#414868">·</text>
-    <text x="500" y="225" text-anchor="middle" fill="#9ece6a" opacity="0.85">NEOVIM</text>
-    <text x="558" y="225" text-anchor="middle" fill="#414868">·</text>
-    <text x="615" y="225" text-anchor="middle" fill="#c0caf5" opacity="0.85">NOCTALIA</text>
+    <text x="135" y="225" text-anchor="middle" fill="#bb9af7" opacity="0.85">TELIA</text>
+    <text x="178" y="225" text-anchor="middle" fill="#414868">·</text>
+    <text x="216" y="225" text-anchor="middle" fill="#7dcfff" opacity="0.85">GROGU</text>
+    <text x="266" y="225" text-anchor="middle" fill="#414868">·</text>
+    <text x="320" y="225" text-anchor="middle" fill="#f7768e" opacity="0.85">HEXSTRIKE</text>
+    <text x="385" y="225" text-anchor="middle" fill="#414868">·</text>
+    <text x="430" y="225" text-anchor="middle" fill="#9ece6a" opacity="0.85">NEOVIM</text>
+    <text x="478" y="225" text-anchor="middle" fill="#414868">·</text>
+    <text x="528" y="225" text-anchor="middle" fill="#7aa2f7" opacity="0.85">TMUX</text>
+    <text x="568" y="225" text-anchor="middle" fill="#414868">·</text>
+    <text x="618" y="225" text-anchor="middle" fill="#c0caf5" opacity="0.85">NOCTALIA</text>
     <text x="678" y="225" text-anchor="middle" fill="#414868">·</text>
-    <text x="730" y="225" text-anchor="middle" fill="#7aa2f7" opacity="0.85">FASTFETCH</text>
+    <text x="730" y="225" text-anchor="middle" fill="#7dcfff" opacity="0.85">FASTFETCH</text>
   </g>
 
   <!-- Bottom line + orbs -->

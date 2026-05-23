@@ -7,8 +7,9 @@
   <img src="https://img.shields.io/badge/grogu-7dcfff?style=flat-square&logo=rust&logoColor=1a1b26" alt="grogu"/>
   <img src="https://img.shields.io/badge/HexStrike%20AI-f7768e?style=flat-square&logoColor=white" alt="HexStrike AI"/>
   <img src="https://img.shields.io/badge/Neovim-9ece6a?style=flat-square&logo=neovim&logoColor=1a1b26" alt="Neovim"/>
+  <img src="https://img.shields.io/badge/tmux-7aa2f7?style=flat-square&logo=tmux&logoColor=1a1b26" alt="tmux"/>
   <img src="https://img.shields.io/badge/Noctalia-c0caf5?style=flat-square&logoColor=1a1b26" alt="Noctalia"/>
-  <img src="https://img.shields.io/badge/fastfetch-7aa2f7?style=flat-square&logoColor=1a1b26" alt="fastfetch"/>
+  <img src="https://img.shields.io/badge/fastfetch-7dcfff?style=flat-square&logoColor=1a1b26" alt="fastfetch"/>
 </p>
 
 <p align="center">
@@ -37,7 +38,7 @@ Manual:
 ```bash
 git clone https://github.com/foolish-dev/dotfiles.git ~/dotfiles
 cd ~/dotfiles
-./install.sh    # tools: grogu (cargo), HexStrike AI (clone+venv), Neovim/Noctalia/fastfetch (pacman on Arch)
+./install.sh    # tools: grogu (cargo), HexStrike AI (clone+venv), Neovim/tmux/Noctalia/fastfetch (pacman on Arch)
 ./deploy.sh     # symlinks .config/* and .local/bin/* into $HOME, enables hexstrike-server.service
 ```
 
@@ -71,6 +72,10 @@ Re-running `deploy.sh` is idempotent: pre-existing non-symlink files are moved t
 
 lazy.nvim + Mason setup. Tokyo Night base, treesitter, LSP, AI plugins (Copilot, Avante). First `nvim` launch auto-installs everything. Generated `colors/grogu.vim` (live-repainted by grogu) and `.luarc.json` stay gitignored.
 
+<img src="assets/tmux.svg" alt="tmux — terminal multiplexer, panes, windows, status bar" width="900"/>
+
+Terminal multiplexer config with the `C-a` prefix, `tokyonight` status palette, RAM-bar fragment under `.config/tmux/scripts/mem.sh`, and a `grogu.conf` slot (gitignored) the wallpaper-driven theme propagator writes to.
+
 <img src="assets/noctalia.svg" alt="Noctalia — Quickshell-based Wayland shell" width="900"/>
 
 [Noctalia](https://github.com/noctalia-dev/noctalia-shell) is a Quickshell-based Wayland shell: bar, dock, panels, notifications, lock screen, app launcher. `settings.json` + `plugins.json` + the bundled `Grogu` color scheme.
@@ -89,6 +94,7 @@ A Tokyo-Night-tinted `config.jsonc` for [fastfetch](https://github.com/fastfetch
 ├── .config/
 │   ├── telia/config.toml                    # 10 MCP servers
 │   ├── nvim/                                # lazy.nvim + Mason, Tokyo Night, LSP, AI
+│   ├── tmux/                                # tmux.conf, scripts/mem.sh
 │   ├── noctalia/                            # settings.json, plugins.json, colorschemes/Grogu/
 │   ├── fastfetch/config.jsonc               # terminal banner
 │   └── systemd/user/
@@ -97,7 +103,7 @@ A Tokyo-Night-tinted `config.jsonc` for [fastfetch](https://github.com/fastfetch
 ├── .local/bin/
 │   └── hexstrike-mcp                        # stdio bridge for MCP clients
 ├── bootstrap.sh                             # one-liner: clone + install.sh + deploy.sh
-├── install.sh                               # tool installs (grogu, HexStrike, Neovim, Noctalia, fastfetch)
+├── install.sh                               # tool installs (grogu, HexStrike, Neovim, tmux, Noctalia, fastfetch)
 └── deploy.sh                                # symlink configs into $HOME, enable hexstrike service
 ```
 

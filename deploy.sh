@@ -31,7 +31,7 @@ link_item() {
 info "=== Deploying from $DOTFILES ==="
 
 # .config/<dir> symlinks
-for d in telia nvim noctalia fastfetch; do
+for d in telia nvim noctalia fastfetch tmux; do
   [[ -d "$DOTFILES/.config/$d" ]] && link_item "$DOTFILES/.config/$d" "$HOME/.config/$d"
 done
 

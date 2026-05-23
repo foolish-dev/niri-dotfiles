@@ -2,3 +2,6 @@
 .config/nvim/plugin/
 .config/nvim/.luarc.json
 .config/nvim/colors/grogu.vim
+
+# tmux — generated at runtime by grogu
+.config/tmux/grogu.conf
