@@ -1,0 +1,4 @@
+# Nvim — generated at runtime
+.config/nvim/plugin/
+.config/nvim/.luarc.json
+.config/nvim/colors/grogu.vim

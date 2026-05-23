@@ -37,6 +37,21 @@ echo "[*] Installing HexStrike Python dependencies ..."
 "$HEXSTRIKE_DIR/hexstrike-env/bin/pip" install --quiet -r "$HEXSTRIKE_DIR/requirements.txt"
 echo "[+] HexStrike ready (loopback :8888 via hexstrike-server.service)"
 
+# ── Neovim ─────────────────────────────────────────────────────────────────
+# lazy.nvim auto-bootstraps every plugin + LSP server on first launch; only
+# need the editor itself here.
+if ! command -v nvim &>/dev/null; then
+  if command -v pacman &>/dev/null; then
+    echo "[*] Installing Neovim ..."
+    sudo pacman -S --needed --noconfirm neovim
+    echo "[+] Neovim installed"
+  else
+    echo "[!] Neovim not installed and pacman not found — install neovim manually" >&2
+  fi
+else
+  echo "[+] Neovim already installed"
+fi
+
 # ── Noctalia shell ─────────────────────────────────────────────────────────
 # Quickshell-based Wayland shell (bar, dock, panels, notifications, lock).
 # Arch-only auto-install; on other distros it warns and lets you handle it.

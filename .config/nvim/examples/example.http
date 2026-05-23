@@ -1,0 +1,28 @@
+### rest.nvim demo — open in Neovim, place cursor on a request, press <leader>rr.
+### Re-run the last request with <leader>rl. Navigate response panes with H / L.
+
+### GET — simple
+GET https://httpbin.org/get
+Accept: application/json
+
+### GET — with query params
+GET https://httpbin.org/get?foo=bar&baz=qux
+Accept: application/json
+
+### POST — JSON body
+POST https://httpbin.org/post
+Content-Type: application/json
+
+{
+  "name": "test",
+  "value": 42
+}
+
+### Custom headers
+GET https://httpbin.org/headers
+X-Request-Id: demo-1234
+User-Agent: rest.nvim-demo
+
+### Variable from .env (drop a file matching .env.* next to this one)
+### BASE_URL=https://httpbin.org
+# GET {{BASE_URL}}/uuid
