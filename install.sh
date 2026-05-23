@@ -36,3 +36,18 @@ echo "[*] Installing HexStrike Python dependencies ..."
 "$HEXSTRIKE_DIR/hexstrike-env/bin/pip" install --quiet --upgrade pip
 "$HEXSTRIKE_DIR/hexstrike-env/bin/pip" install --quiet -r "$HEXSTRIKE_DIR/requirements.txt"
 echo "[+] HexStrike ready (loopback :8888 via hexstrike-server.service)"
+
+# ── Noctalia shell ─────────────────────────────────────────────────────────
+# Quickshell-based Wayland shell (bar, dock, panels, notifications, lock).
+# Arch-only auto-install; on other distros it warns and lets you handle it.
+if ! command -v noctalia-shell &>/dev/null; then
+  if command -v pacman &>/dev/null; then
+    echo "[*] Installing Noctalia ..."
+    sudo pacman -S --needed --noconfirm noctalia-shell noctalia-qs
+    echo "[+] Noctalia installed"
+  else
+    echo "[!] Noctalia not installed and pacman not found — install noctalia-shell + noctalia-qs manually" >&2
+  fi
+else
+  echo "[+] Noctalia already installed"
+fi
