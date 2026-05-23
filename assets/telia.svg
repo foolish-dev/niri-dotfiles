@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="100" viewBox="0 0 900 100">
+  <defs>
+    <linearGradient id="tbg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1b26"/>
+      <stop offset="100%" style="stop-color:#24283b"/>
+    </linearGradient>
+    <linearGradient id="tacc" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#bb9af7"/>
+      <stop offset="50%" style="stop-color:#7aa2f7"/>
+      <stop offset="100%" style="stop-color:#7dcfff"/>
+    </linearGradient>
+    <filter id="tglow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="tgrid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#414868" stroke-width="0.2" opacity="0.25"/>
+    </pattern>
+  </defs>
+  <rect width="900" height="100" rx="10" fill="url(#tbg)"/>
+  <rect width="900" height="100" rx="10" fill="url(#tgrid)"/>
+  <rect x="60" y="14" width="780" height="1" rx="0.5" fill="url(#tacc)" opacity="0.5"/>
+
+  <!-- Chat-bubble + cursor icon -->
+  <g transform="translate(68, 30)" filter="url(#tglow)">
+    <rect x="0" y="0" width="44" height="32" rx="6" fill="none" stroke="#bb9af7" stroke-width="1.5"/>
+    <path d="M14,32 L18,38 L22,32" fill="#bb9af7" opacity="0.4"/>
+    <text x="22" y="22" text-anchor="middle" font-family="monospace" font-size="14" fill="#bb9af7" font-weight="700">&gt;_</text>
+  </g>
+
+  <text x="130" y="52" font-family="'JetBrains Mono','Fira Code',monospace" font-size="22" font-weight="700" fill="#c0caf5" filter="url(#tglow)">Telia</text>
+  <text x="130" y="71" font-family="'JetBrains Mono','Fira Code',monospace" font-size="11" fill="#565f89" letter-spacing="2">TUI CODING AGENT  ·  RUST  ·  MCP-AWARE</text>
+
+  <!-- MCP server badges -->
+  <g font-family="'JetBrains Mono',monospace" font-size="10">
+    <rect x="498" y="35" width="68" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="532" y="51" text-anchor="middle" fill="#bb9af7">context7</text>
+    <rect x="576" y="35" width="68" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="610" y="51" text-anchor="middle" fill="#7dcfff">hexstrike</text>
+    <rect x="654" y="35" width="68" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="688" y="51" text-anchor="middle" fill="#9ece6a">filesystem</text>
+    <rect x="732" y="35" width="80" height="22" rx="4" fill="#24283b" stroke="#3b4261" stroke-width="1"/>
+    <text x="772" y="51" text-anchor="middle" fill="#7aa2f7">+7 more</text>
+  </g>
+
+  <rect x="60" y="85" width="780" height="1" rx="0.5" fill="url(#tacc)" opacity="0.5"/>
+  <circle cx="840" cy="85" r="2.5" fill="#bb9af7" opacity="0.7"/>
+  <circle cx="851" cy="85" r="2.5" fill="#7aa2f7" opacity="0.7"/>
+</svg>
