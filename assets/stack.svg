@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" width="900" height="420" role="img" aria-label="Architecture — dotctl drives install and deploy; Telia speaks MCP to HexStrike AI; grogu repaints every themed target; Neovim, tmux, Noctalia, fastfetch round out the workflow">
+  <rect width="900" height="420" fill="#0e112b"/>
+  <rect x="0" y="0" width="900" height="2" fill="#61c3cf"/>
+  <rect x="0" y="418" width="900" height="2" fill="#462e97"/>
+
+  <text x="30" y="32" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="13" font-weight="700" fill="#a77b4a">// architecture</text>
+
+  <!-- Tier 1: dotctl -->
+  <rect x="370" y="58" width="160" height="58" fill="#272658" stroke="#a77b4a" stroke-width="2"/>
+  <text x="450" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="18" font-weight="700" fill="#a77b4a" text-anchor="middle">dotctl</text>
+  <text x="450" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="10" fill="#6ecfdc" text-anchor="middle">Rust binary · entry point</text>
+
+  <!-- Tier 1 → Tier 2 connectors -->
+  <path d="M 450 116 L 450 134 L 210 134 L 210 158" stroke="#462e97" stroke-width="1.2" fill="none"/>
+  <path d="M 450 116 L 450 158" stroke="#462e97" stroke-width="1.2" fill="none"/>
+  <polygon points="210,158 206,150 214,150" fill="#462e97"/>
+  <polygon points="450,158 446,150 454,150" fill="#462e97"/>
+
+  <!-- Tier 2: install / deploy -->
+  <rect x="120" y="160" width="180" height="56" fill="#272658" stroke="#778b46" stroke-width="1.2"/>
+  <text x="210" y="184" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="15" font-weight="700" fill="#778b46" text-anchor="middle">install</text>
+  <text x="210" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="10" fill="#6ecfdc" text-anchor="middle">Chaotic AUR · grogu · HexStrike · pacman</text>
+
+  <rect x="360" y="160" width="180" height="56" fill="#272658" stroke="#4dc7c3" stroke-width="1.2"/>
+  <text x="450" y="184" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="15" font-weight="700" fill="#4dc7c3" text-anchor="middle">deploy</text>
+  <text x="450" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="10" fill="#6ecfdc" text-anchor="middle">symlink .config/* · enable systemd</text>
+
+  <!-- Tier 2 → Tier 3 connectors -->
+  <path d="M 210 216 L 210 246" stroke="#462e97" stroke-width="1.2" fill="none"/>
+  <path d="M 450 216 L 450 246" stroke="#462e97" stroke-width="1.2" fill="none"/>
+  <polygon points="210,246 206,238 214,238" fill="#462e97"/>
+  <polygon points="450,246 446,238 454,238" fill="#462e97"/>
+
+  <!-- Tier 3 frame: deployed runtime -->
+  <rect x="40" y="248" width="820" height="150" fill="#272658" stroke="#462e97" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="58" y="270" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="11" fill="#a77b4a">// deployed runtime</text>
+
+  <!-- Telia ── MCP ──▶ HexStrike row -->
+  <circle cx="80" cy="304" r="6" fill="#617ee2"/>
+  <text x="94" y="309" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="14" font-weight="700" fill="#6ecfdc">Telia</text>
+  <line x1="170" y1="304" x2="252" y2="304" stroke="#ca6287" stroke-width="1.4"/>
+  <polygon points="252,304 246,300 246,308" fill="#ca6287"/>
+  <text x="211" y="296" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="10" fill="#ca6287" text-anchor="middle">MCP</text>
+  <circle cx="262" cy="304" r="6" fill="#ca6287"/>
+  <text x="276" y="309" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="14" font-weight="700" fill="#6ecfdc">HexStrike AI</text>
+
+  <text x="780" y="309" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="10" fill="#462e97" text-anchor="end">10 MCP servers wired · loopback :8888</text>
+
+  <!-- grogu repaint row -->
+  <circle cx="80" cy="356" r="6" fill="#61c3cf"/>
+  <text x="94" y="361" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="14" font-weight="700" fill="#6ecfdc">grogu</text>
+  <line x1="170" y1="356" x2="252" y2="356" stroke="#61c3cf" stroke-width="1.4"/>
+  <polygon points="252,356 246,352 246,360" fill="#61c3cf"/>
+  <text x="211" y="348" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="10" fill="#61c3cf" text-anchor="middle">repaint</text>
+
+  <circle cx="262" cy="356" r="5" fill="#778b46"/>
+  <text x="274" y="361" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="13" font-weight="700" fill="#6ecfdc">Neovim</text>
+
+  <circle cx="372" cy="356" r="5" fill="#4dc7c3"/>
+  <text x="384" y="361" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="13" font-weight="700" fill="#6ecfdc">tmux</text>
+
+  <circle cx="464" cy="356" r="5" fill="#6ecfdc"/>
+  <text x="476" y="361" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="13" font-weight="700" fill="#6ecfdc">Noctalia</text>
+
+  <circle cx="592" cy="356" r="5" fill="#a77b4a"/>
+  <text x="604" y="361" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="13" font-weight="700" fill="#6ecfdc">fastfetch</text>
+
+  <text x="780" y="361" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="10" fill="#462e97" text-anchor="end">wallpaper-driven · one shot</text>
+</svg>
