@@ -1,5 +1,5 @@
 -- =============================================================================
--- UI -- statusline, bufferline, dashboard, noice, dressing
+-- UI -- statusline, bufferline, dashboard, noice, winbar, focus modes, etc.
 -- =============================================================================
 return {
   -- ── Lualine (statusline) ────────────────────────────────────────────────
@@ -9,8 +9,8 @@ return {
     dependencies = { "nvim-tree/nvim-web-devicons" },
     opts = {
       options = {
-        theme              = "tokyonight",
-        globalstatus       = true,
+        theme                = "tokyonight",
+        globalstatus         = true,
         component_separators = { left = "", right = "" },
         section_separators   = { left = "", right = "" },
         disabled_filetypes   = { statusline = { "dashboard", "alpha" } },
@@ -23,7 +23,7 @@ return {
         lualine_y = { "progress" },
         lualine_z = { "location" },
       },
-      extensions = { "neo-tree", "lazy", "trouble" },
+      extensions = { "neo-tree", "lazy", "trouble", "aerial", "fugitive" },
     },
   },
 
@@ -34,7 +34,7 @@ return {
     dependencies = { "nvim-tree/nvim-web-devicons" },
     opts = {
       options = {
-        diagnostics         = "nvim_lsp",
+        diagnostics            = "nvim_lsp",
         always_show_bufferline = true,
         offsets = {
           { filetype = "neo-tree", text = "File Explorer", highlight = "Directory", separator = true },
@@ -43,9 +43,19 @@ return {
       },
     },
     keys = {
-      { "<leader>bp", "<cmd>BufferLineTogglePin<cr>",    desc = "Pin buffer" },
-      { "<leader>bo", "<cmd>BufferLineCloseOthers<cr>",  desc = "Close other buffers" },
+      { "<leader>bp", "<cmd>BufferLineTogglePin<cr>",   desc = "Pin buffer" },
+      { "<leader>bo", "<cmd>BufferLineCloseOthers<cr>", desc = "Close other buffers" },
     },
+  },
+
+  -- ── Barbecue: winbar with LSP breadcrumbs (uses nvim-navic) ────────────
+  {
+    "utilyre/barbecue.nvim",
+    name = "barbecue",
+    version = "*",
+    event = "BufReadPost",
+    dependencies = { "SmiteshP/nvim-navic", "nvim-tree/nvim-web-devicons" },
+    opts = { show_dirname = true, show_basename = true, show_modified = true },
   },
 
   -- ── Dashboard (alpha) ──────────────────────────────────────────────────
@@ -76,21 +86,21 @@ return {
       }
 
       dashboard.section.buttons.val = {
-        dashboard.button("f", "  Find file",       "<cmd>Telescope find_files<cr>"),
-        dashboard.button("g", "  Live grep",       "<cmd>Telescope live_grep<cr>"),
-        dashboard.button("r", "  Recent files",    "<cmd>Telescope oldfiles<cr>"),
-        dashboard.button("n", "  New file",        "<cmd>ene <BAR> startinsert<cr>"),
-        dashboard.button("c", "  Config",          "<cmd>e $MYVIMRC<cr>"),
-        dashboard.button("l", "  Lazy",            "<cmd>Lazy<cr>"),
-        dashboard.button("m", "  Mason",           "<cmd>Mason<cr>"),
-        dashboard.button("q", "  Quit",            "<cmd>qa<cr>"),
+        dashboard.button("f", "  Find file",     "<cmd>Telescope find_files<cr>"),
+        dashboard.button("g", "  Live grep",     "<cmd>Telescope live_grep<cr>"),
+        dashboard.button("r", "  Recent files",  "<cmd>Telescope oldfiles<cr>"),
+        dashboard.button("s", "  Restore session", "<cmd>lua require('persistence').load()<cr>"),
+        dashboard.button("n", "  New file",      "<cmd>ene <BAR> startinsert<cr>"),
+        dashboard.button("c", "  Config",        "<cmd>e $MYVIMRC<cr>"),
+        dashboard.button("l", "  Lazy",          "<cmd>Lazy<cr>"),
+        dashboard.button("m", "  Mason",         "<cmd>Mason<cr>"),
+        dashboard.button("q", "  Quit",          "<cmd>qa<cr>"),
       }
 
       dashboard.section.header.opts.hl  = "AlphaHeader"
       dashboard.section.buttons.opts.hl = "AlphaButtons"
       dashboard.section.footer.opts.hl  = "AlphaFooter"
-
-      dashboard.section.footer.val = "// 0x000 -- ready"
+      dashboard.section.footer.val      = "// 0x000 -- ready"
 
       alpha.setup(dashboard.opts)
     end,
@@ -105,7 +115,7 @@ return {
       lsp = {
         override = {
           -- vim.lsp.util.convert_input_to_markdown_lines and stylize_markdown
-          -- were removed in Neovim 0.11 -- only override cmp's entry docs.
+          -- were removed in Neovim 0.11 — only override cmp's entry docs.
           ["cmp.entry.get_documentation"] = true,
         },
       },
@@ -120,10 +130,7 @@ return {
   },
 
   -- ── Dressing (better vim.ui.select / vim.ui.input) ─────────────────────
-  {
-    "stevearc/dressing.nvim",
-    lazy = false,
-  },
+  { "stevearc/dressing.nvim", lazy = false },
 
   -- ── Notify ──────────────────────────────────────────────────────────────
   {
@@ -131,10 +138,38 @@ return {
     lazy = false,
     opts = {
       timeout    = 3000,
-      max_height = function() return math.floor(vim.o.lines * 0.75) end,
+      max_height = function() return math.floor(vim.o.lines   * 0.75) end,
       max_width  = function() return math.floor(vim.o.columns * 0.75) end,
       render     = "wrapped-compact",
       stages     = "fade",
     },
+  },
+
+  -- ── nvim-colorizer: highlight hex codes / CSS colors ──────────────────
+  {
+    "NvChad/nvim-colorizer.lua",
+    event = { "BufReadPost", "BufNewFile" },
+    cmd   = { "ColorizerToggle", "ColorizerAttachToBuffer" },
+    opts  = {
+      user_default_options = {
+        RGB = true, RRGGBB = true, names = false, RRGGBBAA = true,
+        AARRGGBB = true, css = true, css_fn = true,
+        mode = "background", tailwind = true,
+      },
+    },
+  },
+
+  -- ── zen-mode + twilight: focus / dim non-active code ──────────────────
+  {
+    "folke/zen-mode.nvim",
+    cmd  = "ZenMode",
+    keys = { { "<leader>zz", "<cmd>ZenMode<cr>", desc = "Zen mode" } },
+    opts = { window = { width = 0.85 } },
+  },
+  {
+    "folke/twilight.nvim",
+    cmd  = { "Twilight", "TwilightEnable", "TwilightDisable" },
+    keys = { { "<leader>zt", "<cmd>Twilight<cr>", desc = "Twilight (dim inactive code)" } },
+    opts = {},
   },
 }

@@ -1,5 +1,5 @@
 -- =============================================================================
--- Coding extras -- DAP debugger, terminal, git client, markdown
+-- Coding extras -- DAP, testing, terminal, git client, lang-specific tools
 -- =============================================================================
 return {
   -- ── Toggleterm (floating / split terminals) ─────────────────────────────
@@ -26,18 +26,21 @@ return {
       "rcarriga/nvim-dap-ui",
       "nvim-neotest/nvim-nio",
       "theHamsta/nvim-dap-virtual-text",
-      -- Python
       "mfussenegger/nvim-dap-python",
+      "leoluz/nvim-dap-go",
+      "jay-babu/mason-nvim-dap.nvim",
     },
     keys = {
-      { "<leader>db", function() require("dap").toggle_breakpoint() end,  desc = "Toggle breakpoint" },
-      { "<leader>dc", function() require("dap").continue() end,          desc = "Continue" },
-      { "<leader>do", function() require("dap").step_over() end,         desc = "Step over" },
-      { "<leader>di", function() require("dap").step_into() end,         desc = "Step into" },
-      { "<leader>dO", function() require("dap").step_out() end,          desc = "Step out" },
-      { "<leader>dr", function() require("dap").repl.toggle() end,       desc = "Toggle REPL" },
-      { "<leader>du", function() require("dapui").toggle() end,          desc = "Toggle DAP UI" },
-      { "<leader>dx", function() require("dap").terminate() end,         desc = "Terminate" },
+      { "<leader>db", function() require("dap").toggle_breakpoint() end, desc = "Toggle breakpoint" },
+      { "<leader>dB", function() require("dap").set_breakpoint(vim.fn.input("Condition: ")) end, desc = "Conditional breakpoint" },
+      { "<leader>dc", function() require("dap").continue() end,    desc = "Continue" },
+      { "<leader>do", function() require("dap").step_over() end,   desc = "Step over" },
+      { "<leader>di", function() require("dap").step_into() end,   desc = "Step into" },
+      { "<leader>dO", function() require("dap").step_out() end,    desc = "Step out" },
+      { "<leader>dr", function() require("dap").repl.toggle() end, desc = "Toggle REPL" },
+      { "<leader>du", function() require("dapui").toggle() end,    desc = "Toggle DAP UI" },
+      { "<leader>dx", function() require("dap").terminate() end,   desc = "Terminate" },
+      { "<leader>dl", function() require("dap").run_last() end,    desc = "Run last" },
     },
     config = function()
       local dap   = require("dap")
@@ -45,45 +48,86 @@ return {
 
       dapui.setup({
         layouts = {
-          {
-            elements = { "scopes", "breakpoints", "stacks", "watches" },
-            size = 40, position = "left",
-          },
-          {
-            elements = { "repl", "console" },
-            size = 0.25, position = "bottom",
-          },
+          { elements = { "scopes", "breakpoints", "stacks", "watches" }, size = 40,   position = "left" },
+          { elements = { "repl", "console" },                            size = 0.25, position = "bottom" },
         },
       })
       require("nvim-dap-virtual-text").setup()
 
-      -- Auto open/close dapui
-      dap.listeners.after.event_initialized["dapui_config"]  = function() dapui.open()  end
+      dap.listeners.after.event_initialized["dapui_config"]  = function() dapui.open() end
       dap.listeners.before.event_terminated["dapui_config"]  = function() dapui.close() end
       dap.listeners.before.event_exited["dapui_config"]      = function() dapui.close() end
 
-      -- Python adapter
-      require("dap-python").setup("python3")
+      -- Python (debugpy via mason)
+      pcall(function() require("dap-python").setup("python3") end)
+      -- Go (dlv via mason)
+      pcall(function() require("dap-go").setup() end)
 
-      -- GDB / C / C++ / Rust adapter
-      dap.adapters.gdb = {
-        type    = "executable",
-        command = "gdb",
-        args    = { "-i", "dap" },
-      }
-      dap.configurations.c = {
-        {
-          name    = "Launch (GDB)",
-          type    = "gdb",
-          request = "launch",
-          program = function()
-            return vim.fn.input("Path to executable: ", vim.fn.getcwd() .. "/", "file")
-          end,
-          cwd = "${workspaceFolder}",
+      -- C / C++ / Rust via codelldb (mason)
+      dap.adapters.codelldb = {
+        type = "server", port = "${port}",
+        executable = {
+          command = vim.fn.exepath("codelldb") ~= "" and "codelldb" or "codelldb",
+          args = { "--port", "${port}" },
         },
       }
-      dap.configurations.cpp  = dap.configurations.c
-      dap.configurations.rust = dap.configurations.c
+      local lldb_cfg = {
+        {
+          name    = "Launch (codelldb)",
+          type    = "codelldb",
+          request = "launch",
+          program = function() return vim.fn.input("Path to executable: ", vim.fn.getcwd() .. "/", "file") end,
+          cwd     = "${workspaceFolder}",
+          stopOnEntry = false,
+        },
+      }
+      dap.configurations.c    = lldb_cfg
+      dap.configurations.cpp  = lldb_cfg
+      dap.configurations.rust = lldb_cfg
+
+      -- Mason-managed DAP adapters
+      require("mason-nvim-dap").setup({
+        ensure_installed = { "python", "delve", "codelldb", "js" },
+        automatic_installation = true,
+        handlers = {},
+      })
+    end,
+  },
+
+  -- ── neotest: runner integration ─────────────────────────────────────────
+  {
+    "nvim-neotest/neotest",
+    dependencies = {
+      "nvim-lua/plenary.nvim",
+      "antoinemadec/FixCursorHold.nvim",
+      "nvim-treesitter/nvim-treesitter",
+      "nvim-neotest/neotest-python",
+      "nvim-neotest/neotest-go",
+      "rouge8/neotest-rust",
+      "nvim-neotest/neotest-jest",
+      "marilari88/neotest-vitest",
+      "nvim-neotest/neotest-plenary",
+    },
+    keys = {
+      { "<leader>nt", function() require("neotest").run.run() end,                          desc = "Run nearest test" },
+      { "<leader>nT", function() require("neotest").run.run(vim.fn.expand("%")) end,         desc = "Run file tests" },
+      { "<leader>na", function() require("neotest").run.run(vim.uv.cwd()) end,               desc = "Run all tests" },
+      { "<leader>ns", function() require("neotest").summary.toggle() end,                    desc = "Toggle summary" },
+      { "<leader>no", function() require("neotest").output.open({ enter = true }) end,        desc = "Test output" },
+      { "<leader>nO", function() require("neotest").output_panel.toggle() end,                desc = "Output panel" },
+      { "<leader>nx", function() require("neotest").run.stop() end,                          desc = "Stop test" },
+    },
+    config = function()
+      require("neotest").setup({
+        adapters = {
+          require("neotest-python")({ runner = "pytest" }),
+          require("neotest-go"),
+          require("neotest-rust"),
+          require("neotest-jest"),
+          require("neotest-vitest"),
+          require("neotest-plenary"),
+        },
+      })
     end,
   },
 
@@ -92,9 +136,17 @@ return {
     "tpope/vim-fugitive",
     cmd  = { "Git", "G", "Gdiffsplit", "Gvdiffsplit" },
     keys = {
-      { "<leader>gg", "<cmd>Git<cr>",      desc = "Git status (fugitive)" },
+      { "<leader>gg", "<cmd>Git<cr>",        desc = "Git status (fugitive)" },
       { "<leader>gd", "<cmd>Gdiffsplit<cr>", desc = "Git diff split" },
     },
+  },
+
+  -- ── lazygit.nvim: lazygit floating popup ───────────────────────────────
+  {
+    "kdheepak/lazygit.nvim",
+    cmd  = { "LazyGit", "LazyGitConfig", "LazyGitFilterCurrentFile", "LazyGitFilter" },
+    keys = { { "<leader>gG", "<cmd>LazyGit<cr>", desc = "Lazygit" } },
+    dependencies = { "nvim-lua/plenary.nvim" },
   },
 
   -- ── Diffview ────────────────────────────────────────────────────────────
@@ -102,7 +154,7 @@ return {
     "sindrets/diffview.nvim",
     cmd  = { "DiffviewOpen", "DiffviewFileHistory" },
     keys = {
-      { "<leader>gv", "<cmd>DiffviewOpen<cr>",          desc = "Diffview open" },
+      { "<leader>gv", "<cmd>DiffviewOpen<cr>",           desc = "Diffview open" },
       { "<leader>gh", "<cmd>DiffviewFileHistory %<cr>",  desc = "File history" },
     },
     opts = {},
@@ -115,7 +167,19 @@ return {
     ft    = { "markdown" },
     cmd   = { "MarkdownPreview", "MarkdownPreviewToggle" },
     keys  = {
-      { "<leader>mp", "<cmd>MarkdownPreviewToggle<cr>", desc = "Markdown preview" },
+      { "<leader>mp", "<cmd>MarkdownPreviewToggle<cr>", desc = "Markdown preview (browser)" },
+    },
+  },
+
+  -- ── render-markdown.nvim: pretty markdown rendering in the buffer ──────
+  {
+    "MeanderingProgrammer/render-markdown.nvim",
+    ft = { "markdown", "Avante" },
+    dependencies = { "nvim-treesitter/nvim-treesitter", "nvim-tree/nvim-web-devicons" },
+    opts = {
+      file_types = { "markdown", "Avante" },
+      heading    = { enabled = true, position = "inline" },
+      code       = { enabled = true, sign = false, width = "block", min_width = 60 },
     },
   },
 
@@ -123,9 +187,7 @@ return {
   {
     "RaafatTurki/hex.nvim",
     cmd  = { "HexDump", "HexAssemble", "HexToggle" },
-    keys = {
-      { "<leader>xH", "<cmd>HexToggle<cr>", desc = "Toggle hex editor" },
-    },
+    keys = { { "<leader>xH", "<cmd>HexToggle<cr>", desc = "Toggle hex editor" } },
     opts = {},
   },
 
@@ -135,12 +197,62 @@ return {
     ft   = "http",
     dependencies = { "nvim-neotest/nvim-nio" },
     keys = {
-      { "<leader>rr", "<cmd>Rest run<cr>",     desc = "Run HTTP request" },
+      { "<leader>rr", "<cmd>Rest run<cr>",      desc = "Run HTTP request" },
       { "<leader>rl", "<cmd>Rest run last<cr>", desc = "Re-run last request" },
     },
-    -- rest.nvim v2+ uses a completely different config schema; the minimal
-    -- default opts work out of the box. Run :Rest env show to manage
-    -- environment files; :Rest run / :Rest last for requests.
+    opts = {},
+  },
+
+  -- ── rustaceanvim: Rust LSP + integrations ──────────────────────────────
+  {
+    "mrcjkb/rustaceanvim",
+    version = "^5",
+    ft = { "rust" },
+    init = function()
+      vim.g.rustaceanvim = {
+        server = { default_settings = {
+          ["rust-analyzer"] = {
+            cargo = { allFeatures = true },
+            checkOnSave = { command = "clippy" },
+          },
+        } },
+      }
+    end,
+  },
+
+  -- ── crates.nvim: Cargo.toml inline crate info ──────────────────────────
+  {
+    "saecki/crates.nvim",
+    event = { "BufRead Cargo.toml" },
+    opts  = { completion = { cmp = { enabled = true } } },
+  },
+
+  -- ── go.nvim: Go productivity wrapper ───────────────────────────────────
+  {
+    "ray-x/go.nvim",
+    dependencies = { "ray-x/guihua.lua", "neovim/nvim-lspconfig", "nvim-treesitter/nvim-treesitter" },
+    ft = { "go", "gomod", "gosum", "gowork" },
+    build = function() require("go.install").update_all_sync() end,
+    opts = { lsp_cfg = false }, -- nvim-lspconfig already handles gopls
+    config = function(_, opts) require("go").setup(opts) end,
+  },
+
+  -- ── typescript-tools.nvim: faster ts_ls alternative ────────────────────
+  {
+    "pmizio/typescript-tools.nvim",
+    ft = { "typescript", "typescriptreact", "javascript", "javascriptreact" },
+    dependencies = { "nvim-lua/plenary.nvim", "neovim/nvim-lspconfig" },
+    opts = {},
+  },
+
+  -- ── venv-selector: pick a Python venv per project ──────────────────────
+  {
+    "linux-cultist/venv-selector.nvim",
+    branch = "regexp",
+    dependencies = { "neovim/nvim-lspconfig", "nvim-telescope/telescope.nvim", "mfussenegger/nvim-dap-python" },
+    ft   = "python",
+    cmd  = "VenvSelect",
+    keys = { { "<leader>cv", "<cmd>VenvSelect<cr>", desc = "Select Python venv" } },
     opts = {},
   },
 }
