@@ -55,7 +55,26 @@ opt.updatetime  = 200
 opt.timeoutlen  = 400
 
 -- ── Clipboard (system) ───────────────────────────────────────────────────
-opt.clipboard   = "unnamedplus"
+-- Pin the wl-clipboard provider explicitly when wl-copy is on $PATH.
+-- Avoids nvim's auto-detect picking the wrong invocation under tmux and
+-- the "clipboard: error invoking 'wl-copy'" failure when wl-paste tries
+-- to decode non-text MIME types. cache_enabled stops wl-paste being
+-- respawned on every paste call.
+if vim.fn.executable("wl-copy") == 1 then
+  vim.g.clipboard = {
+    name  = "wl-clipboard",
+    copy  = {
+      ["+"] = { "wl-copy", "--type", "text/plain" },
+      ["*"] = { "wl-copy", "--primary", "--type", "text/plain" },
+    },
+    paste = {
+      ["+"] = { "wl-paste", "--no-newline" },
+      ["*"] = { "wl-paste", "--no-newline", "--primary" },
+    },
+    cache_enabled = 1,
+  }
+end
+opt.clipboard = "unnamedplus"
 
 -- ── Fold (treesitter-based) ──────────────────────────────────────────────
 opt.foldmethod  = "expr"
