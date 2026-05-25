@@ -64,6 +64,10 @@ cargo build --release
 ## Rice
 
 <p align="center">
+  <img src="assets/rice-telia.svg" alt="Telia rice — TUI coding agent with 10 MCP servers wired, tool-call transcript, and live input cursor" width="900"/>
+</p>
+
+<p align="center">
   <img src="assets/rice-terminal.svg" alt="Terminal rice — kitty running fastfetch and dotctl deploy under the Grogu palette" width="900"/>
 </p>
 
