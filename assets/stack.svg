@@ -27,7 +27,7 @@
     <animate attributeName="stroke-opacity" values="0.55;1;0.55" dur="3s" begin="0.4s" repeatCount="indefinite"/>
   </rect>
   <text x="210" y="184" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="15" font-weight="700" fill="#778b46" text-anchor="middle">install</text>
-  <text x="210" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="10" fill="#6ecfdc" text-anchor="middle">Chaotic AUR · grogu · HexStrike · pacman</text>
+  <text x="210" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="10" fill="#6ecfdc" text-anchor="middle">Chaotic AUR + BlackArch · grogu · HexStrike</text>
 
   <rect x="360" y="160" width="180" height="56" fill="#272658" stroke="#4dc7c3" stroke-width="1.2">
     <animate attributeName="stroke-opacity" values="0.55;1;0.55" dur="3s" begin="0.8s" repeatCount="indefinite"/>

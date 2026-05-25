@@ -19,6 +19,7 @@
   <img src="https://img.shields.io/badge/Rust-617ee2?style=flat-square&logo=rust&logoColor=white" alt="Rust"/>
   <img src="https://img.shields.io/badge/Arch_Linux-1793D1?style=flat-square&logo=archlinux&logoColor=white" alt="Arch Linux"/>
   <img src="https://img.shields.io/badge/Chaotic_AUR-ca6287?style=flat-square&logoColor=white" alt="Chaotic AUR"/>
+  <img src="https://img.shields.io/badge/BlackArch-0e112b?style=flat-square&logo=archlinux&logoColor=ca6287" alt="BlackArch"/>
   <img src="https://img.shields.io/badge/Wayland-FFBc00?style=flat-square&logo=wayland&logoColor=0e112b" alt="Wayland"/>
   <img src="https://img.shields.io/badge/Grogu_palette-6ecfdc?style=flat-square&logoColor=0e112b" alt="Grogu palette"/>
 </p>
@@ -88,7 +89,7 @@ cargo build --release
 
 | Subcommand | What it does |
 |---|---|
-| `dotctl install` | Wire Chaotic AUR (idempotent), `cargo install` grogu, clone+venv HexStrike AI, `pacman -S` tmux/fastfetch/neovim/noctalia-shell. |
+| `dotctl install` | Wire Chaotic AUR and BlackArch (both idempotent), `cargo install` grogu, clone+venv HexStrike AI, `pacman -S` tmux/fastfetch/neovim/noctalia-shell. |
 | `dotctl deploy` | Symlink `.config/{telia,nvim,noctalia,fastfetch,tmux}` and every `.local/bin/*` into `$HOME`. Symlink the hexstrike systemd unit, `daemon-reload`, `enable --now`. Back up displaced files to `~/.dotfiles-backup/<unix-ts>/`. |
 | `dotctl all` | `install` then `deploy`. |
 
@@ -102,7 +103,7 @@ cargo build --release
 
 <img src="assets/hexstrike.svg" alt="HexStrike AI — MCP backend, 150+ offensive-security tools" width="900"/>
 
-[HexStrike AI](https://github.com/0x4m4/hexstrike-ai) is a Flask MCP backend exposing 150+ offensive-security tools. Shipped here as a hardened systemd user unit (loopback `:8888`, `IPAddressDeny=any` except `127.0.0.0/8`, `ProtectSystem=strict`, `ProtectHome=read-only`) plus the `hexstrike-mcp` stdio bridge MCP clients call.
+[HexStrike AI](https://github.com/0x4m4/hexstrike-ai) is a Flask MCP backend exposing 150+ offensive-security tools. Shipped here as a hardened systemd user unit (loopback `:8888`, `IPAddressDeny=any` except `127.0.0.0/8`, `ProtectSystem=strict`, `ProtectHome=read-only`) plus the `hexstrike-mcp` stdio bridge MCP clients call. The underlying CLI tools live in [BlackArch](https://blackarch.org) — `dotctl install` wires its repo via the upstream `strap.sh` so `pacman -S <tool>` reaches 2800+ pentesting packages.
 
 <img src="assets/neovim.svg" alt="Neovim — lazy.nvim, Mason, Tokyo Night, LSP, AI plugins" width="900"/>
 

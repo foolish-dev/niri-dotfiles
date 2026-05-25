@@ -131,6 +131,30 @@ fn setup_chaotic_aur() -> Result<()> {
     Ok(())
 }
 
+fn setup_blackarch() -> Result<()> {
+    if !command_exists("pacman") {
+        return Ok(());
+    }
+    if let Ok(conf) = fs::read_to_string("/etc/pacman.conf") {
+        if conf.lines().any(|l| l.trim() == "[blackarch]") {
+            ok("BlackArch repo already present");
+            return Ok(());
+        }
+    }
+    info("Adding BlackArch repository (via strap.sh) ...");
+    let strap = "/tmp/blackarch-strap.sh";
+    run(
+        "curl",
+        &["-fsSL", "-o", strap, "https://blackarch.org/strap.sh"],
+    )?;
+    run("sudo", &["chmod", "+x", strap])?;
+    // strap.sh prompts for confirmation; pipe `yes` through so the install is
+    // non-interactive like the rest of dotctl.
+    run("sh", &["-c", &format!("yes | sudo {strap}")])?;
+    ok("BlackArch repo added");
+    Ok(())
+}
+
 fn pacman_install(label: &str, packages: &[&str]) -> Result<()> {
     if !command_exists("pacman") {
         warn(&format!(
@@ -158,6 +182,9 @@ fn install() -> Result<()> {
 
     // Chaotic AUR (prereq for noctalia-shell, noctalia-qs on Arch)
     setup_chaotic_aur()?;
+
+    // BlackArch (2800+ offensive-security tools, paired with HexStrike AI)
+    setup_blackarch()?;
 
     // grogu
     if command_exists("grogu") {
