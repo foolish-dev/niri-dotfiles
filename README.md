@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/dotctl-a77b4a?style=flat-square&logo=rust&logoColor=0e112b" alt="dotctl"/>
-  <img src="https://img.shields.io/badge/Telia-617ee2?style=flat-square&logo=rust&logoColor=0e112b" alt="Telia"/>
+  <img src="https://img.shields.io/badge/Teleia-617ee2?style=flat-square&logo=rust&logoColor=0e112b" alt="Teleia"/>
   <img src="https://img.shields.io/badge/grogu-61c3cf?style=flat-square&logo=rust&logoColor=0e112b" alt="grogu"/>
   <img src="https://img.shields.io/badge/HexStrike%20AI-ca6287?style=flat-square&logoColor=white" alt="HexStrike AI"/>
   <img src="https://img.shields.io/badge/Neovim-778b46?style=flat-square&logo=neovim&logoColor=0e112b" alt="Neovim"/>
@@ -56,7 +56,7 @@ cargo build --release
 ## Architecture
 
 <p align="center">
-  <img src="assets/stack.svg" alt="Architecture — dotctl drives install and deploy; Telia speaks MCP to HexStrike AI; grogu repaints every themed target; Neovim, tmux, Noctalia, fastfetch round out the workflow" width="900"/>
+  <img src="assets/stack.svg" alt="Architecture — dotctl drives install and deploy; Teleia speaks MCP to HexStrike AI; grogu repaints every themed target; Neovim, tmux, Noctalia, fastfetch round out the workflow" width="900"/>
 </p>
 
 <img src="assets/divider.svg" alt="" width="900"/>
@@ -64,7 +64,7 @@ cargo build --release
 ## Rice
 
 <p align="center">
-  <img src="assets/rice-telia.svg" alt="Telia rice — TUI coding agent with 10 MCP servers wired, tool-call transcript, and live input cursor" width="900"/>
+  <img src="assets/rice-teleia.svg" alt="Teleia rice — TUI coding agent with 10 MCP servers wired, tool-call transcript, and live input cursor" width="900"/>
 </p>
 
 <p align="center">
@@ -94,16 +94,16 @@ cargo build --release
 | Subcommand | What it does |
 |---|---|
 | `dotctl install` | Wire Chaotic AUR and BlackArch (both idempotent), `cargo install` grogu, clone+venv HexStrike AI, `pacman -S` tmux/fastfetch/neovim/noctalia-shell. |
-| `dotctl deploy` | Symlink `.config/{telia,nvim,noctalia,fastfetch,tmux}` and every `.local/bin/*` into `$HOME`. Symlink the hexstrike systemd unit, `daemon-reload`, `enable --now`. Back up displaced files to `~/.dotfiles-backup/<unix-ts>/`. |
+| `dotctl deploy` | Symlink `.config/{teleia,nvim,noctalia,fastfetch,tmux}` and every `.local/bin/*` into `$HOME`. Symlink the hexstrike systemd unit, `daemon-reload`, `enable --now`. Back up displaced files to `~/.dotfiles-backup/<unix-ts>/`. |
 | `dotctl all` | `install` then `deploy`. |
 
-<img src="assets/telia.svg" alt="Telia — TUI coding agent (Rust, MCP-aware), 10 MCP servers wired" width="900"/>
+<img src="assets/teleia.svg" alt="Teleia — TUI coding agent (Rust, MCP-aware), 10 MCP servers wired" width="900"/>
 
-[Telia](https://github.com/foolish-dev/telia) is a single-binary TUI coding agent. `.config/telia/config.toml` wires `context7`, `filesystem`, `github`, `fetch`, `hexstrike-ai`, `playwright`, `sequential-thinking`, `memory`, `git`, and `weather` — drop-in compatible with any other MCP client.
+[Teleia](https://github.com/foolish-dev/teleia) is a single-binary TUI coding agent. `.config/teleia/config.toml` wires `context7`, `filesystem`, `github`, `fetch`, `hexstrike-ai`, `playwright`, `sequential-thinking`, `memory`, `git`, and `weather` — drop-in compatible with any other MCP client.
 
 <img src="assets/grogu.svg" alt="grogu — wallpaper-driven palette propagator, repaints 7 targets" width="900"/>
 
-[grogu](https://github.com/foolish-dev/grogu) extracts a palette from the current wallpaper and writes themed fragments for niri, kitty, ghostty, tmux, Neovim, Telia, and Noctalia in one shot. `dotctl install` cargo-installs it from upstream.
+[grogu](https://github.com/foolish-dev/grogu) extracts a palette from the current wallpaper and writes themed fragments for niri, kitty, ghostty, tmux, Neovim, Teleia, and Noctalia in one shot. `dotctl install` cargo-installs it from upstream.
 
 <img src="assets/hexstrike.svg" alt="HexStrike AI — MCP backend, 150+ offensive-security tools" width="900"/>
 
@@ -133,7 +133,7 @@ A Tokyo-Night-tinted `config.jsonc` for [fastfetch](https://github.com/fastfetch
 .
 ├── assets/                                  # README artwork (header, stack, divider, per-tool cards)
 ├── .config/
-│   ├── telia/config.toml                    # 10 MCP servers
+│   ├── teleia/config.toml                    # 10 MCP servers
 │   ├── nvim/                                # lazy.nvim + Mason, Tokyo Night, LSP, AI
 │   ├── tmux/                                # tmux.conf, scripts/mem.sh
 │   ├── noctalia/                            # settings.json, plugins.json, colorschemes/Grogu/

@@ -58,7 +58,7 @@
   <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="13">
     <text x="60" y="316"><tspan fill="#778b46">fool@arch</tspan><tspan fill="#6ecfdc"> </tspan><tspan fill="#61c3cf">~/dotfiles</tspan><tspan fill="#ca6287"> ❯</tspan><tspan fill="#6ecfdc"> dotctl deploy</tspan></text>
     <text x="60" y="338"><tspan fill="#61c3cf">[*]</tspan><tspan fill="#6ecfdc"> === Deploying from /home/fool/dotfiles ===</tspan></text>
-    <text x="60" y="356"><tspan fill="#778b46">[+]</tspan><tspan fill="#6ecfdc"> Linked: ~/.config/telia</tspan></text>
+    <text x="60" y="356"><tspan fill="#778b46">[+]</tspan><tspan fill="#6ecfdc"> Linked: ~/.config/teleia</tspan></text>
     <text x="60" y="374"><tspan fill="#778b46">[+]</tspan><tspan fill="#6ecfdc"> Linked: ~/.config/nvim</tspan></text>
     <text x="60" y="392"><tspan fill="#778b46">[+]</tspan><tspan fill="#6ecfdc"> Linked: ~/.config/noctalia</tspan></text>
     <text x="60" y="410"><tspan fill="#778b46">[+]</tspan><tspan fill="#6ecfdc"> Linked: ~/.config/fastfetch</tspan></text>

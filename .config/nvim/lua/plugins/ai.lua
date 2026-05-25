@@ -2,7 +2,7 @@
 -- AI -- opencode, Copilot, Avante, CodeCompanion
 -- =============================================================================
 return {
-  -- ── opencode.nvim: built-in Telia-companion popup ──────────────────────
+  -- ── opencode.nvim: built-in Teleia-companion popup ─────────────────────
   {
     "NickvanDyke/opencode.nvim",
     version = "*",

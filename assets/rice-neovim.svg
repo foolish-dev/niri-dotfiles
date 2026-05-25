@@ -31,7 +31,7 @@
     <text x="58" y="166"><tspan fill="#462e97">  </tspan><tspan fill="#6ecfdc">stack.svg</tspan></text>
     <text x="58" y="182"><tspan fill="#462e97">  </tspan><tspan fill="#6ecfdc">divider.svg</tspan></text>
     <text x="58" y="198"><tspan fill="#462e97">  </tspan><tspan fill="#6ecfdc">dotctl.svg</tspan></text>
-    <text x="58" y="214"><tspan fill="#462e97">  </tspan><tspan fill="#6ecfdc">telia.svg</tspan></text>
+    <text x="58" y="214"><tspan fill="#462e97">  </tspan><tspan fill="#6ecfdc">teleia.svg</tspan></text>
     <text x="48" y="232"><tspan fill="#462e97">▾ </tspan><tspan fill="#61c3cf">src</tspan></text>
     <text x="58" y="248"><tspan fill="#462e97">  </tspan><tspan fill="#a77b4a" font-weight="700">main.rs</tspan></text>
     <text x="48" y="264"><tspan fill="#462e97">  </tspan><tspan fill="#6ecfdc">Cargo.toml</tspan></text>

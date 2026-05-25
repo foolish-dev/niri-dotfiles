@@ -290,7 +290,7 @@ fn deploy(repo: &Path) -> Result<()> {
 
     info(&format!("=== Deploying from {} ===", repo.display()));
 
-    for d in ["telia", "nvim", "noctalia", "fastfetch", "tmux"] {
+    for d in ["teleia", "nvim", "noctalia", "fastfetch", "tmux"] {
         let src = repo.join(".config").join(d);
         if src.exists() {
             let dest = h.join(".config").join(d);
