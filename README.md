@@ -60,6 +60,26 @@ cargo build --release
 
 <img src="assets/divider.svg" alt="" width="900"/>
 
+## Rice
+
+<p align="center">
+  <img src="assets/rice-terminal.svg" alt="Terminal rice — kitty running fastfetch and dotctl deploy under the Grogu palette" width="900"/>
+</p>
+
+<p align="center">
+  <img src="assets/rice-neovim.svg" alt="Neovim rice — neo-tree sidebar, treesitter-highlighted Rust, lualine statusline" width="900"/>
+</p>
+
+<p align="center">
+  <img src="assets/rice-tmux.svg" alt="tmux rice — three panes (nvim, btop, zsh log) and a powerline status bar" width="900"/>
+</p>
+
+<p align="center">
+  <img src="assets/rice-noctalia.svg" alt="Noctalia bar rice — workspace pills, focused window, CPU/MEM/net/volume/clock tray" width="900"/>
+</p>
+
+<img src="assets/divider.svg" alt="" width="900"/>
+
 ## Components
 
 <img src="assets/dotctl.svg" alt="dotctl — Rust installer with install/deploy/all subcommands" width="900"/>

@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" width="900" height="520" role="img" aria-label="Terminal rice — kitty running fastfetch and dotctl deploy under the Grogu palette">
+  <!-- desktop bg -->
+  <rect width="900" height="520" fill="#080724"/>
+
+  <!-- window -->
+  <rect x="30" y="24" width="840" height="472" fill="#0e112b" stroke="#462e97" stroke-width="1" rx="6" ry="6"/>
+
+  <!-- title bar -->
+  <rect x="30" y="24" width="840" height="28" fill="#272658" rx="6" ry="6"/>
+  <rect x="30" y="40" width="840" height="14" fill="#272658"/>
+  <circle cx="52"  cy="38" r="5" fill="#ca6287"/>
+  <circle cx="70"  cy="38" r="5" fill="#a77b4a"/>
+  <circle cx="88"  cy="38" r="5" fill="#778b46"/>
+  <text x="450" y="42" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="11" fill="#6ecfdc" text-anchor="middle">kitty · fool@archdev · ~/dotfiles</text>
+  <text x="852" y="42" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="11" fill="#462e97" text-anchor="end">grogu</text>
+
+  <!-- ── fastfetch logo (left) ── -->
+  <g stroke="#61c3cf" stroke-width="2" fill="none" stroke-linejoin="round" transform="translate(60,70)">
+    <polygon points="55,0 110,118 88,108 67,100 55,96 43,100 22,108 0,118"/>
+    <polygon points="55,28 88,98 67,94 55,90 43,94 22,98" fill="#61c3cf" opacity="0.25" stroke="none"/>
+    <line x1="55" y1="0"   x2="55" y2="96" stroke="#61c3cf" stroke-width="0.7" opacity="0.5"/>
+  </g>
+
+  <!-- ── fastfetch info (right of logo) ── -->
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="13">
+    <text x="220" y="86"><tspan fill="#61c3cf" font-weight="700">fool</tspan><tspan fill="#6ecfdc">@</tspan><tspan fill="#a77b4a" font-weight="700">archdev</tspan></text>
+    <text x="220" y="100" fill="#462e97">────────────────────────</text>
+    <text x="220" y="118"><tspan fill="#778b46" font-weight="700">OS    </tspan><tspan fill="#6ecfdc">Arch Linux x86_64</tspan></text>
+    <text x="220" y="136"><tspan fill="#778b46" font-weight="700">Host  </tspan><tspan fill="#6ecfdc">ThinkPad X1 Carbon</tspan></text>
+    <text x="220" y="154"><tspan fill="#778b46" font-weight="700">Kernel</tspan><tspan fill="#6ecfdc">  7.0.9-arch1-1</tspan></text>
+    <text x="220" y="172"><tspan fill="#778b46" font-weight="700">WM    </tspan><tspan fill="#6ecfdc">niri (Wayland)</tspan></text>
+    <text x="220" y="190"><tspan fill="#778b46" font-weight="700">Shell </tspan><tspan fill="#6ecfdc">zsh 5.9</tspan></text>
+    <text x="220" y="208"><tspan fill="#778b46" font-weight="700">Term  </tspan><tspan fill="#6ecfdc">kitty · Grogu</tspan></text>
+    <text x="220" y="226"><tspan fill="#778b46" font-weight="700">Theme </tspan><tspan fill="#6ecfdc">grogu (wallpaper-driven)</tspan></text>
+  </g>
+
+  <!-- 16-color blocks -->
+  <g>
+    <rect x="220" y="244" width="32" height="20" fill="#0e112b" stroke="#462e97" stroke-width="0.6"/>
+    <rect x="252" y="244" width="32" height="20" fill="#ca6287"/>
+    <rect x="284" y="244" width="32" height="20" fill="#778b46"/>
+    <rect x="316" y="244" width="32" height="20" fill="#a77b4a"/>
+    <rect x="348" y="244" width="32" height="20" fill="#61c3cf"/>
+    <rect x="380" y="244" width="32" height="20" fill="#617ee2"/>
+    <rect x="412" y="244" width="32" height="20" fill="#4dc7c3"/>
+    <rect x="444" y="244" width="32" height="20" fill="#6ecfdc"/>
+    <rect x="220" y="264" width="32" height="20" fill="#462e97"/>
+    <rect x="252" y="264" width="32" height="20" fill="#ca6287" opacity="0.7"/>
+    <rect x="284" y="264" width="32" height="20" fill="#778b46" opacity="0.7"/>
+    <rect x="316" y="264" width="32" height="20" fill="#a77b4a" opacity="0.7"/>
+    <rect x="348" y="264" width="32" height="20" fill="#61c3cf" opacity="0.7"/>
+    <rect x="380" y="264" width="32" height="20" fill="#617ee2" opacity="0.7"/>
+    <rect x="412" y="264" width="32" height="20" fill="#4dc7c3" opacity="0.7"/>
+    <rect x="444" y="264" width="32" height="20" fill="#ffffff" opacity="0.85"/>
+  </g>
+
+  <!-- ── prompt + deploy output ── -->
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="13">
+    <text x="60" y="316"><tspan fill="#778b46">fool@arch</tspan><tspan fill="#6ecfdc"> </tspan><tspan fill="#61c3cf">~/dotfiles</tspan><tspan fill="#ca6287"> ❯</tspan><tspan fill="#6ecfdc"> dotctl deploy</tspan></text>
+    <text x="60" y="338"><tspan fill="#61c3cf">[*]</tspan><tspan fill="#6ecfdc"> === Deploying from /home/fool/dotfiles ===</tspan></text>
+    <text x="60" y="356"><tspan fill="#778b46">[+]</tspan><tspan fill="#6ecfdc"> Linked: ~/.config/telia</tspan></text>
+    <text x="60" y="374"><tspan fill="#778b46">[+]</tspan><tspan fill="#6ecfdc"> Linked: ~/.config/nvim</tspan></text>
+    <text x="60" y="392"><tspan fill="#778b46">[+]</tspan><tspan fill="#6ecfdc"> Linked: ~/.config/noctalia</tspan></text>
+    <text x="60" y="410"><tspan fill="#778b46">[+]</tspan><tspan fill="#6ecfdc"> Linked: ~/.config/fastfetch</tspan></text>
+    <text x="60" y="428"><tspan fill="#778b46">[+]</tspan><tspan fill="#6ecfdc"> Linked: ~/.config/tmux</tspan></text>
+    <text x="60" y="446"><tspan fill="#778b46">[+]</tspan><tspan fill="#6ecfdc"> hexstrike-server.service enabled</tspan></text>
+    <text x="60" y="464"><tspan fill="#778b46">[+]</tspan><tspan fill="#6ecfdc"> Deploy complete</tspan></text>
+    <text x="60" y="486"><tspan fill="#778b46">fool@arch</tspan><tspan fill="#6ecfdc"> </tspan><tspan fill="#61c3cf">~/dotfiles</tspan><tspan fill="#ca6287"> ❯</tspan></text>
+    <rect x="180" y="475" width="8" height="14" fill="#6ecfdc">
+      <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.5;1" dur="1s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+</svg>
