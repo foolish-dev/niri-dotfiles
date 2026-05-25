@@ -1,5 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 20" width="900" height="20" role="img" aria-label="">
   <line x1="0"   y1="10" x2="430" y2="10" stroke="#462e97" stroke-width="1"/>
   <line x1="470" y1="10" x2="900" y2="10" stroke="#462e97" stroke-width="1"/>
-  <polygon points="450,4 458,10 450,16 442,10" fill="#61c3cf"/>
+  <polygon points="450,4 458,10 450,16 442,10" fill="#61c3cf">
+    <animate attributeName="opacity" values="0.55;1;0.55" dur="2.5s" repeatCount="indefinite"/>
+  </polygon>
 </svg>
