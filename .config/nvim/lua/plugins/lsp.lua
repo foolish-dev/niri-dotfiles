@@ -28,7 +28,9 @@ local servers = {
   "vimls",
 }
 
--- Extra Mason packages that aren't LSPs (formatters, linters, DAP adapters).
+-- Extra Mason packages that aren't LSPs (formatters + linters).
+-- DAP adapters are installed by mason-nvim-dap (see plugins/coding.lua) —
+-- listing them in both installers races and crashes mason.
 local mason_tools = {
   -- Formatters
   "stylua", "prettierd", "prettier", "shfmt", "black", "isort",
@@ -36,8 +38,6 @@ local mason_tools = {
   -- Linters
   "shellcheck", "hadolint", "yamllint", "markdownlint", "ansible-lint",
   "eslint_d", "pylint", "mypy", "checkmake", "luacheck", "gitlint",
-  -- DAP adapters
-  "debugpy", "codelldb", "delve", "js-debug-adapter",
 }
 
 return {
@@ -52,7 +52,12 @@ return {
     "williamboman/mason-lspconfig.nvim",
     event = { "BufReadPre", "BufNewFile" },
     dependencies = { "williamboman/mason.nvim", "neovim/nvim-lspconfig" },
-    opts = { ensure_installed = servers },
+    opts = {
+      ensure_installed = servers,
+      -- rustaceanvim owns rust_analyzer startup; let it stay out of the
+      -- auto-enable list so nvim-navic doesn't try to attach twice.
+      automatic_enable = { exclude = { "rust_analyzer" } },
+    },
   },
 
   -- Auto-install non-LSP tools (formatters, linters, DAP adapters).
@@ -141,19 +146,9 @@ return {
         },
       })
 
-      -- Rust-analyzer settings (rustaceanvim handles activation).
-      vim.lsp.config("rust_analyzer", {
-        settings = {
-          ["rust-analyzer"] = {
-            cargo       = { allFeatures = true },
-            checkOnSave = true,
-            check       = { command = "clippy" },
-            inlayHints  = { closingBraceHints = { enable = true }, parameterHints = { enable = true } },
-          },
-        },
-      })
-
-      vim.lsp.enable(servers)
+      -- rustaceanvim owns rust_analyzer (settings live in plugins/coding.lua);
+      -- skip it here so we don't end up with two attached clients.
+      vim.lsp.enable(vim.tbl_filter(function(s) return s ~= "rust_analyzer" end, servers))
 
       vim.diagnostic.config({
         virtual_text     = { prefix = "" },

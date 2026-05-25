@@ -63,13 +63,15 @@ return {
       -- Go (dlv via mason)
       pcall(function() require("dap-go").setup() end)
 
-      -- C / C++ / Rust via codelldb (mason)
+      -- C / C++ / Rust via codelldb (mason). Prefer $PATH, fall back to
+      -- mason's bin dir so DAP works before $PATH is reloaded.
+      local codelldb = vim.fn.exepath("codelldb")
+      if codelldb == "" then
+        codelldb = vim.fn.stdpath("data") .. "/mason/bin/codelldb"
+      end
       dap.adapters.codelldb = {
         type = "server", port = "${port}",
-        executable = {
-          command = vim.fn.exepath("codelldb") ~= "" and "codelldb" or "codelldb",
-          args = { "--port", "${port}" },
-        },
+        executable = { command = codelldb, args = { "--port", "${port}" } },
       }
       local lldb_cfg = {
         {
@@ -85,10 +87,12 @@ return {
       dap.configurations.cpp  = lldb_cfg
       dap.configurations.rust = lldb_cfg
 
-      -- Mason-managed DAP adapters
+      -- Mason-managed DAP adapters. `automatic_installation = true` and
+      -- `ensure_installed` race on the same packages at startup; rely on
+      -- ensure_installed alone.
       require("mason-nvim-dap").setup({
         ensure_installed = { "python", "delve", "codelldb", "js" },
-        automatic_installation = true,
+        automatic_installation = false,
         handlers = {},
       })
     end,
@@ -218,6 +222,7 @@ return {
             cargo       = { allFeatures = true },
             checkOnSave = true,
             check       = { command = "clippy" },
+            inlayHints  = { closingBraceHints = { enable = true }, parameterHints = { enable = true } },
           },
         } },
       }
