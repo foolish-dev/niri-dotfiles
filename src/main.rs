@@ -348,13 +348,8 @@ fn link_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
         if let Some(parent) = backup_target.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::rename(dest, &backup_target).with_context(|| {
-            format!(
-                "backup {} -> {}",
-                dest.display(),
-                backup_target.display()
-            )
-        })?;
+        fs::rename(dest, &backup_target)
+            .with_context(|| format!("backup {} -> {}", dest.display(), backup_target.display()))?;
         warn(&format!(
             "Backed up: {} -> {}",
             dest.display(),
@@ -364,9 +359,8 @@ fn link_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent)?;
     }
-    symlink(src, dest).with_context(|| {
-        format!("symlink {} -> {}", src.display(), dest.display())
-    })?;
+    symlink(src, dest)
+        .with_context(|| format!("symlink {} -> {}", src.display(), dest.display()))?;
     let pretty = dest
         .strip_prefix(home)
         .map(|p| format!("~/{}", p.display()))
