@@ -19,8 +19,12 @@ return {
     "ahmedkhalf/project.nvim",
     event = "VeryLazy",
     config = function()
+      -- pattern-only detection: project.nvim hasn't been updated since 2023
+      -- and its `lsp` detection path calls vim.lsp.buf_get_clients(), which
+      -- is deprecated and slated for removal in nvim 0.13. The patterns
+      -- below cover the Rust/Python/Go/Lua/JS stack already.
       require("project_nvim").setup({
-        detection_methods = { "lsp", "pattern" },
+        detection_methods = { "pattern" },
         patterns          = { ".git", "Cargo.toml", "package.json", "pyproject.toml", "go.mod", "Makefile" },
       })
       pcall(function() require("telescope").load_extension("projects") end)
