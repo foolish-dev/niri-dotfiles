@@ -145,9 +145,10 @@ return {
       vim.lsp.config("rust_analyzer", {
         settings = {
           ["rust-analyzer"] = {
-            cargo      = { allFeatures = true, loadOutDirsFromCheck = true },
-            checkOnSave = { command = "clippy" },
-            inlayHints = { closingBraceHints = { enable = true }, parameterHints = { enable = true } },
+            cargo       = { allFeatures = true, loadOutDirsFromCheck = true },
+            checkOnSave = true,
+            check       = { command = "clippy" },
+            inlayHints  = { closingBraceHints = { enable = true }, parameterHints = { enable = true } },
           },
         },
       })
