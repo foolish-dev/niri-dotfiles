@@ -4,11 +4,20 @@
 
 -- Single source of truth for LSP servers: `ensure_installed` for
 -- mason-lspconfig and the wildcard config we layer over.
+--
+-- Four servers were dropped because their mason installer needs a
+-- toolchain that isn't on this box and isn't on the user's roadmap
+-- (Rust/Python/Go/Lua stack):
+--   ocamllsp  → needs `opam`
+--   hls       → needs `ghcup`
+--   nil_ls    → cargo build of oxalica/nil fails on stock toolchain
+--   cmake     → pip wheel requires Python <3.14, host is on 3.14
+-- To re-enable any of them, install the toolchain and append back.
 local servers = {
   -- Lua
   "lua_ls",
   -- Systems
-  "clangd", "rust_analyzer", "gopls", "zls", "cmake",
+  "clangd", "rust_analyzer", "gopls", "zls",
   -- Python
   "pyright", "ruff",
   -- JS / TS / web frameworks
@@ -22,7 +31,7 @@ local servers = {
   -- Shell
   "bashls",
   -- Other languages
-  "elixirls", "hls", "ocamllsp", "nil_ls", "intelephense", "solargraph",
+  "elixirls", "intelephense", "solargraph",
   "jdtls", "kotlin_language_server",
   -- Editor / config
   "vimls",
