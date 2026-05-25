@@ -4,10 +4,11 @@
 return {
   {
     "nvim-treesitter/nvim-treesitter",
+    branch = "master", -- legacy API; `main` is the in-progress rewrite
     build = ":TSUpdate",
     event = { "BufReadPost", "BufNewFile" },
     dependencies = {
-      "nvim-treesitter/nvim-treesitter-textobjects",
+      { "nvim-treesitter/nvim-treesitter-textobjects", branch = "master" },
     },
     opts = {
       ensure_installed = {
