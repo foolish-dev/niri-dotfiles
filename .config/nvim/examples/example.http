@@ -1,5 +1,5 @@
-### rest.nvim demo — open in Neovim, place cursor on a request, press <leader>rr.
-### Re-run the last request with <leader>rl. Navigate response panes with H / L.
+### kulala.nvim demo — open in Neovim, place cursor on a request, press <leader>rr.
+### Replay the last request with <leader>rl. Run every request in the buffer with <leader>ra.
 
 ### GET — simple
 GET https://httpbin.org/get

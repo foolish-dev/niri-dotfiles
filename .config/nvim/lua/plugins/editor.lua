@@ -168,7 +168,7 @@ return {
         { "<leader>f", group = "find" },
         { "<leader>g", group = "git" },
         { "<leader>h", group = "hunks" },
-        { "<leader>r", group = "rename / rest" },
+        { "<leader>r", group = "rename / http" },
         { "<leader>t", group = "terminal / tree" },
         { "<leader>n", group = "neotest" },
         { "<leader>o", group = "opencode" },

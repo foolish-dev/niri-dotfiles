@@ -191,16 +191,19 @@ return {
     opts = {},
   },
 
-  -- ── Rest client (API testing) ──────────────────────────────────────────
+  -- ── HTTP client (API testing) ──────────────────────────────────────────
+  -- kulala.nvim: pure-Lua successor to rest.nvim; no luarocks bootstrap.
   {
-    "rest-nvim/rest.nvim",
-    ft   = "http",
-    dependencies = { "nvim-neotest/nvim-nio" },
+    "mistweaverco/kulala.nvim",
+    ft   = { "http", "rest" },
     keys = {
-      { "<leader>rr", "<cmd>Rest run<cr>",      desc = "Run HTTP request" },
-      { "<leader>rl", "<cmd>Rest run last<cr>", desc = "Re-run last request" },
+      { "<leader>rr", function() require("kulala").run() end,     ft = { "http", "rest" }, desc = "Run HTTP request" },
+      { "<leader>rl", function() require("kulala").replay() end,  ft = { "http", "rest" }, desc = "Replay last request" },
+      { "<leader>ra", function() require("kulala").run_all() end, ft = { "http", "rest" }, desc = "Run all requests in buffer" },
     },
-    opts = {},
+    opts = {
+      global_keymaps = false,
+    },
   },
 
   -- ── rustaceanvim: Rust LSP + integrations ──────────────────────────────
