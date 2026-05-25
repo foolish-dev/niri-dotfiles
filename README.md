@@ -34,7 +34,7 @@
 | | |
 | --- | --- |
 | **Binary** | `dotctl` — one Rust crate, ~250 LoC, two subcommands |
-| **Editor** | Neovim with **111 plugins**, **38 LSPs**, 22 formatters/linters, 4 DAP adapters |
+| **Editor** | Neovim with **110 plugins**, **39 LSPs**, 23 formatters/linters, 4 DAP adapters |
 | **Agent** | `teleia` wired to **10 MCP servers** (context7 · filesystem · github · fetch · hexstrike-ai · playwright · sequential-thinking · memory · git · weather) |
 | **Offsec** | HexStrike AI on hardened systemd unit + BlackArch repo (~2800 packages, `pacman -S` away) |
 | **Theming** | `grogu` repaints **7 targets** from the current wallpaper, in one shot |
@@ -127,9 +127,9 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
 
 lazy.nvim + Mason, kitchen-sink config:
 
-- **111 plugins** lazy-loaded by event, ft, or key.
-- **38 LSPs** auto-installed via `mason-lspconfig` — lua, rust, go, python (pyright + ruff), C/C++, zig, every JS/TS framework (ts, vue, svelte, astro, prisma, tailwind, graphql), the IaC set (yaml, terraform, helm, ansible, docker, nix), and the long tail (elixir, haskell, ocaml, kotlin, jdtls, intelephense, solargraph, texlab, marksman).
-- **22 formatters + linters + DAP adapters** auto-installed via `mason-tool-installer` (stylua, prettierd, ruff, black, shellcheck, hadolint, eslint_d, gofumpt, alejandra, buf, codelldb, debugpy, delve, …). `nvim-lint` silently skips any binary that hasn't landed yet.
+- **110 plugins** lazy-loaded by event, ft, or key.
+- **39 LSPs** auto-installed via `mason-lspconfig` — lua, rust, go, python (pyright + ruff), C/C++, zig, every JS/TS framework (ts, vue, svelte, astro, prisma, tailwind, graphql), the IaC set (yaml, terraform, helm, ansible, docker, nix), and the long tail (elixir, haskell, ocaml, kotlin, jdtls, intelephense, solargraph, texlab, marksman).
+- **27 formatters + linters + DAP adapters** auto-installed via `mason-tool-installer` (stylua, prettierd, ruff, black, shellcheck, hadolint, eslint_d, gofumpt, alejandra, buf, codelldb, debugpy, delve, …). `nvim-lint` silently skips any binary that hasn't landed yet.
 - **AI**: `opencode` (built-in teleia popup), `copilot.lua` + `copilot-cmp`, `avante`, `codecompanion`.
 - **Testing & debug**: `neotest` (python · go · rust · jest · vitest · plenary), `nvim-dap` + `dap-ui` + `dap-virtual-text`, `rustaceanvim`, `crates.nvim`, `go.nvim`, `typescript-tools`, `venv-selector`.
 - **Editor**: `flash`, `vim-illuminate`, `nvim-spectre`, `nvim-ufo`, `harpoon` v2, `oil`, `mini.{ai,bracketed,indentscope}`, `yanky`, `undotree`.
@@ -159,7 +159,7 @@ A Tokyo-Night-tinted `config.jsonc` for [fastfetch](https://github.com/fastfetch
 ├── assets/                                  # README artwork (header, stack, divider, per-tool cards, rice mockups)
 ├── .config/
 │   ├── teleia/config.toml                   # 10 MCP servers
-│   ├── nvim/                                # lazy.nvim + Mason, 111 plugins, 38 LSPs
+│   ├── nvim/                                # lazy.nvim + Mason, 110 plugins, 39 LSPs
 │   ├── tmux/                                # tmux.conf, scripts/mem.sh
 │   ├── noctalia/                            # settings.json, plugins.json, colorschemes/Grogu/
 │   ├── fastfetch/config.jsonc               # terminal banner

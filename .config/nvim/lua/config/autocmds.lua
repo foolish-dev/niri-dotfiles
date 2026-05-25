@@ -64,7 +64,7 @@ autocmd({ "BufRead", "BufNewFile" }, {
   end,
 })
 
--- ── Auto-open Neo-tree on startup (opencode is a lazy plugin) ─────────────
+-- ── Auto-open Neo-tree alongside the file when nvim is launched with args ─
 autocmd("VimEnter", {
   group = augroup("AutoOpenLayout", { clear = true }),
   callback = function()
