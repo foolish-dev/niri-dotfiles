@@ -213,7 +213,7 @@ return {
   -- ── rustaceanvim: Rust LSP + integrations ──────────────────────────────
   {
     "mrcjkb/rustaceanvim",
-    version = "^5",
+    version = "^9",
     ft = { "rust" },
     init = function()
       vim.g.rustaceanvim = {
