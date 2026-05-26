@@ -23,7 +23,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Install tools: grogu, HexStrike AI, Neovim, tmux, fastfetch, Noctalia
+    /// Install tools: grogu, HexStrike AI, Neovim, tmux, fastfetch, Noctalia (shell + qs + SDDM theme + auth agent)
     Install,
     /// Symlink .config/* + .local/bin/* into $HOME and enable user services
     Deploy,
@@ -218,6 +218,43 @@ fn ensure_pacman_pkg(label: &str, pkg: &str, packages: &[&str]) -> Result<()> {
     }
 }
 
+/// AUR-only counterpart to [`pacman_install`]. Requires `yay` on PATH
+/// (the chaotic-aur setup that runs earlier in `install()` covers
+/// noctalia-shell + noctalia-qs without yay; this is for the AUR-only
+/// ecosystem add-ons like `sddm-theme-noctalia-git` and
+/// `noctalia-unofficial-auth-agent-git`).
+///
+/// If `yay` is missing we warn and skip rather than fail — the rest
+/// of `dotctl install` is still useful, and bootstrapping yay needs
+/// `base-devel` + a clone + makepkg which is out of scope here.
+fn aur_install(label: &str, packages: &[&str]) -> Result<()> {
+    if !command_exists("yay") {
+        warn(&format!(
+            "{label} not installed and `yay` not found — install yay (or another AUR helper) then rerun `dotctl install`; packages: {}",
+            packages.join(" ")
+        ));
+        return Ok(());
+    }
+    info(&format!("Installing {label} (AUR) ..."));
+    let mut args = vec!["-S", "--needed", "--noconfirm"];
+    args.extend(packages.iter().copied());
+    run("yay", &args)?;
+    ok(&format!("{label} installed"));
+    Ok(())
+}
+
+/// `ensure_pacman_pkg` for AUR packages: pacman owns the local DB even
+/// for AUR-installed packages, so the "already installed" check uses
+/// the same [`pacman_pkg_installed`] helper.
+fn ensure_aur_pkg(label: &str, pkg: &str) -> Result<()> {
+    if pacman_pkg_installed(pkg) {
+        ok(&format!("{label} already installed"));
+        Ok(())
+    } else {
+        aur_install(label, &[pkg])
+    }
+}
+
 fn ensure_repo(repo: &Path) -> Result<()> {
     let repo_str = repo
         .to_str()
@@ -286,6 +323,13 @@ fn install() -> Result<()> {
         "noctalia-shell",
         &["noctalia-shell", "noctalia-qs"],
     )?;
+    // AUR add-ons for the full Noctalia ecosystem (yay required).
+    // sddm-theme-noctalia-git: login-screen theme matched to the shell.
+    // noctalia-unofficial-auth-agent-git: ships /usr/bin/bb-auth, the
+    //   polkit agent + GNOME-keyring prompter. Wired up as a systemd
+    //   user unit by `dotctl deploy`.
+    ensure_aur_pkg("Noctalia SDDM theme", "sddm-theme-noctalia-git")?;
+    ensure_aur_pkg("Noctalia auth agent", "noctalia-unofficial-auth-agent-git")?;
 
     // HexStrike AI
     let hex_dir = home().join("tools/hexstrike-ai");
@@ -359,6 +403,13 @@ fn deploy(repo: &Path) -> Result<()> {
         &h,
     )?;
 
+    link_item(
+        &repo.join(".config/systemd/user/noctalia-auth-agent.service"),
+        &h.join(".config/systemd/user/noctalia-auth-agent.service"),
+        &backup_dir,
+        &h,
+    )?;
+
     let bin_src = repo.join(".local/bin");
     let bin_dest = h.join(".local/bin");
     fs::create_dir_all(&bin_dest)?;
@@ -386,6 +437,19 @@ fn deploy(repo: &Path) -> Result<()> {
         ok("hexstrike-server.service enabled");
     } else {
         warn("hexstrike-server.service not enabled (run `dotctl install` first to clone hexstrike-ai)");
+    }
+
+    let na_enabled = Command::new("systemctl")
+        .args(["--user", "enable", "--now", "noctalia-auth-agent.service"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if na_enabled {
+        ok("noctalia-auth-agent.service enabled");
+    } else {
+        warn("noctalia-auth-agent.service not enabled (run `dotctl install` first to install noctalia-unofficial-auth-agent-git)");
     }
 
     ok("Deploy complete");
