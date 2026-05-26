@@ -40,8 +40,8 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
 
 | Subcommand | What it does |
 |---|---|
-| `dotctl install` | Wire Chaotic AUR + BlackArch (both idempotent), `cargo install` grogu, clone+venv HexStrike AI, `pacman -S` tmux/fastfetch/neovim/noctalia-shell. |
-| `dotctl deploy` | Symlink `.config/{teleia,nvim,noctalia,fastfetch,tmux}` and every `.local/bin/*` into `$HOME`. Symlink the hexstrike systemd unit, `daemon-reload`, `enable --now`. Back up displaced files. |
+| `dotctl install` | Wire Chaotic AUR + BlackArch (both idempotent), `cargo install` grogu, clone+venv HexStrike AI, `pacman -S` tmux/fastfetch/neovim/noctalia-shell, `yay -S` the AUR-only noctalia add-ons (`sddm-theme-noctalia-git`, `noctalia-unofficial-auth-agent-git`). |
+| `dotctl deploy` | Symlink `.config/{teleia,nvim,noctalia,fastfetch,tmux}` and every `.local/bin/*` into `$HOME`. Symlink the hexstrike + noctalia-auth-agent systemd units, `daemon-reload`, `enable --now` both. Back up displaced files. |
 | `dotctl all` | `install` then `deploy`. |
 
 ## Architecture
