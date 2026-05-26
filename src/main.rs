@@ -427,7 +427,11 @@ fn link_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 
 #[cfg(test)]
 mod tests {
-    use super::{command_exists, pacman_pkg_installed};
+    use super::{command_exists, link_item, pacman_pkg_installed};
+    use std::fs;
+    use std::os::unix::fs::symlink;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
 
     #[test]
     fn finds_a_command_that_definitely_exists() {
@@ -470,5 +474,172 @@ mod tests {
         if command_exists("pacman") {
             assert!(pacman_pkg_installed("filesystem"));
         }
+    }
+
+    // ── link_item ────────────────────────────────────────────────────────
+    //
+    // link_item is the deploy primitive that moves user files out of the
+    // way before symlinking the repo file in. Bugs here would silently
+    // eat a user's existing config, so cover the branches explicitly.
+
+    struct LinkItemFixture {
+        _tmp: TempDir,
+        home: PathBuf,
+        repo: PathBuf,
+        backup: PathBuf,
+    }
+
+    impl LinkItemFixture {
+        fn new() -> Self {
+            let tmp = TempDir::new().expect("tempdir");
+            let home = tmp.path().to_path_buf();
+            let repo = home.join("repo");
+            let backup = home.join(".dotfiles-backup/run");
+            fs::create_dir_all(&repo).expect("mkdir repo");
+            Self {
+                _tmp: tmp,
+                home,
+                repo,
+                backup,
+            }
+        }
+
+        fn write_src(&self, name: &str, body: &str) -> PathBuf {
+            let p = self.repo.join(name);
+            if let Some(parent) = p.parent() {
+                fs::create_dir_all(parent).expect("mkdir src parent");
+            }
+            fs::write(&p, body).expect("write src");
+            p
+        }
+
+        fn write_dest(&self, name: &str, body: &str) -> PathBuf {
+            let p = self.home.join(name);
+            if let Some(parent) = p.parent() {
+                fs::create_dir_all(parent).expect("mkdir dest parent");
+            }
+            fs::write(&p, body).expect("write dest");
+            p
+        }
+    }
+
+    #[test]
+    fn link_item_creates_symlink_when_dest_missing() {
+        let f = LinkItemFixture::new();
+        let src = f.write_src("foo.txt", "src");
+        let dest = f.home.join("foo.txt");
+
+        link_item(&src, &dest, &f.backup, &f.home).expect("link_item");
+
+        assert!(dest.is_symlink(), "dest should be a symlink");
+        assert_eq!(fs::read_link(&dest).expect("read_link"), src);
+        assert!(!f.backup.exists(), "no backup when dest was missing");
+    }
+
+    #[test]
+    fn link_item_is_noop_when_dest_already_points_to_src() {
+        let f = LinkItemFixture::new();
+        let src = f.write_src("foo.txt", "src");
+        let dest = f.home.join("foo.txt");
+        symlink(&src, &dest).expect("seed symlink");
+
+        link_item(&src, &dest, &f.backup, &f.home).expect("link_item");
+
+        assert!(dest.is_symlink());
+        assert_eq!(fs::read_link(&dest).expect("read_link"), src);
+        assert!(
+            !f.backup.exists(),
+            "no backup directory should appear on a no-op"
+        );
+    }
+
+    #[test]
+    fn link_item_backs_up_existing_regular_file() {
+        let f = LinkItemFixture::new();
+        let src = f.write_src("foo.txt", "from-repo");
+        let dest = f.write_dest("foo.txt", "user-precious");
+
+        link_item(&src, &dest, &f.backup, &f.home).expect("link_item");
+
+        assert!(dest.is_symlink());
+        assert_eq!(fs::read_link(&dest).expect("read_link"), src);
+
+        let backed_up = f.backup.join("foo.txt");
+        assert!(backed_up.is_file(), "user file should land in backup");
+        assert_eq!(
+            fs::read_to_string(&backed_up).expect("read backup"),
+            "user-precious",
+            "backup must preserve user content byte-for-byte"
+        );
+    }
+
+    #[test]
+    fn link_item_backs_up_existing_directory() {
+        let f = LinkItemFixture::new();
+        let src = f.repo.join("cfg");
+        fs::create_dir_all(&src).expect("mkdir src cfg");
+        fs::write(src.join("repo-file"), "repo").expect("write src/cfg/repo-file");
+
+        let dest = f.home.join("cfg");
+        fs::create_dir_all(&dest).expect("mkdir dest cfg");
+        fs::write(dest.join("user-file"), "user").expect("write dest/cfg/user-file");
+
+        link_item(&src, &dest, &f.backup, &f.home).expect("link_item");
+
+        assert!(dest.is_symlink());
+        assert_eq!(fs::read_link(&dest).expect("read_link"), src);
+
+        let backed_up = f.backup.join("cfg");
+        assert!(backed_up.is_dir(), "user dir should land in backup");
+        assert_eq!(
+            fs::read_to_string(backed_up.join("user-file")).expect("read"),
+            "user",
+            "directory contents must survive the backup move"
+        );
+    }
+
+    #[test]
+    fn link_item_backs_up_wrong_symlink() {
+        let f = LinkItemFixture::new();
+        let src = f.write_src("foo.txt", "src");
+
+        let other = f.home.join("other/foo.txt");
+        fs::create_dir_all(other.parent().expect("parent")).expect("mkdir other");
+        fs::write(&other, "other").expect("write other");
+
+        let dest = f.home.join("foo.txt");
+        symlink(&other, &dest).expect("seed wrong symlink");
+
+        link_item(&src, &dest, &f.backup, &f.home).expect("link_item");
+
+        assert_eq!(
+            fs::read_link(&dest).expect("read_link"),
+            src,
+            "dest now points at src"
+        );
+
+        let backed_up = f.backup.join("foo.txt");
+        assert!(
+            backed_up.is_symlink(),
+            "the old symlink itself is backed up"
+        );
+        assert_eq!(
+            fs::read_link(&backed_up).expect("read backup link"),
+            other,
+            "the backed-up symlink still points at its original target"
+        );
+    }
+
+    #[test]
+    fn link_item_creates_missing_dest_parent_dirs() {
+        let f = LinkItemFixture::new();
+        let src = f.write_src("foo.txt", "src");
+        let dest = f.home.join("a/b/c/foo.txt");
+        assert!(!dest.parent().expect("parent").exists());
+
+        link_item(&src, &dest, &f.backup, &f.home).expect("link_item");
+
+        assert!(dest.is_symlink());
+        assert_eq!(fs::read_link(&dest).expect("read_link"), src);
     }
 }
