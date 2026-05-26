@@ -426,34 +426,46 @@ fn deploy(repo: &Path) -> Result<()> {
     if let Err(e) = run("systemctl", &["--user", "daemon-reload"]) {
         warn(&format!("systemctl --user daemon-reload failed: {e}"));
     }
-    let enabled = Command::new("systemctl")
-        .args(["--user", "enable", "--now", "hexstrike-server.service"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if enabled {
-        ok("hexstrike-server.service enabled");
-    } else {
-        warn("hexstrike-server.service not enabled (run `dotctl install` first to clone hexstrike-ai)");
-    }
-
-    let na_enabled = Command::new("systemctl")
-        .args(["--user", "enable", "--now", "noctalia-auth-agent.service"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if na_enabled {
-        ok("noctalia-auth-agent.service enabled");
-    } else {
-        warn("noctalia-auth-agent.service not enabled (run `dotctl install` first to install noctalia-unofficial-auth-agent-git)");
-    }
+    enable_user_unit(
+        "hexstrike-server.service",
+        &h.join("tools/hexstrike-ai/hexstrike-env/bin/python3"),
+        "run `dotctl install` first to clone + venv hexstrike-ai",
+    );
+    enable_user_unit(
+        "noctalia-auth-agent.service",
+        Path::new("/usr/bin/bb-auth"),
+        "run `dotctl install` first to AUR-install noctalia-unofficial-auth-agent-git",
+    );
 
     ok("Deploy complete");
     Ok(())
+}
+
+/// `systemctl --user enable --now UNIT`, but first verify the unit's
+/// ExecStart prerequisite exists — otherwise enable creates a wants
+/// symlink and the unit immediately enters a failed state, retry-looping
+/// per `Restart=on-failure` and spamming the journal. Skip cleanly and
+/// tell the user what to run instead.
+fn enable_user_unit(unit: &str, prereq: &Path, fix_hint: &str) {
+    if !prereq.exists() {
+        warn(&format!(
+            "{unit} not enabled — prerequisite missing: {} ({fix_hint})",
+            prereq.display()
+        ));
+        return;
+    }
+    let ok_status = Command::new("systemctl")
+        .args(["--user", "enable", "--now", unit])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if ok_status {
+        ok(&format!("{unit} enabled"));
+    } else {
+        warn(&format!("{unit} not enabled (systemctl returned non-zero)"));
+    }
 }
 
 fn link_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<()> {
