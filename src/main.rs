@@ -372,7 +372,9 @@ fn deploy(repo: &Path) -> Result<()> {
         }
     }
 
-    let _ = run("systemctl", &["--user", "daemon-reload"]);
+    if let Err(e) = run("systemctl", &["--user", "daemon-reload"]) {
+        warn(&format!("systemctl --user daemon-reload failed: {e}"));
+    }
     let enabled = Command::new("systemctl")
         .args(["--user", "enable", "--now", "hexstrike-server.service"])
         .stdout(Stdio::null())
