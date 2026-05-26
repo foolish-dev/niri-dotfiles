@@ -8,3 +8,6 @@
 
 # tmux — generated at runtime by grogu
 .config/tmux/grogu.conf
+
+# Go — local telemetry counters, per-machine
+.config/go/
