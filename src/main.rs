@@ -298,6 +298,17 @@ fn install() -> Result<()> {
         ));
     }
 
+    // Prerequisites assumed by later steps. Idempotent — `ensure_pacman`
+    // is a no-op when the binary is already on PATH. Without these, a
+    // fresh-box install would fail later with cryptic errors:
+    //   git    → ensure_repo, cargo install --git for grogu
+    //   curl   → setup_blackarch fetches strap.sh
+    //   python → HexStrike AI venv (Arch's package is `python`, the
+    //            binary is `python3`)
+    ensure_pacman("git", "git", &["git"])?;
+    ensure_pacman("curl", "curl", &["curl"])?;
+    ensure_pacman("Python 3", "python3", &["python"])?;
+
     // Chaotic AUR (prereq for noctalia-shell, noctalia-qs on Arch)
     setup_chaotic_aur()?;
 
