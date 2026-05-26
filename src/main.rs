@@ -224,9 +224,12 @@ fn ensure_pacman_pkg(label: &str, pkg: &str, packages: &[&str]) -> Result<()> {
 /// ecosystem add-ons like `sddm-theme-noctalia-git` and
 /// `noctalia-unofficial-auth-agent-git`).
 ///
-/// If `yay` is missing we warn and skip rather than fail — the rest
-/// of `dotctl install` is still useful, and bootstrapping yay needs
-/// `base-devel` + a clone + makepkg which is out of scope here.
+/// Best-effort: `yay` is missing OR the AUR build fails (e.g. upstream
+/// PKGBUILD broken against the current toolchain) → warn and return
+/// Ok(()). AUR packages are optional add-ons; a single broken one
+/// shouldn't take down the rest of `dotctl install` (HexStrike clone,
+/// venv, pip install) or the downstream `deploy` step when running
+/// `dotctl all`.
 fn aur_install(label: &str, packages: &[&str]) -> Result<()> {
     if !command_exists("yay") {
         warn(&format!(
@@ -238,7 +241,12 @@ fn aur_install(label: &str, packages: &[&str]) -> Result<()> {
     info(&format!("Installing {label} (AUR) ..."));
     let mut args = vec!["-S", "--needed", "--noconfirm"];
     args.extend(packages.iter().copied());
-    run("yay", &args)?;
+    if let Err(e) = run("yay", &args) {
+        warn(&format!(
+            "{label} install failed (AUR build break or sudo unavailable): {e} — continuing"
+        ));
+        return Ok(());
+    }
     ok(&format!("{label} installed"));
     Ok(())
 }
