@@ -189,6 +189,35 @@ fn ensure_pacman(label: &str, cmd: &str, packages: &[&str]) -> Result<()> {
     }
 }
 
+/// True if `pkg` is currently installed according to pacman's database.
+/// Used for packages that ship config / QML / library files instead of
+/// a PATH binary, where `command_exists` would always miss them.
+fn pacman_pkg_installed(pkg: &str) -> bool {
+    Command::new("pacman")
+        .args(["-Q", pkg])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Same shape as [`ensure_pacman`] but detects already-installed state
+/// via `pacman -Q PKG` instead of `command -v BINARY`. Required for
+/// noctalia-shell, whose pacman package places QML config under
+/// /etc/xdg/quickshell/noctalia-shell/ and exposes no command of the
+/// same name — so the binary check always missed and `dotctl install`
+/// re-invoked `sudo pacman -S` (prompting for a password each run)
+/// even when the package was already up to date.
+fn ensure_pacman_pkg(label: &str, pkg: &str, packages: &[&str]) -> Result<()> {
+    if pacman_pkg_installed(pkg) {
+        ok(&format!("{label} already installed"));
+        Ok(())
+    } else {
+        pacman_install(label, packages)
+    }
+}
+
 fn ensure_repo(repo: &Path) -> Result<()> {
     let repo_str = repo
         .to_str()
@@ -252,7 +281,7 @@ fn install() -> Result<()> {
     ensure_pacman("tmux", "tmux", &["tmux"])?;
     ensure_pacman("fastfetch", "fastfetch", &["fastfetch"])?;
     ensure_pacman("Neovim", "nvim", &["neovim"])?;
-    ensure_pacman(
+    ensure_pacman_pkg(
         "Noctalia",
         "noctalia-shell",
         &["noctalia-shell", "noctalia-qs"],
@@ -396,7 +425,7 @@ fn link_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 
 #[cfg(test)]
 mod tests {
-    use super::command_exists;
+    use super::{command_exists, pacman_pkg_installed};
 
     #[test]
     fn finds_a_command_that_definitely_exists() {
@@ -419,5 +448,25 @@ mod tests {
         assert!(!command_exists("foo; true"));
         assert!(!command_exists("$(true)"));
         assert!(!command_exists("`true`"));
+    }
+
+    #[test]
+    fn pacman_pkg_installed_returns_false_for_missing_pkg() {
+        // `pacman -Q __dotctl_missing_xyz` exits non-zero on Arch and
+        // also returns false on hosts without pacman at all (spawn
+        // failure caught by unwrap_or(false)) — covers both CI shapes.
+        assert!(!pacman_pkg_installed("__dotctl_missing_pkg_xyz"));
+    }
+
+    #[test]
+    fn pacman_pkg_installed_finds_base_filesystem_pkg_on_arch() {
+        // The `filesystem` package is part of `base` and is installed
+        // on every Arch host, but it ships /usr/bin contents owned by
+        // other packages and has no command of the same name — so
+        // command_exists("filesystem") always misses. This is exactly
+        // the shape that motivated the helper.
+        if command_exists("pacman") {
+            assert!(pacman_pkg_installed("filesystem"));
+        }
     }
 }
