@@ -251,16 +251,60 @@ fn aur_install(label: &str, packages: &[&str]) -> Result<()> {
     Ok(())
 }
 
+fn cache_dir() -> PathBuf {
+    std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".cache"))
+}
+
+fn aur_failure_marker(pkg: &str) -> PathBuf {
+    aur_failure_marker_in(&cache_dir(), pkg)
+}
+
+fn aur_failure_marker_in(root: &Path, pkg: &str) -> PathBuf {
+    root.join("dotctl/aur-failed").join(pkg)
+}
+
 /// `ensure_pacman_pkg` for AUR packages: pacman owns the local DB even
 /// for AUR-installed packages, so the "already installed" check uses
 /// the same [`pacman_pkg_installed`] helper.
+///
+/// Caches build failures under `$XDG_CACHE_HOME/dotctl/aur-failed/<pkg>`
+/// (or `~/.cache/dotctl/aur-failed/<pkg>`). [`aur_install`] is best-effort
+/// and returns Ok even when the AUR build fails, so without a marker each
+/// subsequent `dotctl all` would re-run the same failing build — observed
+/// in the wild when GCC 16 broke `noctalia-unofficial-auth-agent-git` and
+/// every reinvocation burned ~30s on cmake+make before failing identically.
+/// The marker is cleared as soon as the package shows up in pacman's DB
+/// (user patched upstream / ran `yay -S` manually), so it self-heals.
 fn ensure_aur_pkg(label: &str, pkg: &str) -> Result<()> {
+    let marker = aur_failure_marker(pkg);
     if pacman_pkg_installed(pkg) {
+        let _ = fs::remove_file(&marker);
         ok(&format!("{label} already installed"));
-        Ok(())
-    } else {
-        aur_install(label, &[pkg])
+        return Ok(());
     }
+    if marker.exists() {
+        warn(&format!(
+            "{label} AUR build previously failed — skipping (rm {} to retry)",
+            marker.display()
+        ));
+        return Ok(());
+    }
+    aur_install(label, &[pkg])?;
+    // Yay was present and a build was attempted but pacman still doesn't
+    // see the package → real build failure, record it.
+    if command_exists("yay") && !pacman_pkg_installed(pkg) {
+        if let Some(parent) = marker.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(&marker, "");
+        warn(&format!(
+            "cached failure marker at {} — rm to retry next run",
+            marker.display()
+        ));
+    }
+    Ok(())
 }
 
 fn ensure_repo(repo: &Path) -> Result<()> {
@@ -522,7 +566,7 @@ fn link_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 
 #[cfg(test)]
 mod tests {
-    use super::{command_exists, link_item, pacman_pkg_installed};
+    use super::{aur_failure_marker_in, command_exists, link_item, pacman_pkg_installed};
     use std::fs;
     use std::os::unix::fs::symlink;
     use std::path::PathBuf;
@@ -557,6 +601,16 @@ mod tests {
         // also returns false on hosts without pacman at all (spawn
         // failure caught by unwrap_or(false)) — covers both CI shapes.
         assert!(!pacman_pkg_installed("__dotctl_missing_pkg_xyz"));
+    }
+
+    #[test]
+    fn aur_failure_marker_lives_under_dotctl_aur_failed() {
+        // The marker path is a user-visible contract: the warn message
+        // tells the user `rm <path>` to retry, so the layout must not
+        // drift silently.
+        let tmp = TempDir::new().expect("tempdir");
+        let m = aur_failure_marker_in(tmp.path(), "some-aur-pkg");
+        assert_eq!(m, tmp.path().join("dotctl/aur-failed/some-aur-pkg"));
     }
 
     #[test]
