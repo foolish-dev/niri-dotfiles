@@ -62,6 +62,14 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
   <img src="assets/tmux.png" alt="tmux — multi-pane session under kitty, Tokyo Night powerline status bar" width="900"/>
 </p>
 
+<p align="center">
+  <img src="assets/fastfetch.png" alt="fastfetch — terminal banner with Arch logo, kernel, niri/zsh/tmux versions, AMD Ryzen AI MAX+ 395, Radeon 8060S, palette swatches" width="900"/>
+</p>
+
+<p align="center">
+  <img src="assets/grogu.png" alt="grogu — `grogu list` + `grogu paths` showing the three shipped themes and the eight files grogu writes (teleia sqlite, noctalia settings, niri / vim / nvim / kitty / ghostty / tmux fragments)" width="900"/>
+</p>
+
 ## Components
 
 **`dotctl`** is the in-tree Rust binary that replaced the old `install.sh` + `deploy.sh` pair. Clap-derive CLI, anyhow errors, no async runtime. See the subcommand table under [Install](#install).
