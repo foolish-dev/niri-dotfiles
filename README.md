@@ -67,19 +67,7 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
 </p>
 
 <p align="center">
-  <img src="assets/grogu.png" alt="grogu — `grogu list` + `grogu paths` showing the three shipped themes and the eight files grogu writes (teleia sqlite, noctalia settings, niri / vim / nvim / kitty / ghostty / tmux fragments)" width="900"/>
-</p>
-
-<p align="center">
   <img src="assets/noctalia.png" alt="Noctalia bar — clock + date, CPU/MEM/GPU mini-stats, active-window title, workspace pills, notification / battery / volume / brightness / timer tray" width="900"/>
-</p>
-
-<p align="center">
-  <img src="assets/dotctl.png" alt="dotctl --help — Installer/deployer for foolish-dev/dotfiles, three subcommands (install / deploy / all) with --repo and DOTFILES_REPO override" width="900"/>
-</p>
-
-<p align="center">
-  <img src="assets/hexstrike.png" alt="hexstrike-server.service — active (running) under the user systemd manager, hardened loopback service on :8888, with Noctalia notifications surfacing tool-run completions" width="900"/>
 </p>
 
 ## Components
