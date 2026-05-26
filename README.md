@@ -45,10 +45,10 @@
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/foolish-dev/dotfiles/main/bootstrap.sh | bash
+cargo install --git https://github.com/foolish-dev/dotfiles --locked && dotctl all
 ```
 
-`bootstrap.sh` ensures `git` and `rust`/`cargo` are present, clones (or pulls) into `~/dotfiles`, builds the `dotctl` Rust binary, and runs `dotctl all` end-to-end.
+Needs `cargo` (install rustup if you don't have it). `cargo install` fetches the source, builds, and drops `dotctl` into `~/.cargo/bin`. `dotctl all` then clones (or pulls) the repo into `~/dotfiles`, runs `install`, and runs `deploy`.
 
 Manual:
 
@@ -168,10 +168,9 @@ A Tokyo-Night-tinted `config.jsonc` for [fastfetch](https://github.com/fastfetch
 │       └── default.target.wants/...         # auto-enable on login
 ├── .local/bin/
 │   └── hexstrike-mcp                        # stdio bridge for MCP clients
-├── src/main.rs                              # dotctl — Rust installer/deployer (~250 LoC)
+├── src/main.rs                              # dotctl — Rust installer/deployer
 ├── Cargo.toml                               # crate manifest (clap-derive + anyhow)
-├── Cargo.lock                               # locked
-└── bootstrap.sh                             # one-liner: ensure rust → cargo build → dotctl all
+└── Cargo.lock                               # locked
 ```
 
 <img src="assets/divider.svg" alt="" width="900"/>

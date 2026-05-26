@@ -27,7 +27,7 @@ enum Cmd {
     Install,
     /// Symlink .config/* + .local/bin/* into $HOME and enable user services
     Deploy,
-    /// Run install then deploy
+    /// Clone (or pull) the repo, then install + deploy
     All,
 }
 
@@ -38,6 +38,7 @@ fn main() -> Result<()> {
         Cmd::Install => install(),
         Cmd::Deploy => deploy(&repo),
         Cmd::All => {
+            ensure_repo(&repo)?;
             install()?;
             deploy(&repo)
         }
@@ -86,15 +87,20 @@ fn run(prog: &str, args: &[&str]) -> Result<()> {
     Ok(())
 }
 
+fn has_pacman_repo(name: &str) -> bool {
+    let header = format!("[{name}]");
+    fs::read_to_string("/etc/pacman.conf")
+        .map(|c| c.lines().any(|l| l.trim() == header))
+        .unwrap_or(false)
+}
+
 fn setup_chaotic_aur() -> Result<()> {
     if !command_exists("pacman") {
         return Ok(());
     }
-    if let Ok(conf) = fs::read_to_string("/etc/pacman.conf") {
-        if conf.lines().any(|l| l.trim() == "[chaotic-aur]") {
-            ok("Chaotic AUR repo already present");
-            return Ok(());
-        }
+    if has_pacman_repo("chaotic-aur") {
+        ok("Chaotic AUR repo already present");
+        return Ok(());
     }
     info("Adding Chaotic AUR repository ...");
     run(
@@ -135,11 +141,9 @@ fn setup_blackarch() -> Result<()> {
     if !command_exists("pacman") {
         return Ok(());
     }
-    if let Ok(conf) = fs::read_to_string("/etc/pacman.conf") {
-        if conf.lines().any(|l| l.trim() == "[blackarch]") {
-            ok("BlackArch repo already present");
-            return Ok(());
-        }
+    if has_pacman_repo("blackarch") {
+        ok("BlackArch repo already present");
+        return Ok(());
     }
     info("Adding BlackArch repository (via strap.sh) ...");
     let strap = "/tmp/blackarch-strap.sh";
@@ -168,6 +172,41 @@ fn pacman_install(label: &str, packages: &[&str]) -> Result<()> {
     args.extend(packages.iter().copied());
     run("sudo", &args)?;
     ok(&format!("{label} installed"));
+    Ok(())
+}
+
+fn ensure_pacman(label: &str, cmd: &str, packages: &[&str]) -> Result<()> {
+    if command_exists(cmd) {
+        ok(&format!("{label} already installed"));
+        Ok(())
+    } else {
+        pacman_install(label, packages)
+    }
+}
+
+fn ensure_repo(repo: &Path) -> Result<()> {
+    let repo_str = repo
+        .to_str()
+        .ok_or_else(|| anyhow!("repo path is not valid utf-8: {}", repo.display()))?;
+    if repo.join(".git").exists() {
+        info(&format!("Updating {repo_str} ..."));
+        if run("git", &["-C", repo_str, "pull", "--ff-only"]).is_err() {
+            warn("git pull skipped (local changes?)");
+        }
+    } else {
+        info(&format!("Cloning to {repo_str} ..."));
+        if let Some(parent) = repo.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        run(
+            "git",
+            &[
+                "clone",
+                "https://github.com/foolish-dev/dotfiles.git",
+                repo_str,
+            ],
+        )?;
+    }
     Ok(())
 }
 
@@ -205,33 +244,14 @@ fn install() -> Result<()> {
         ok("grogu installed -> ~/.cargo/bin/grogu");
     }
 
-    // tmux
-    if command_exists("tmux") {
-        ok("tmux already installed");
-    } else {
-        pacman_install("tmux", &["tmux"])?;
-    }
-
-    // fastfetch
-    if command_exists("fastfetch") {
-        ok("fastfetch already installed");
-    } else {
-        pacman_install("fastfetch", &["fastfetch"])?;
-    }
-
-    // Neovim
-    if command_exists("nvim") {
-        ok("Neovim already installed");
-    } else {
-        pacman_install("Neovim", &["neovim"])?;
-    }
-
-    // Noctalia
-    if command_exists("noctalia-shell") {
-        ok("Noctalia already installed");
-    } else {
-        pacman_install("Noctalia", &["noctalia-shell", "noctalia-qs"])?;
-    }
+    ensure_pacman("tmux", "tmux", &["tmux"])?;
+    ensure_pacman("fastfetch", "fastfetch", &["fastfetch"])?;
+    ensure_pacman("Neovim", "nvim", &["neovim"])?;
+    ensure_pacman(
+        "Noctalia",
+        "noctalia-shell",
+        &["noctalia-shell", "noctalia-qs"],
+    )?;
 
     // HexStrike AI
     let hex_dir = home().join("tools/hexstrike-ai");
