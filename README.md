@@ -33,7 +33,7 @@
 
 | | |
 | --- | --- |
-| **Binary** | `dotctl` — one Rust crate, ~250 LoC, two subcommands |
+| **Binary** | `dotctl` — one Rust crate, ~360 LoC, three subcommands |
 | **Editor** | Neovim with **110 plugins**, **35 LSPs**, 23 formatters/linters, 4 DAP adapters |
 | **Agent** | `teleia` wired to **10 MCP servers** (context7 · filesystem · github · fetch · hexstrike-ai · playwright · sequential-thinking · memory · git · weather) |
 | **Offsec** | HexStrike AI on hardened systemd unit + BlackArch repo (~2800 packages, `pacman -S` away) |
