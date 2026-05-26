@@ -70,6 +70,10 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
   <img src="assets/grogu.png" alt="grogu — `grogu list` + `grogu paths` showing the three shipped themes and the eight files grogu writes (teleia sqlite, noctalia settings, niri / vim / nvim / kitty / ghostty / tmux fragments)" width="900"/>
 </p>
 
+<p align="center">
+  <img src="assets/noctalia.png" alt="Noctalia bar — clock + date, CPU/MEM/GPU mini-stats, active-window title, workspace pills, notification / battery / volume / brightness / timer tray" width="900"/>
+</p>
+
 ## Components
 
 **`dotctl`** is the in-tree Rust binary that replaced the old `install.sh` + `deploy.sh` pair. Clap-derive CLI, anyhow errors, no async runtime. See the subcommand table under [Install](#install).
