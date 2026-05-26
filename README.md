@@ -112,6 +112,7 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── fastfetch/config.jsonc               # terminal banner
 │   └── systemd/user/
 │       ├── hexstrike-server.service         # loopback :8888, hardened
+│       ├── noctalia-auth-agent.service      # polkit + GNOME-keyring (bb-auth)
 │       └── default.target.wants/...         # auto-enable on login
 ├── .local/bin/
 │   └── hexstrike-mcp                        # stdio bridge for MCP clients
