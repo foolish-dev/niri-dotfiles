@@ -66,8 +66,13 @@ fn home() -> PathBuf {
 }
 
 fn command_exists(cmd: &str) -> bool {
+    // Pass `cmd` as a positional argument to sh rather than interpolating
+    // it into the script. All current callers pass literals, but the
+    // interpolated form would treat a cmd of e.g. `foo; rm -rf $HOME` as
+    // two statements and run the trailing one — a footgun the moment a
+    // future caller forwards a user-supplied name.
     Command::new("sh")
-        .args(["-c", &format!("command -v {cmd} >/dev/null")])
+        .args(["-c", r#"command -v "$1" >/dev/null"#, "_", cmd])
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
@@ -387,4 +392,32 @@ fn link_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
         .unwrap_or_else(|_| dest.display().to_string());
     ok(&format!("Linked: {pretty}"));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::command_exists;
+
+    #[test]
+    fn finds_a_command_that_definitely_exists() {
+        // `sh` is guaranteed by POSIX and by the Ubuntu CI image.
+        assert!(command_exists("sh"));
+    }
+
+    #[test]
+    fn does_not_find_a_command_that_does_not_exist() {
+        assert!(!command_exists("__dotctl_nonexistent_xyz123"));
+    }
+
+    #[test]
+    fn rejects_shell_metacharacters_instead_of_evaluating_them() {
+        // Pre-fix, the format!() form would have run `; true` as a
+        // separate statement after `command -v foo` failed, yielding
+        // overall exit 0 — making this assert flip true. With $1
+        // quoting, sh looks up a binary literally named
+        // `foo; true` which can't exist.
+        assert!(!command_exists("foo; true"));
+        assert!(!command_exists("$(true)"));
+        assert!(!command_exists("`true`"));
+    }
 }
