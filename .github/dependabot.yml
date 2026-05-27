@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Rust crate deps (clap, anyhow, tempfile, …). Cargo.lock is committed, so
+  # these PRs bump the lockfile too.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+
+  # GitHub Actions in ci.yml (checkout, rust-cache, rust-toolchain) — keeps them
+  # on supported runtimes so a Node-version deprecation can't break CI silently
+  # (cf. the manual actions/checkout v4→v5 bump).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
