@@ -14,7 +14,7 @@ use std::time::SystemTime;
     propagate_version = true
 )]
 struct Cli {
-    /// Path to the dotfiles repo (defaults to $HOME/dotfiles)
+    /// Path to the dotfiles repo (defaults to $HOME/niri-dotfiles)
     #[arg(long, env = "DOTFILES_REPO", global = true)]
     repo: Option<PathBuf>,
 
@@ -34,7 +34,7 @@ enum Cmd {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let repo = cli.repo.unwrap_or_else(|| home().join("dotfiles"));
+    let repo = cli.repo.unwrap_or_else(|| home().join("niri-dotfiles"));
     match cli.cmd {
         Cmd::Install => install(),
         Cmd::Deploy => deploy(&repo),
