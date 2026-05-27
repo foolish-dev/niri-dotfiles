@@ -273,6 +273,35 @@ fn aur_failure_marker_in(root: &Path, pkg: &str) -> PathBuf {
     root.join("dotctl/aur-failed").join(pkg)
 }
 
+/// File mtime as a `SystemTime`, or `None` if it can't be read.
+fn mtime_of(path: &Path) -> Option<SystemTime> {
+    fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+/// Whether an AUR failure `marker` should still be honored (i.e. skip the
+/// rebuild). The marker is only trusted while it's at least as new as the
+/// running dotctl binary: reinstalling dotctl ships a new build strategy or
+/// fix (e.g. the GCC 16 auth-agent patch), which supersedes every prior
+/// failure and earns it one more attempt. A missing marker is never valid;
+/// an unreadable mtime falls back to honoring the marker so a known-broken
+/// build is never hammered every run.
+fn marker_still_valid(marker: &Path) -> bool {
+    if !marker.exists() {
+        return false;
+    }
+    let exe_mtime = std::env::current_exe().ok().and_then(|p| mtime_of(&p));
+    marker_still_valid_at(mtime_of(marker), exe_mtime)
+}
+
+/// [`marker_still_valid`] with both mtimes injected, so the
+/// retry-on-reinstall rule is unit-testable without touching real files.
+fn marker_still_valid_at(marker_mtime: Option<SystemTime>, exe_mtime: Option<SystemTime>) -> bool {
+    match (marker_mtime, exe_mtime) {
+        (Some(marker), Some(exe)) => marker >= exe,
+        _ => true,
+    }
+}
+
 /// `ensure_pacman_pkg` for AUR packages: pacman owns the local DB even
 /// for AUR-installed packages, so the "already installed" check uses
 /// the same [`pacman_pkg_installed`] helper.
@@ -284,7 +313,10 @@ fn aur_failure_marker_in(root: &Path, pkg: &str) -> PathBuf {
 /// in the wild when GCC 16 broke `noctalia-unofficial-auth-agent-git` and
 /// every reinvocation burned ~30s on cmake+make before failing identically.
 /// The marker is cleared as soon as the package shows up in pacman's DB
-/// (user patched upstream / ran `yay -S` manually), so it self-heals.
+/// (user patched upstream / ran `yay -S` manually), and [`marker_still_valid`]
+/// also ignores any marker older than the running dotctl binary — so
+/// reinstalling dotctl retries each previously-failed build once. It
+/// self-heals either way.
 fn ensure_aur_pkg(label: &str, pkg: &str) -> Result<()> {
     let marker = aur_failure_marker(pkg);
     if pacman_pkg_installed(pkg) {
@@ -292,9 +324,9 @@ fn ensure_aur_pkg(label: &str, pkg: &str) -> Result<()> {
         ok(&format!("{label} already installed"));
         return Ok(());
     }
-    if marker.exists() {
+    if marker_still_valid(&marker) {
         warn(&format!(
-            "{label} AUR build previously failed — skipping (rm {} to retry)",
+            "{label} AUR build previously failed — skipping (rm {} or reinstall dotctl to retry)",
             marker.display()
         ));
         return Ok(());
@@ -388,9 +420,9 @@ fn ensure_noctalia_auth_agent() -> Result<()> {
         ok(&format!("{label} already installed"));
         return Ok(());
     }
-    if marker.exists() {
+    if marker_still_valid(&marker) {
         warn(&format!(
-            "{label} build previously failed — skipping (rm {} to retry)",
+            "{label} build previously failed — skipping (rm {} or reinstall dotctl to retry)",
             marker.display()
         ));
         return Ok(());
@@ -671,12 +703,13 @@ fn link_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        aur_failure_marker_in, command_exists, link_item, pacman_pkg_installed,
-        patch_pkgbuild_unistd,
+        aur_failure_marker_in, command_exists, link_item, marker_still_valid_at,
+        pacman_pkg_installed, patch_pkgbuild_unistd,
     };
     use std::fs;
     use std::os::unix::fs::symlink;
     use std::path::PathBuf;
+    use std::time::{Duration, SystemTime};
     use tempfile::TempDir;
 
     #[test]
@@ -942,5 +975,40 @@ mod tests {
         let pkgbuild =
             "pkgname=foo-bin\npackage() {\n    install -Dm755 foo \"$pkgdir/usr/bin/foo\"\n}\n";
         assert_eq!(patch_pkgbuild_unistd(pkgbuild), pkgbuild);
+    }
+
+    // ── marker_still_valid_at ──────────────────────────────────────────────
+    //
+    // A cached AUR failure is only trusted while it's at least as new as the
+    // running dotctl binary, so reinstalling dotctl (e.g. shipping the GCC 16
+    // auth-agent fix) retries previously-failed builds exactly once.
+
+    #[test]
+    fn marker_honored_while_at_least_as_new_as_binary() {
+        let exe = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        let after = exe + Duration::from_secs(5);
+        assert!(marker_still_valid_at(Some(after), Some(exe)));
+        assert!(
+            marker_still_valid_at(Some(exe), Some(exe)),
+            "a marker written by this very binary (equal mtime) is still honored"
+        );
+    }
+
+    #[test]
+    fn marker_superseded_when_binary_is_newer() {
+        // dotctl was reinstalled after the marker was written → give the build
+        // another chance instead of skipping it forever.
+        let marker = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        let exe = marker + Duration::from_secs(5);
+        assert!(!marker_still_valid_at(Some(marker), Some(exe)));
+    }
+
+    #[test]
+    fn marker_honored_when_an_mtime_is_unknown() {
+        // Can't compare → keep skipping rather than hammer a known-broken build.
+        let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        assert!(marker_still_valid_at(None, Some(t)));
+        assert!(marker_still_valid_at(Some(t), None));
+        assert!(marker_still_valid_at(None, None));
     }
 }
