@@ -25,20 +25,20 @@ An AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP
 cargo install --git https://github.com/foolish-dev/niri-dotfiles --locked && dotctl all
 ```
 
-Needs `cargo` (install rustup if you don't have it). `cargo install` fetches the source, builds, and drops `dotctl` into `~/.cargo/bin`. `dotctl all` then clones (or pulls) the repo into `~/dotfiles`, runs `install`, and runs `deploy`.
+Needs `cargo` (install rustup if you don't have it). `cargo install` fetches the source, builds, and drops `dotctl` into `~/.cargo/bin`. `dotctl all` then clones (or pulls) the repo into `~/niri-dotfiles`, runs `install`, and runs `deploy`.
 
 Manual:
 
 ```bash
-git clone https://github.com/foolish-dev/niri-dotfiles.git ~/dotfiles
-cd ~/dotfiles
+git clone https://github.com/foolish-dev/niri-dotfiles.git ~/niri-dotfiles
+cd ~/niri-dotfiles
 cargo build --release
 ./target/release/dotctl install   # tools + Chaotic AUR + BlackArch, idempotent
 ./target/release/dotctl deploy    # symlink .config/* + .local/bin/*, enable hexstrike-server
 # or: dotctl all
 ```
 
-Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-symlink files to `~/.dotfiles-backup/<unix-ts>/` before replacing them. `--repo <path>` or the `DOTFILES_REPO` env var overrides the default `~/dotfiles` source.
+Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-symlink files to `~/.dotfiles-backup/<unix-ts>/` before replacing them. `--repo <path>` or the `DOTFILES_REPO` env var overrides the default `~/niri-dotfiles` source.
 
 | Subcommand | What it does |
 |---|---|
