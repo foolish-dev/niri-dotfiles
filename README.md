@@ -48,7 +48,7 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
 
 ## Architecture
 
-`dotctl` is the only thing that needs to run. What you end up with: `teleia` driving 10 MCP servers (the `hexstrike-ai` edge is the offsec one), and `grogu` repainting Neovim · tmux · Noctalia · fastfetch every time the wallpaper changes.
+`dotctl` is the only thing that needs to run. What you end up with: `teleia` driving 10 MCP servers (the `hexstrike-ai` edge is the offsec one), and `grogu` repainting Neovim · tmux · Noctalia · kitty every time the wallpaper changes.
 
 ## Showcase
 
@@ -105,7 +105,7 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 
 ```
 .
-├── assets/                                  # README screenshots (desktop, teleia, nvim, tmux)
+├── assets/                                  # README screenshots (desktop, teleia, nvim, tmux, fastfetch, noctalia)
 ├── .config/
 │   ├── teleia/config.toml                   # 10 MCP servers
 │   ├── nvim/                                # lazy.nvim + Mason, 110 plugins, 35 LSPs
