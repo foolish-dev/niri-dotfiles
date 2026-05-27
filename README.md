@@ -40,8 +40,8 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
 
 | Subcommand | What it does |
 |---|---|
-| `dotctl install` | Wire Chaotic AUR + BlackArch (both idempotent), `cargo install` grogu, clone+venv HexStrike AI, `pacman -S` tmux/fastfetch/neovim/noctalia-shell, `yay -S` the AUR-only noctalia add-ons (`sddm-theme-noctalia-git`, `noctalia-unofficial-auth-agent-git`). |
-| `dotctl deploy` | Symlink `.config/{teleia,nvim,noctalia,fastfetch,tmux}` and every `.local/bin/*` into `$HOME`. Symlink the hexstrike + noctalia-auth-agent systemd units, `daemon-reload`, `enable --now` both. Back up displaced files. |
+| `dotctl install` | Wire Chaotic AUR + BlackArch (both idempotent), `cargo install` grogu, clone+venv HexStrike AI, `pacman -S` tmux/fastfetch/neovim/noctalia-shell, `yay -S` `sddm-theme-noctalia-git`, and build `noctalia-unofficial-auth-agent-git` from a locally patched PKGBUILD (GCC 16 fix). |
+| `dotctl deploy` | Symlink `.config/{teleia,nvim,noctalia,fastfetch,tmux}` and every `.local/bin/*` into `$HOME`. Symlink the hexstrike systemd unit, `daemon-reload`, then `enable --now` it plus the package-provided `bb-auth.service`. Back up displaced files. |
 | `dotctl all` | `install` then `deploy`. |
 
 ## Architecture
@@ -112,7 +112,6 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── fastfetch/config.jsonc               # terminal banner
 │   └── systemd/user/
 │       ├── hexstrike-server.service         # loopback :8888, hardened
-│       ├── noctalia-auth-agent.service      # polkit + GNOME-keyring (bb-auth)
 │       └── default.target.wants/...         # auto-enable on login
 ├── .local/bin/
 │   └── hexstrike-mcp                        # stdio bridge for MCP clients
