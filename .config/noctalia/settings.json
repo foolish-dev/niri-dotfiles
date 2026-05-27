@@ -798,7 +798,7 @@
     "translucentWidgets": true
   },
   "wallpaper": {
-    "automationEnabled": true,
+    "automationEnabled": false,
     "directory": "~/Pictures/Wallpapers",
     "enableMultiMonitorDirectories": false,
     "enabled": true,
