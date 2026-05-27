@@ -1,0 +1,152 @@
+# =============================================================================
+# Starship Prompt -- Dark Hacker Theme
+# ~/.config/starship.toml
+# =============================================================================
+
+format = """
+[](#7aa2f7)\
+$os\
+[](bg:#3d59a1 fg:#7aa2f7)\
+$directory\
+[](fg:#3d59a1 bg:#24283b)\
+$git_branch\
+$git_status\
+[](fg:#24283b bg:#1a1b26)\
+$c\
+$rust\
+$golang\
+$python\
+$lua\
+$nodejs\
+$java\
+[](fg:#1a1b26)\
+$fill\
+$cmd_duration\
+$jobs\
+$status\
+$line_break\
+$character"""
+
+palette = "tokyonight"
+
+[palettes.tokyonight]
+rosewater = "#f7768e"
+flamingo  = "#f7768e"
+pink      = "#bb9af7"
+mauve     = "#bb9af7"
+red       = "#f7768e"
+maroon    = "#f7768e"
+peach     = "#ff9e64"
+yellow    = "#e0af68"
+green     = "#9ece6a"
+teal      = "#7dcfff"
+sky       = "#7dcfff"
+sapphire  = "#7aa2f7"
+blue      = "#7aa2f7"
+lavender  = "#bb9af7"
+text      = "#c0caf5"
+subtext1  = "#a9b1d6"
+subtext0  = "#9aa5ce"
+overlay2  = "#565f89"
+overlay1  = "#545c7e"
+overlay0  = "#414868"
+surface2  = "#3b4261"
+surface1  = "#24283b"
+surface0  = "#1f2335"
+base      = "#1a1b26"
+mantle    = "#16161e"
+crust     = "#13131a"
+
+[os]
+disabled = false
+style    = "bg:#7aa2f7 fg:#1a1b26 bold"
+
+[os.symbols]
+Arch = " "
+
+[directory]
+style             = "bg:#3d59a1 fg:#c0caf5 bold"
+format            = "[ $path ]($style)"
+truncation_length = 3
+truncation_symbol = ".../"
+
+[directory.substitutions]
+"Documents" = " "
+"Downloads" = " "
+"Music"     = " "
+"Pictures"  = " "
+"Developer" = " "
+"projects"  = " "
+".config"   = " "
+
+[git_branch]
+symbol = " "
+style  = "bg:#24283b fg:#9ece6a"
+format = "[ $symbol$branch ]($style)"
+
+[git_status]
+style  = "bg:#24283b fg:#f7768e"
+format = "[$all_status$ahead_behind ]($style)"
+
+[c]
+symbol   = " "
+style    = "bg:#1a1b26 fg:#7dcfff"
+format   = "[ $symbol($version) ]($style)"
+
+[rust]
+symbol   = " "
+style    = "bg:#1a1b26 fg:#ff9e64"
+format   = "[ $symbol($version) ]($style)"
+
+[golang]
+symbol   = " "
+style    = "bg:#1a1b26 fg:#7dcfff"
+format   = "[ $symbol($version) ]($style)"
+
+[python]
+symbol   = " "
+style    = "bg:#1a1b26 fg:#e0af68"
+format   = "[ $symbol($version)(\\($virtualenv\\)) ]($style)"
+
+[lua]
+symbol   = " "
+style    = "bg:#1a1b26 fg:#7aa2f7"
+format   = "[ $symbol($version) ]($style)"
+
+[nodejs]
+symbol   = " "
+style    = "bg:#1a1b26 fg:#9ece6a"
+format   = "[ $symbol($version) ]($style)"
+
+[java]
+symbol   = " "
+style    = "bg:#1a1b26 fg:#f7768e"
+format   = "[ $symbol($version) ]($style)"
+
+[fill]
+symbol = " "
+
+[cmd_duration]
+min_time          = 2000
+format            = "[ $duration]($style) "
+style             = "fg:#565f89"
+show_milliseconds = false
+
+[jobs]
+symbol = " "
+style  = "fg:#e0af68"
+format = "[$symbol$number]($style) "
+
+[status]
+disabled = false
+symbol   = " "
+style    = "fg:#f7768e"
+format   = "[$symbol$status]($style) "
+
+[character]
+success_symbol = "[>_](bold fg:#7aa2f7)"
+error_symbol   = "[>_](bold fg:#f7768e)"
+vimcmd_symbol  = "[<_](bold fg:#9ece6a)"
+
+[line_break]
+disabled = false

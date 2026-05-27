@@ -1,0 +1,49 @@
+# =============================================================================
+# EditorConfig -- Consistent formatting across editors
+# ~/.editorconfig  (also works when dropped into project roots)
+# =============================================================================
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{js,jsx,ts,tsx,json,jsonc,css,scss,html,vue,svelte}]
+indent_size = 2
+
+[*.{lua,nix,toml,yml,yaml}]
+indent_size = 2
+
+[*.{go,rs}]
+indent_style = tab
+indent_size = 4
+
+[*.{c,h,cpp,hpp}]
+indent_size = 4
+
+[*.py]
+indent_size = 4
+max_line_length = 88
+
+[*.kdl]
+indent_size = 4
+
+[*.{sh,bash,zsh}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+[Dockerfile*]
+indent_size = 4
+
+[*.{tf,hcl}]
+indent_size = 2

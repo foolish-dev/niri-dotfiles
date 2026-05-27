@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# pipes -- animated pipes screensaver (simple version)
+# Press Ctrl+C to exit
+declare -i f=75 s=13 r=2000 t=0 c=1 n=0 l=0
+declare -i w h
+w=$(tput cols)
+h=$(tput lines)
+declare -a v=( [00]="\x83" [01]="\x8f" [03]="\x93"
+               [10]="\x9b" [11]="\x81" [12]="\x93"
+               [21]="\x97" [22]="\x83" [23]="\x9b"
+               [30]="\x97" [32]="\x8f" [33]="\x81" )
+trap 'tput rmcup; tput cnorm; exit 0' INT
+tput smcup; tput civis; tput clear
+while :; do
+  ((t+=1,n+=1))
+  ((n>r)) && { c=$((RANDOM%7+1)); n=0; }
+  case $((RANDOM%s
+  )) in
+    0) ((l=(l+3)%4));;
+    1) ((l=(l+1)%4));;
+  esac
+  printf "\e[%d;%dH\e[38;5;%dm\xe2\x94${v[$l$((l=(l+RANDOM%3+3)%4))]}" \
+    $((RANDOM%h+1)) $((RANDOM%w+1)) $c
+  sleep 0.0$f
+done

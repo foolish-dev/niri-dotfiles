@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Check LVFS for firmware updates and notify if any appear.
+# Driven by fwupd-check.timer (monthly). Reports only — never applies.
+#
+# Exit codes from `fwupdmgr get-updates`:
+#   0 = updates available
+#   2 = nothing to update (treated as success here)
+#   * = real failure
+set -u
+set -o pipefail
+
+LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}"
+LOG="$LOG_DIR/fwupd-check.log"
+mkdir -p "$LOG_DIR"
+
+{
+    printf '\n=== %s ===\n' "$(date -Is)"
+    sudo /usr/bin/fwupdmgr refresh --force
+} >>"$LOG" 2>&1
+
+out=$(sudo /usr/bin/fwupdmgr get-updates 2>&1)
+rc=$?
+printf '%s\n' "$out" >>"$LOG"
+
+case "$rc" in
+    0)
+        /usr/bin/notify-send -u normal -i system-software-update \
+            "Firmware updates available" \
+            "Run 'fwupdmgr update' to apply. Log: $LOG"
+        ;;
+    2)
+        printf 'no updates\n' >>"$LOG"
+        ;;
+    *)
+        /usr/bin/notify-send -u critical -i dialog-error \
+            "fwupd check failed" \
+            "exit=$rc — see $LOG"
+        ;;
+esac
+
+exit 0

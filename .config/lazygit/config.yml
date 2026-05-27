@@ -1,0 +1,85 @@
+# =============================================================================
+# Lazygit Config
+# ~/.config/lazygit/config.yml
+# =============================================================================
+
+gui:
+  theme:
+    activeBorderColor:
+      - "#7aa2f7"
+      - bold
+    inactiveBorderColor:
+      - "#3b4261"
+    optionsTextColor:
+      - "#7aa2f7"
+    selectedLineBgColor:
+      - "#24283b"
+    cherryPickedCommitBgColor:
+      - "#3d59a1"
+    cherryPickedCommitFgColor:
+      - "#c0caf5"
+    unstagedChangesColor:
+      - "#f7768e"
+    defaultFgColor:
+      - "#c0caf5"
+    searchingActiveBorderColor:
+      - "#e0af68"
+  showIcons: true
+  nerdFontsVersion: "3"
+  showFileTree: true
+  showRandomTip: false
+  showCommandLog: false
+  border: rounded
+  mouseEvents: true
+  skipDiscardChangeWarning: false
+  sidePanelWidth: 0.3333
+git:
+  pagers:
+    - colorArg: always
+      pager: delta --dark --paging=never
+  commit:
+    signOff: false
+  merging:
+    manualCommit: false
+    args: ""
+  autoFetch: true
+  autoRefresh: true
+  branchLogCmd: "git log --graph --color=always --abbrev-commit --decorate --date=relative --pretty=medium {{branchName}} --"
+  overrideGpg: false
+  disableForcePushing: false
+  allBranchesLogCmds:
+    - git log --graph --all --color=always --abbrev-commit --decorate --date=relative --pretty=medium
+os:
+  editPreset: "nvim"
+keybinding:
+  universal:
+    quit: "q"
+    return: "<esc>"
+    togglePanel: "<tab>"
+    prevItem: "<up>"
+    nextItem: "<down>"
+    scrollUpMain: "<pgup>"
+    scrollDownMain: "<pgdown>"
+    confirm: "<enter>"
+    remove: "d"
+    edit: "e"
+    openFile: "o"
+    copyToClipboard: "<c-o>"
+    submitEditorText: "<enter>"
+    extrasMenu: "@"
+customCommands:
+  - key: "<c-p>"
+    command: "git push --force-with-lease"
+    context: "global"
+    description: "Force push with lease"
+  - key: "F"
+    command: "git fetch --all --prune"
+    context: "global"
+    description: "Fetch all remotes"
+  - key: "C"
+    command: "git commit --allow-empty -m '{{index .PromptResponses 0}}'"
+    context: "global"
+    prompts:
+      - type: "input"
+        title: "Empty commit message:"
+    description: "Create empty commit"

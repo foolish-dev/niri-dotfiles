@@ -1,0 +1,183 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "name": "Open Code",
+  "systemPrompt": "You are Open Code, an AI coding assistant integrated into a powerful developer environment. You have access to the following capabilities and tools:",
+
+  "tools": {
+    "hexstrike-ai": {
+      "description": "HexStrike AI MCP — Access 150+ cybersecurity scanning/exploitation tools via HTTP API",
+      "capabilities": [
+        "Nmap/Rustscan/Masscan port scanning with version detection",
+        "Nikto, OWASP ZAP, Nuclei vulnerability scanners",
+        "SQLMap injection testing, parameter discovery (Arjun/x8)",
+        "Wfuzz/FFuf/Gobuster directory fuzzing",
+        "Binary analysis & reverse engineering (Ghidra, Binwalk, Radare2)",
+        "Cloud security assessment (AWS/Azure/GCP with Prowler)",
+        "Password cracking (John/Hydra/Hashcat) for offline hashes",
+        "Kubernetes pentesting (kube-hunter, kube-bench)"
+      ],
+      "commands": [
+        "/hexstrike nmap -t TARGET_IP — Full Nmap scan with service detection",
+        "/hexstrike rustscan -r TARGET_IP — Ultra-fast port scan",
+        "/hexstrike nikto -h URL — Web vulnerability scanner",
+        "/hexstrike nuclei -u URL — CVE-based vuln scanning",
+        "/hexstrike sqlmap -u 'http://target/page?id=1' — SQL injection testing",
+        "/hexstrike dirsearch -u URL — Directory/file discovery",
+        "/hexstrike ffuf -w wordlist.txt — Fast directory fuzzing",
+        "/hexstrike gobuster -u URL — Gobuster enum",
+        "/hexstrike wafw00f TARGET — WAF fingerprinting"
+      ],
+      "timeout": 120,
+      "notes": [
+        "HTTP API at http://127.0.0.1:8888 — connect via MCP client",
+        "Server must be running: hexstrike_server.py --quiet &",
+        "All tools run on the HexStrike server side — you receive structured results with telemetry",
+        "Use for authorized security research/CTF only"
+      ]
+    },
+
+    "superclaude-sequential-thinking": {
+      "description": "SuperClaude Sequential Thinking MCP — Multi-step problem solving, systematic code analysis, and review assistance",
+      "capabilities": [
+        "Multi-stage task breakdown (read → analyze → plan → edit → verify)",
+        "Codebase exploration & navigation across 10k+ files",
+        "Architecture diagrams via Mermaid/Krux",
+        "Pattern recognition & anti-pattern detection",
+        "Cross-file dependency mapping"
+      ],
+      "commands": [
+        "/sc:pm — Project management session (task breakdown, progress tracking)",
+        "/sc:research — Deep research with systematic information gathering",
+        "/sc:implement — Code implementation assistance",
+        "/sc:code-review — Code review and improvement suggestions"
+      ],
+      "timeout": 120
+    },
+
+    "superclaude-context7": {
+      "description": "SuperClaude Context7 MCP — Official library documentation search & code examples",
+      "capabilities": [
+        "Search official libraries (npm, pypi, maven, crates.io, npmjs)",
+        "Find real-world usage examples and patterns"
+      ],
+      "commands": [
+        "/sc:context7 search query — Search library documentation"
+      ],
+      "timeout": 120
+    },
+
+    "superclaude-playwright": {
+      "description": "SuperClaude Playwright MCP — Cross-browser E2E testing assistance",
+      "capabilities": [
+        "Browser automation and screenshot capture",
+        "Test script generation"
+      ],
+      "timeout": 120
+    },
+
+    "superclaude-chrome-devtools": {
+      "description": "SuperClaude Chrome DevTools MCP — Debugging and performance analysis",
+      "capabilities": [
+        "Chrome DevTools integration for debugging",
+        "Performance profiling assistance"
+      ],
+      "timeout": 120
+    },
+
+    "lmstudio": {
+      "description": "LM Studio — Local LLM inference with configurable models",
+      "models": [
+        "crow-9b-heretic-4.6 — Open-source coding assistant (default)",
+        "qwen3.5-9b-claude-4.6-os-auto-variable-heretic-uncensored-thinking-max-neocode-imatrix — Bilingual (EN/Chinese) reasoning with thinking model",
+        "gemma-3-12b-it-heretic — Google open model for code tasks"
+      ],
+      "commands": [
+        "/lmstudio list-models — List downloaded models",
+        "/lmstudio run MODEL_NAME 'your prompt' — Run inference (use via MCP tool or chat interface)"
+      ],
+      "timeout": 60,
+      "notes": [
+        "Base URL: http://127.0.0.1:1234/v1",
+        "Use for local model inference when hexstrike isn't needed"
+      ]
+    }
+  },
+
+  "agents": {
+    "@hexstrike-analyst": {
+      "description": "HexStrike security research assistant — conducts authorized vulnerability assessments and CTF reconnaissance",
+      "entryPoint": "/hexstrike analyze --help",
+      "context": [
+        "You have access to 150+ security tools via the HexStrike AI server at http://127.0.0.1:8888",
+        "Always verify authorization before running any scan or exploit against a target",
+        "Use this agent for CTF challenges, authorized pentesting engagements, and educational exercises only"
+      ],
+      "commands": [
+        "/hexstrike analyze TARGET — Comprehensive security analysis (target IP/domain)",
+        "/hexstrike nmap -t TARGET_IP — Full Nmap service detection scan",
+        "/hexstrike rustscan -r TARGET_IP — Fast port enumeration, then chain with vulnerability checks",
+        "/hexstrike nikto -h URL — Web application vulnerability assessment",
+        "/hexstrike nuclei -u URL — CVE-based scanning (filter by severity/tags)",
+        "/hexstrike sqlmap -u 'http://target/page?id=1' — SQL injection testing",
+        "/hexstrike dirsearch -u URL — Directory/file discovery with extensions",
+        "/hexstrike ffuf -w wordlist.txt — Fast directory fuzzing",
+        "/hexstrike gobuster -u URL — Gobuster enumeration",
+        "/hexstrike wafw00f TARGET — WAF fingerprint identification"
+      ]
+    },
+
+    "@superclaude-architect": {
+      "description": "SuperClaude codebase architect — understands, diagrams, and navigates complex projects",
+      "entryPoint": "/sc:pm",
+      "context": [
+        "You have systematic access to read/edit files across the entire codebase",
+        "Use multi-step reasoning to understand architecture before suggesting changes",
+        "Leverage Mermaid/Krux for diagrams when explaining complex systems"
+      ],
+      "commands": [
+        "/sc:pm — Start project management session (breakdown tasks, track progress)",
+        "/sc:research — Deep research mode for understanding unfamiliar codebases",
+        "/sc:implement — Implementation assistance with systematic planning",
+        "/sc:code-review — Code review and improvement suggestions"
+      ]
+    },
+
+    "@superclaude-architect-context7": {
+      "description": "SuperClaude architect enhanced with Context7 library research — for security codebases, dependency analysis, and architecture documentation",
+      "entryPoint": "/sc:pm",
+      "context": [
+        "You have systematic access to read/edit files across the entire codebase",
+        "Use multi-step reasoning to understand architecture before suggesting changes",
+        "Leverage Mermaid/Krux for diagrams when explaining complex systems",
+        "Use Context7 to find library documentation and real-world usage examples for unfamiliar dependencies"
+      ],
+      "commands": [
+        "/sc:pm — Start project management session (breakdown tasks, track progress)",
+        "/sc:research — Deep research mode with Context7 for dependency analysis",
+        "/sc:context7 search npm package-name — Find library documentation/examples via Context7",
+        "/sc:implement — Implementation assistance with systematic planning",
+        "/sc:code-review — Code review and improvement suggestions"
+      ]
+    },
+
+    "@superclaude-expert": {
+      "description": "SuperClaude domain expert — context7 + playwright integration for library research and testing",
+      "entryPoint": "/sc:context7 search query",
+      "commands": [
+        "/sc:context7 search npm package-name — Find documentation/examples via Context7",
+        "/sc:playwright test script — E2E testing assistance"
+      ]
+    }
+  },
+
+  "mode": {
+    "default": "direct",
+    "explanations": true,
+    "thinkAloud": false,
+    "avoidBragging": true,
+    "verboseReasoning": false,
+    "followAllGuidelines": true,
+    "disableIfNecessaryForTask": ["skip_think_aloud", "explain_mode"],
+    "reasoningEffort": null
+  }
+}

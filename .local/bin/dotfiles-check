@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# dotfiles-check -- post-deploy health check.
+# Verifies that user systemd units actually came up and that key symlinks
+# resolve into the dotfiles repo. Designed to catch silent failures --
+# units that were "enabled" but fail on every session start, or symlinks
+# that point at a stale path after a repo move.
+#
+# Usage: dotfiles-check        (run any time; exits 1 if anything is red)
+# Override repo path: DOTFILES=/path/to/repo dotfiles-check
+set -uo pipefail
+
+DOTFILES="${DOTFILES:-$HOME/niri-dotfiles}"
+fail=0
+
+GRN='\033[0;32m'; RED='\033[0;31m'; YLW='\033[1;33m'; RST='\033[0m'
+ok()   { echo -e "  ${GRN}OK${RST}   $*"; }
+bad()  { echo -e "  ${RED}FAIL${RST} $*"; fail=1; }
+skip() { echo -e "  ${YLW}SKIP${RST} $*"; }
+
+echo "==> Failed user systemd units"
+mapfile -t failed < <(systemctl --user list-units --state=failed --no-legend --plain 2>/dev/null | awk '{print $1}')
+if (( ${#failed[@]} == 0 )); then
+  ok "no failed units"
+else
+  for u in "${failed[@]}"; do bad "$u (systemctl --user status $u)"; done
+fi
+
+echo "==> Symlinks resolve into \$DOTFILES ($DOTFILES)"
+if [[ ! -d "$DOTFILES" ]]; then
+  skip "\$DOTFILES does not exist; export DOTFILES=/path/to/repo"
+else
+  for path in "$HOME/.config/niri" "$HOME/.config/noctalia" "$HOME/.zshrc" \
+              "$HOME/.config/starship.toml"; do
+    if [[ ! -L "$path" ]]; then
+      bad "$path is not a symlink"
+    elif [[ "$(readlink -f "$path")" != "$DOTFILES"/* ]]; then
+      bad "$path -> $(readlink -f "$path") (outside repo)"
+    else
+      ok "$path"
+    fi
+  done
+fi
+
+echo
+if (( fail )); then
+  echo -e "${RED}FAIL${RST}: $fail check(s) failed"
+  exit 1
+fi
+echo -e "${GRN}OK${RST}: all checks passed"
