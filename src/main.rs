@@ -521,14 +521,29 @@ fn setup_noctalia_login() -> Result<()> {
     Ok(())
 }
 
+/// `git -C <repo> pull --ff-only --autostash`. The `--autostash` matters:
+/// `dotctl deploy` symlinks `~/.config/noctalia` straight at this repo, and
+/// grogu rewrites the tracked `colors.json` + `colorschemes/Grogu/Grogu.json`
+/// in place on every wallpaper change (live theme repaint). A plain
+/// `git pull --ff-only` then bails on the dirty tree, so re-running
+/// `dotctl all` to update would silently skip the pull once the theme had
+/// ever been repainted. Autostash shelves the repaint, fast-forwards, then
+/// restores it — updates keep flowing and the user keeps their colors.
+/// (`Grogu.json` can't just be gitignored away like the nvim/tmux grogu
+/// fragments: settings.json pins `predefinedScheme=Grogu`, so the committed
+/// scheme is the required first-boot default.)
+fn git_pull(repo_str: &str) -> Result<()> {
+    run("git", &["-C", repo_str, "pull", "--ff-only", "--autostash"])
+}
+
 fn ensure_repo(repo: &Path) -> Result<()> {
     let repo_str = repo
         .to_str()
         .ok_or_else(|| anyhow!("repo path is not valid utf-8: {}", repo.display()))?;
     if repo.join(".git").exists() {
         info(&format!("Updating {repo_str} ..."));
-        if run("git", &["-C", repo_str, "pull", "--ff-only"]).is_err() {
-            warn("git pull skipped (local changes?)");
+        if git_pull(repo_str).is_err() {
+            warn("git pull skipped (diverged history, or local changes git couldn't autostash?)");
         }
     } else {
         info(&format!("Cloning to {repo_str} ..."));
@@ -786,12 +801,13 @@ fn link_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        aur_failure_marker_in, command_exists, link_item, login_action, marker_still_valid_at,
-        pacman_pkg_installed, patch_pkgbuild_unistd, LoginAction,
+        aur_failure_marker_in, command_exists, git_pull, link_item, login_action,
+        marker_still_valid_at, pacman_pkg_installed, patch_pkgbuild_unistd, LoginAction,
     };
     use std::fs;
     use std::os::unix::fs::symlink;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Stdio};
     use std::time::{Duration, SystemTime};
     use tempfile::TempDir;
 
@@ -1120,5 +1136,81 @@ mod tests {
             LoginAction::OtherDm(dm) => assert_eq!(dm, "gdm.service"),
             _ => panic!("an already-enabled DM must be left in place, never overridden"),
         }
+    }
+
+    // ── git_pull ───────────────────────────────────────────────────────────
+    //
+    // `dotctl deploy` symlinks ~/.config/noctalia at the repo, and grogu
+    // rewrites the tracked colors.json / Grogu.json in place on every
+    // wallpaper change. Without --autostash the ff-only pull would bail on
+    // that dirty tree and `dotctl all` would silently stop updating. Pin
+    // that the pull fast-forwards anyway and keeps the local repaint.
+
+    /// Run git in `dir` with a deterministic identity (CI configures none)
+    /// and assert success.
+    fn git(dir: &Path, args: &[&str]) {
+        let ok = Command::new("git")
+            .current_dir(dir)
+            .args(args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("spawn git")
+            .success();
+        assert!(ok, "git {args:?} failed in {}", dir.display());
+    }
+
+    #[test]
+    fn git_pull_fast_forwards_over_a_grogu_dirtied_tracked_file() {
+        if !command_exists("git") {
+            return; // git-less host; nothing to exercise
+        }
+        let tmp = TempDir::new().expect("tempdir");
+        let upstream = tmp.path().join("upstream");
+        let clone = tmp.path().join("clone");
+        fs::create_dir_all(&upstream).expect("mkdir upstream");
+
+        // Seed upstream with the two files dotctl cares about: a generated
+        // theme file (colors.json) and an unrelated tracked file (README).
+        git(&upstream, &["init", "-q", "-b", "main"]);
+        git(&upstream, &["config", "user.email", "t@t"]);
+        git(&upstream, &["config", "user.name", "t"]);
+        fs::write(upstream.join("colors.json"), "{\"mPrimary\":\"#000\"}\n").expect("seed colors");
+        fs::write(upstream.join("README.md"), "v1\n").expect("seed readme");
+        git(&upstream, &["add", "-A"]);
+        git(&upstream, &["commit", "-qm", "init"]);
+
+        git(
+            tmp.path(),
+            &[
+                "clone",
+                "-q",
+                upstream.to_str().unwrap(),
+                clone.to_str().unwrap(),
+            ],
+        );
+        git(&clone, &["config", "user.email", "t@t"]);
+        git(&clone, &["config", "user.name", "t"]);
+
+        // Upstream advances an *unrelated* file (a real dotfiles update)...
+        fs::write(upstream.join("README.md"), "v2\n").expect("bump readme");
+        git(&upstream, &["commit", "-qam", "update readme"]);
+
+        // ...while grogu has repainted the tracked colors.json in the clone.
+        let repaint = "{\"mPrimary\":\"#61c3cf\"}\n";
+        fs::write(clone.join("colors.json"), repaint).expect("repaint colors");
+
+        git_pull(clone.to_str().unwrap()).expect("autostash pull should fast-forward");
+
+        assert_eq!(
+            fs::read_to_string(clone.join("README.md")).expect("read readme"),
+            "v2\n",
+            "the upstream update must land despite the dirty tree"
+        );
+        assert_eq!(
+            fs::read_to_string(clone.join("colors.json")).expect("read colors"),
+            repaint,
+            "the local grogu repaint must survive the pull (autostash restores it)"
+        );
     }
 }
