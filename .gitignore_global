@@ -1,0 +1,97 @@
+# =============================================================================
+# Global Gitignore
+# ~/.gitignore_global
+# =============================================================================
+
+# Editors
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.iml
+*.sublime-*
+.nvim.lua
+.exrc
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.out
+*.class
+*.pyc
+__pycache__/
+*.egg-info/
+dist/
+build/
+target/
+
+# Runtime
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Environment / secrets
+.env
+.env.*
+.envrc
+*.pem
+*.key
+*.crt
+credentials.*
+secrets.*
+*.secret
+
+# Per-machine git identity (rendered by dotfiles/deploy.sh)
+.gitconfig.local
+
+# SSH / GPG keys
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+id_ecdsa
+id_ecdsa.pub
+id_dsa
+id_dsa.pub
+authorized_keys
+known_hosts
+*.gpg
+*.asc
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Python
+.venv/
+venv/
+*.egg
+.eggs/
+
+# Rust (target/ already covered under build artifacts above)
+
+# Go
+vendor/
+
+# Docker
+.docker/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/

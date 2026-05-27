@@ -11,3 +11,53 @@
 
 # Go — local telemetry counters, per-machine
 .config/go/
+
+# noctalia — grogu's live-paint colour cache (Grogu.json IS tracked; this isn't)
+.config/noctalia/colors.json
+
+# niri — grogu writes the focus-ring/palette fragment at runtime
+.config/niri/grogu.kdl
+
+# opencode — vendored fork (git submodule upstream) + node deps, not dotfiles
+.config/opencode/heimdall_opencode/
+.config/opencode/node_modules/
+.config/opencode/package-lock.json
+.config/opencode/*.bak
+
+# wal — grogu/pywal-generated palettes (templates/ are tracked, output is not)
+.config/wal/colorschemes/
+.config/wal/*.json
+!.config/wal/templates/
+
+# Per-machine git identity (generated at deploy, deliberately local)
+.gitconfig.local
+
+# systemd user units — generated/per-machine (the dir is deployed as real,
+# units are symlinked individually; machine-specific ones stay untracked)
+.config/systemd/user/*.wants/
+.config/systemd/user/pipewire-session-manager.service
+.config/systemd/user/z13-*.service
+.config/systemd/user/gz302-*.service
+.config/systemd/user/rog-key-daemon.service
+.config/systemd/user/llama-*.service
+.config/systemd/user/ollama.service
+.config/systemd/user/ollama.service.d/
+
+# Shell state
+.zsh_history
+.zcompdump*
+.zinit/
+
+# Secrets / credentials
+.env
+.env.*
+*.pem
+*.key
+credentials.*
+secrets.*
+
+# Editor / misc
+*.log
+*.swp
+*.swo
+*~

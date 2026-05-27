@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# wallpaper -- set wallpaper and regenerate pywal color scheme
+# Usage: wallpaper <image> [extra awww-img flags]
+# Hooks: kitty (SIGUSR1 reload), noctalia colors.json, tmux source-file
+set -euo pipefail
+
+IMAGE="${1:?Usage: wallpaper <image> [awww-img flags]}"
+shift || true  # remaining args passed to awww img
+
+[[ -f "$IMAGE" ]] || { echo "[-] File not found: $IMAGE"; exit 1; }
+IMAGE="$(realpath "$IMAGE")"
+
+# ── 1. Generate color scheme with pywal ───────────────────────────────────
+wal -i "$IMAGE" -n -q          # -n = skip setting wallpaper, -q = quiet
+echo "[+] pywal colors generated"
+
+# ── 2. Set wallpaper via awww ─────────────────────────────────────────────
+if awww query &>/dev/null; then
+  awww img "$IMAGE" \
+    --transition-type grow \
+    --transition-pos 0.5,0.5 \
+    --transition-duration 1.2 \
+    --transition-fps 60 \
+    "$@"
+  echo "[+] Wallpaper set: $IMAGE"
+else
+  echo "[!] awww daemon not running -- start with: systemctl --user start awww.service"
+fi
+
+# ── 3. Reload kitty colors in all running instances ───────────────────────
+# kitty.conf `include`s ~/.cache/wal/colors-kitty.conf; SIGUSR1 makes every
+# running kitty re-read its config (and any included files), so the new
+# pywal colors take effect immediately in already-open windows. Avoids
+# needing `allow_remote_control` + a fixed `listen_on` socket in
+# kitty.conf, which the previous `kitty @` approach silently required.
+pkill -USR1 -x kitty 2>/dev/null || true
+
+# ── 4. Write noctalia colors.json from pywal output ───────────────────────
+NOCTALIA_COLORS="$HOME/.config/noctalia/colors.json"
+WAL_COLORS="$HOME/.cache/wal/colors-noctalia.json"
+if [[ -f "$WAL_COLORS" ]]; then
+  cp "$WAL_COLORS" "$NOCTALIA_COLORS"
+  echo "[+] Noctalia colors updated"
+fi
+
+# ── 5. Reload tmux status bar / borders in every running server ──────────
+# tmux servers are per-socket; iterate over all live sockets to cover
+# nested servers, detached sessions, and foreground sessions alike.
+if command -v tmux &>/dev/null && [[ -f "$HOME/.cache/wal/colors-tmux.conf" ]]; then
+  for sock in /tmp/tmux-"$UID"/*; do
+    [[ -S "$sock" ]] || continue
+    tmux -S "$sock" source-file "$HOME/.cache/wal/colors-tmux.conf" 2>/dev/null || true
+  done
+  echo "[+] tmux colors reloaded"
+fi
+
+echo "[+] Done. New colors active."

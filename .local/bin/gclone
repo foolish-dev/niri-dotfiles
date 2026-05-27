@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# =============================================================================
+# gclone -- Clone a repo and cd into it
+# Usage: gclone <repo-url-or-shorthand>
+# Supports: full URL, gh:user/repo, gl:user/repo, user/repo (defaults to gh)
+# =============================================================================
+set -euo pipefail
+
+REPO="${1:?Usage: gclone <repo>}"
+
+# Expand shorthands
+case "$REPO" in
+  gh:*)   REPO="git@github.com:${REPO#gh:}.git" ;;
+  gl:*)   REPO="git@gitlab.com:${REPO#gl:}.git" ;;
+  */*)
+    if [[ "$REPO" != *://* ]] && [[ "$REPO" != git@* ]]; then
+      REPO="git@github.com:${REPO}.git"
+    fi
+    ;;
+esac
+
+# Extract directory name
+DIR=$(basename "$REPO" .git)
+
+echo "[*] Cloning $REPO -> $DIR"
+git clone --recurse-submodules "$REPO"
+cd "$DIR"
+echo "[+] Done. Now in $(pwd)"
+exec "$SHELL"

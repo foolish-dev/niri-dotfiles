@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# colorblocks -- display terminal color palette
+printf '\n'
+for i in {0..7}; do printf '\e[48;5;%sm    \e[0m' "$i"; done
+printf '\n'
+for i in {8..15}; do printf '\e[48;5;%sm    \e[0m' "$i"; done
+printf '\n\n'

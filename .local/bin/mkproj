@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# =============================================================================
+# mkproj -- Scaffold a new project with boilerplate
+# Usage: mkproj <name> [type]
+# Types: python, rust, go, node, c, shell, empty
+# =============================================================================
+set -euo pipefail
+
+NAME="${1:?Usage: mkproj <name> [python|rust|go|node|c|shell|empty]}"
+TYPE="${2:-empty}"
+BASE="${PROJ_DIR:-}"
+if [[ -z "$BASE" ]]; then
+  for cand in "$HOME/Projects" "$HOME/projects" "$HOME/code" "$HOME/src" "$HOME/work" "$HOME/repos"; do
+    [[ -d "$cand" ]] && { BASE="$cand"; break; }
+  done
+  BASE="${BASE:-$HOME/Projects}"
+fi
+
+DIR="$BASE/$NAME"
+mkdir -p "$DIR"
+cd "$DIR"
+
+# Always init git
+git init -q
+echo "# $NAME" > README.md
+
+case "$TYPE" in
+  python|py)
+    python3 -m venv .venv
+    cat > .gitignore << 'GI'
+.venv/
+__pycache__/
+*.pyc
+dist/
+*.egg-info/
+.env
+GI
+    cat > main.py << 'PY'
+#!/usr/bin/env python3
+"""Entry point."""
+
+
+def main() -> None:
+    print("Hello from", __name__)
+
+
+if __name__ == "__main__":
+    main()
+PY
+    cat > pyproject.toml << TOML
+[project]
+name = "$NAME"
+version = "0.1.0"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 88
+TOML
+    chmod +x main.py
+    echo "Created Python project."
+    ;;
+
+  rust|rs)
+    if command -v cargo &>/dev/null; then
+      cd "$BASE" && rm -rf "$NAME"
+      cargo init "$NAME"
+      cd "$DIR"
+    else
+      echo "cargo not found; creating skeleton."
+      mkdir -p src
+      echo 'fn main() { println!("Hello"); }' > src/main.rs
+      echo "/target" > .gitignore
+    fi
+    echo "Created Rust project."
+    ;;
+
+  go)
+    go mod init "$NAME" 2>/dev/null || true
+    cat > main.go << 'GO'
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello")
+}
+GO
+    echo "Created Go project."
+    ;;
+
+  node|js|ts)
+    npm init -y -q 2>/dev/null
+    cat > .gitignore << 'GI'
+node_modules/
+dist/
+.env
+GI
+    cat > index.js << 'JS'
+console.log("Hello");
+JS
+    echo "Created Node project."
+    ;;
+
+  c)
+    mkdir -p src
+    cat > src/main.c << 'CC'
+#include <stdio.h>
+
+int main(void) {
+    printf("Hello\n");
+    return 0;
+}
+CC
+    cat > Makefile << 'MK'
+CC      = gcc
+CFLAGS  = -Wall -Wextra -g
+SRC     = src/main.c
+OUT     = build/main
+
+all: $(OUT)
+
+$(OUT): $(SRC)
+	@mkdir -p build
+	$(CC) $(CFLAGS) -o $@ $^
+
+clean:
+	rm -rf build
+
+.PHONY: all clean
+MK
+    echo "build/" > .gitignore
+    echo "Created C project."
+    ;;
+
+  shell|sh)
+    cat > "$NAME.sh" << 'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+main() {
+    echo "Hello"
+}
+
+main "$@"
+SH
+    chmod +x "$NAME.sh"
+    echo "Created shell project."
+    ;;
+
+  empty|*)
+    echo ".env" > .gitignore
+    echo "Created empty project."
+    ;;
+esac
+
+git add -A
+git commit -qm "init: scaffold $TYPE project"
+
+echo "-> $DIR"

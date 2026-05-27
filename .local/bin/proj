@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# =============================================================================
+# proj -- Quick project opener with fuzzy search
+# Usage: proj [query]
+# =============================================================================
+set -euo pipefail
+
+PROJ_DIRS=("$HOME/Projects" "$HOME/projects" "$HOME/code" "$HOME/src" "$HOME/work" "$HOME/repos")
+
+dirs=()
+for d in "${PROJ_DIRS[@]}"; do
+  [[ -d "$d" ]] && dirs+=("$d")
+done
+
+if [[ ${#dirs[@]} -eq 0 ]]; then
+  echo "No project directories found. Create one of: ${PROJ_DIRS[*]}"
+  exit 1
+fi
+
+query="${1:-}"
+
+selected=$(find "${dirs[@]}" -maxdepth 2 -name ".git" -type d 2>/dev/null \
+  | sed 's|/\.git$||' \
+  | sort -u \
+  | fzf --prompt="  project > " \
+        --preview="ls --color=always {}" \
+        --query="$query" \
+        --select-1 --exit-0)
+
+if [[ -n "$selected" ]]; then
+  if command -v tmux &>/dev/null && [[ -n "${TMUX:-}" ]]; then
+    session_name=$(basename "$selected" | tr '.' '_')
+    if tmux has-session -t="$session_name" 2>/dev/null; then
+      tmux switch-client -t "$session_name"
+    else
+      tmux new-session -ds "$session_name" -c "$selected"
+      tmux switch-client -t "$session_name"
+    fi
+  else
+    cd "$selected" && exec "$SHELL"
+  fi
+fi

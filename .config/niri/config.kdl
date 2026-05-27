@@ -1,0 +1,509 @@
+// =============================================================================
+// Niri Compositor Config -- Arch Linux / Noctalia Shell / Cybersecurity
+// ~/.config/niri/config.kdl
+// =============================================================================
+// Docs: https://yalter.github.io/niri/Configuration:-Introduction
+
+// ---------------------------------------------------------------------------
+// Input
+// ---------------------------------------------------------------------------
+input {
+    keyboard {
+        xkb {
+            layout "gb"
+            // options "caps:escape"  // uncomment to remap CapsLock -> Esc
+        }
+        repeat-delay 300
+        repeat-rate 50
+    }
+
+    touchpad {
+        tap
+        dwt           // disable-while-typing
+        natural-scroll
+        accel-speed 0.3
+        accel-profile "adaptive"
+    }
+
+    mouse {
+        accel-speed 0.0
+        accel-profile "flat"
+    }
+
+    // On 2-in-1 / convertible / touchscreen laptops: pen + touchscreen
+    // must map to the built-in display so pointer coordinates line up
+    // with what the user is touching/drawing on. Without `map-to-output`,
+    // niri spans the tablet surface across all connected outputs, which
+    // makes pen input unusable whenever an external monitor is plugged
+    // in. Adjust the output name (typically eDP-1) for your hardware.
+    tablet {
+        map-to-output "eDP-1"
+    }
+    touch {
+        map-to-output "eDP-1"
+    }
+
+    // Warp the cursor when switching focus between monitors.
+    warp-mouse-to-focus
+    focus-follows-mouse max-scroll-amount="0%"
+}
+
+// ---------------------------------------------------------------------------
+// Outputs
+// ---------------------------------------------------------------------------
+// No outputs declared by default. niri will use sensible auto-detected
+// modes. Uncomment and adjust per your hardware -- run `niri msg outputs`
+// to see available connectors and modes. variable-refresh-rate enables
+// FreeSync/G-Sync if the panel + driver support it.
+//
+// output "eDP-1" {
+//     mode "2560x1600@180.000"
+//     scale 1.333
+//     transform "normal"
+//     position x=0 y=0
+//     variable-refresh-rate
+// }
+// Example second monitor -- uncomment and adjust:
+// output "HDMI-A-1" {
+//     scale 1.0
+//     position x=1920 y=0
+// }
+
+// ---------------------------------------------------------------------------
+// Layout
+// ---------------------------------------------------------------------------
+layout {
+    gaps 14
+
+    center-focused-column "never"
+
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+    }
+
+    default-column-width {
+        proportion 0.5
+    }
+
+    focus-ring {
+        off
+    }
+
+    border {
+        off
+    }
+
+    // Deeper, softer drop shadow for the floating-glass aesthetic.
+    shadow {
+        on
+        softness 24
+        spread 3
+        offset x=0 y=6
+        color "#000000aa"
+        inactive-color "#00000055"
+    }
+
+    struts {
+        // left 0
+        // right 0
+        // top 0
+        // bottom 0
+    }
+
+    // Transparent workspace background so Noctalia wallpaper shows through.
+    background-color "transparent"
+}
+
+// ---------------------------------------------------------------------------
+// Window rules  (Noctalia integration + general)
+// ---------------------------------------------------------------------------
+// Rounded corners + transparency. niri does not blur windows itself
+// (no compositor blur); apps like kitty/ghostty handle their own blur.
+// Opacity here stacks multiplicatively with the app's own opacity.
+window-rule {
+    geometry-corner-radius 14
+    clip-to-geometry true
+    opacity 0.98
+}
+
+// Focused window is more transparent so the wallpaper bleeds through
+// the one you're actively working in.
+window-rule {
+    match is-focused=true
+    opacity 0.88
+}
+
+// Float specific utility windows.
+window-rule {
+    match app-id=r#"^org\.gnome\.(Calculator|Calendar|clocks)"#
+    default-column-width { fixed 400; }
+}
+
+window-rule {
+    match app-id="pavucontrol"
+    default-column-width { fixed 500; }
+}
+
+// Burp Suite / security tool windows.
+window-rule {
+    match app-id="burp-StartBurp"
+    open-maximized true
+}
+
+// Telia floating panel — spawned by `Mod+T` (kitty --class telia-float -e telia).
+// grogu.kdl paints its focus-ring; this rule lifts it out of the tiled column.
+window-rule {
+    match app-id="telia-float"
+    open-floating true
+    default-column-width { fixed 900; }
+    default-window-height { fixed 700; }
+}
+
+// ---------------------------------------------------------------------------
+// Layer rules  (Noctalia shell layers)
+// ---------------------------------------------------------------------------
+// Blurred overview wallpaper on the backdrop.
+layer-rule {
+    match namespace="^noctalia-overview*"
+    place-within-backdrop true
+}
+
+// Round the corners of overlay surfaces (launchers, notifications, OSDs)
+// so fuzzel + noctalia panels match the window aesthetic.
+layer-rule {
+    match namespace="^launcher$"
+    geometry-corner-radius 16
+}
+
+layer-rule {
+    match namespace="^noctalia-.*"
+    geometry-corner-radius 14
+}
+
+// ---------------------------------------------------------------------------
+// Cursor
+// ---------------------------------------------------------------------------
+cursor {
+    xcursor-theme "Bibata-Modern-Classic"
+    xcursor-size 24
+}
+
+// ---------------------------------------------------------------------------
+// Prefer no client-side decorations
+// ---------------------------------------------------------------------------
+prefer-no-csd
+
+// ---------------------------------------------------------------------------
+// Screenshots
+// ---------------------------------------------------------------------------
+screenshot-path "~/Pictures/Screenshots/Screenshot-%Y-%m-%d-%H-%M-%S.png"
+
+// ---------------------------------------------------------------------------
+// Hotkey overlay
+// ---------------------------------------------------------------------------
+hotkey-overlay {
+    skip-at-startup
+}
+
+// ---------------------------------------------------------------------------
+// Environment variables
+// ---------------------------------------------------------------------------
+environment {
+    QT_QPA_PLATFORM "wayland"
+    QT_QPA_PLATFORMTHEME "qt5ct"
+    QT_WAYLAND_DISABLE_WINDOWDECORATION "1"
+    QT_AUTO_SCREEN_SCALE_FACTOR "1"
+    GDK_BACKEND "wayland"
+    GTK_THEME "Tokyonight-Dark"
+    MOZ_ENABLE_WAYLAND "1"
+    // Electron apps (LM Studio, VSCode, Discord, Slack) default to XWayland
+    // unless told otherwise, which burns a second compositor hop and breaks
+    // HiDPI on high-density panels. Forcing the Wayland Ozone backend gives
+    // native scaling + better touch input.
+    ELECTRON_OZONE_PLATFORM_HINT "wayland"
+    // Prefer Wayland for SDL (games, emulators) with an X11 fallback for
+    // anything still stuck on XWayland.
+    SDL_VIDEODRIVER "wayland,x11"
+    // Old AWT apps render outside their window frame under tiling WMs
+    // unless non-reparenting is forced.
+    _JAVA_AWT_WM_NONREPARENTING "1"
+    XCURSOR_THEME "Bibata-Modern-Classic"
+    XCURSOR_SIZE "24"
+    // XDG
+    XDG_CURRENT_DESKTOP "niri"
+    XDG_SESSION_TYPE "wayland"
+    XDG_SESSION_DESKTOP "niri"
+
+    // IBus input method support for Korean Hangul + dead keys/Compose.
+    // GTK_IM_MODULE="simple" tells GTK 4 apps to use the simple IME
+    // backend, which correctly handles dead key sequences and Compose.
+    GTK_IM_MODULE "simple"
+}
+
+// ---------------------------------------------------------------------------
+// Spawn at startup
+// ---------------------------------------------------------------------------
+spawn-at-startup "qs" "-c" "noctalia-shell"
+spawn-at-startup "awww-daemon"
+spawn-at-startup "xwayland-satellite"
+
+// IBus input method setup (Korean Hangul + general IME). Run this once to
+// configure IBus with your preferred layout. After running, restart Niri or log out/in
+// for the changes to take effect:
+//   im-config -c ibus --set-layout="korean,us"   # Korean first, then English
+//   im-config -c ibus --enable
+//   im-config -c ibus --show-statusbar=true
+
+// Clipboard manager
+spawn-at-startup "wl-paste" "--watch" "cliphist" "store"
+// Keep clipboard contents alive after the source app exits — fixes the
+// "set_text then process dies, paste returns empty" class of bug from
+// arboard, wl-copy in scripts, etc.
+spawn-at-startup "wl-clip-persist" "--clipboard" "regular"
+
+// Idle / lock is handled by noctalia-shell's built-in idle daemon
+// (Control Center → Idle).
+
+// Polkit agent
+spawn-at-startup "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
+
+// ---------------------------------------------------------------------------
+// Animations
+// ---------------------------------------------------------------------------
+animations {
+    // Slightly faster for a snappier feel.
+    slowdown 0.8
+
+    workspace-switch {
+        spring damping-ratio=1.0 stiffness=1000 epsilon=0.0001
+    }
+
+    // Swaync-client notification animations (status icons, tray).
+    config-notification-open-close {
+        spring damping-ratio=0.6 stiffness=500 epsilon=0.001
+    }
+
+    overview-open-close {
+        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
+    }
+
+    window-open {
+        duration-ms 180
+        curve "ease-out-expo"
+        custom-shader r"
+            vec4 open_color(vec3 coords_geo, vec3 size_geo) {
+                vec3 coords_tex = niri_geo_to_tex * coords_geo;
+                vec4 color = texture2D(niri_tex, coords_tex.st);
+
+                // Fade in + slight scale-up from center
+                float progress = niri_clamped_progress;
+                float scale = mix(0.96, 1.0, progress);
+                vec2 center = vec2(0.5, 0.5);
+                vec2 uv = (coords_tex.st - center) / scale + center;
+
+                if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
+                    return vec4(0.0);
+
+                color = texture2D(niri_tex, uv);
+                color *= progress;
+                return color;
+            }
+        "
+    }
+
+    window-close {
+        duration-ms 150
+        curve "ease-out-quad"
+        custom-shader r"
+            vec4 close_color(vec3 coords_geo, vec3 size_geo) {
+                vec3 coords_tex = niri_geo_to_tex * coords_geo;
+                vec4 color = texture2D(niri_tex, coords_tex.st);
+
+                // Fade out + slight shrink toward center
+                float progress = 1.0 - niri_clamped_progress;
+                float scale = mix(0.98, 1.0, progress);
+                vec2 center = vec2(0.5, 0.5);
+                vec2 uv = (coords_tex.st - center) / scale + center;
+
+                if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
+                    return vec4(0.0);
+
+                color = texture2D(niri_tex, uv);
+                color *= progress;
+                return color;
+            }
+        "
+    }
+
+    horizontal-view-movement {
+        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
+    }
+
+    window-movement {
+        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
+    }
+
+    window-resize {
+        spring damping-ratio=1.0 stiffness=800 epsilon=0.0001
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Gestures
+// ---------------------------------------------------------------------------
+gestures {
+    hot-corners {
+        off
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Overview
+// ---------------------------------------------------------------------------
+overview {
+    backdrop-color "#1a1b26"
+}
+
+// ---------------------------------------------------------------------------
+// Debug  (Noctalia requires this)
+// ---------------------------------------------------------------------------
+debug {
+    honor-xdg-activation-with-invalid-serial
+}
+
+// ---------------------------------------------------------------------------
+// Key Bindings
+// ---------------------------------------------------------------------------
+binds {
+    // ── Core ──────────────────────────────────────────────────────────
+    Mod+Return          { spawn "kitty"; }
+    Mod+Shift+Return    { spawn "kitty" "--class" "floating-term"; }
+    Mod+D               { spawn-sh "qs -c noctalia-shell ipc call launcher toggle"; }
+    Mod+Q               { close-window; }
+    Mod+Shift+E         { quit; }
+    Mod+Shift+Slash     { show-hotkey-overlay; }
+
+    // ── Noctalia Launcher ─────────────────────────────────────────────
+    Mod+Space           { spawn-sh "qs -c noctalia-shell ipc call launcher toggle"; }
+    // ── Reload ────────────────────────────────────────────────────────
+    Mod+Shift+C         { spawn "niri" "msg" "action" "load-config-file"; }
+
+    // ── Window Focus ──────────────────────────────────────────────────
+    Mod+H               { focus-column-left; }
+    Mod+L               { focus-column-right; }
+    Mod+J               { focus-window-down; }
+    Mod+K               { focus-window-up; }
+    Mod+Left            { focus-column-left; }
+    Mod+Right           { focus-column-right; }
+    Mod+Down            { focus-window-down; }
+    Mod+Up              { focus-window-up; }
+
+    // ── Window Movement ───────────────────────────────────────────────
+    Mod+Shift+H         { move-column-left; }
+    Mod+Shift+L         { move-column-right; }
+    Mod+Shift+J         { move-window-down; }
+    Mod+Shift+K         { move-window-up; }
+    Mod+Shift+Left      { move-column-left; }
+    Mod+Shift+Right     { move-column-right; }
+    Mod+Shift+Down      { move-window-down; }
+    Mod+Shift+Up        { move-window-up; }
+
+    // ── Column width ──────────────────────────────────────────────────
+    Mod+R               { switch-preset-column-width; }
+    Mod+Minus           { set-column-width "-10%"; }
+    Mod+Equal           { set-column-width "+10%"; }
+    Mod+Shift+Minus     { set-window-height "-10%"; }
+    Mod+Shift+Equal     { set-window-height "+10%"; }
+    Mod+F               { maximize-column; }
+    Mod+Shift+F         { fullscreen-window; }
+
+    // ── Consume / expel windows into/from a column ────────────────────
+    Mod+BracketLeft     { consume-window-into-column; }
+    Mod+BracketRight    { expel-window-from-column; }
+
+    // ── Workspaces ────────────────────────────────────────────────────
+    Mod+1               { focus-workspace 1; }
+    Mod+2               { focus-workspace 2; }
+    Mod+3               { focus-workspace 3; }
+    Mod+4               { focus-workspace 4; }
+    Mod+5               { focus-workspace 5; }
+    Mod+6               { focus-workspace 6; }
+    Mod+7               { focus-workspace 7; }
+    Mod+8               { focus-workspace 8; }
+    Mod+9               { focus-workspace 9; }
+
+    Mod+Shift+1         { move-column-to-workspace 1; }
+    Mod+Shift+2         { move-column-to-workspace 2; }
+    Mod+Shift+3         { move-column-to-workspace 3; }
+    Mod+Shift+4         { move-column-to-workspace 4; }
+    Mod+Shift+5         { move-column-to-workspace 5; }
+    Mod+Shift+6         { move-column-to-workspace 6; }
+    Mod+Shift+7         { move-column-to-workspace 7; }
+    Mod+Shift+8         { move-column-to-workspace 8; }
+    Mod+Shift+9         { move-column-to-workspace 9; }
+
+    Mod+Tab             { focus-workspace-previous; }
+
+    // ── Monitor movement ──────────────────────────────────────────────
+    Mod+Ctrl+H          { focus-monitor-left; }
+    Mod+Ctrl+L          { focus-monitor-right; }
+    Mod+Shift+Ctrl+H    { move-column-to-monitor-left; }
+    Mod+Shift+Ctrl+L    { move-column-to-monitor-right; }
+
+    // ── Screenshots ───────────────────────────────────────────────────
+    Print               { screenshot; }
+    Mod+Print           { screenshot-screen; }
+    Mod+Shift+Print     { screenshot-window; }
+
+    // ── Media keys ────────────────────────────────────────────────────
+    XF86AudioRaiseVolume  { spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%+"; }
+    XF86AudioLowerVolume  { spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%-"; }
+    XF86AudioMute         { spawn "wpctl" "set-mute"   "@DEFAULT_AUDIO_SINK@" "toggle"; }
+    XF86AudioMicMute      { spawn "wpctl" "set-mute"   "@DEFAULT_AUDIO_SOURCE@" "toggle"; }
+    XF86MonBrightnessUp   { spawn "brightnessctl" "set" "5%+"; }
+    XF86MonBrightnessDown { spawn "brightnessctl" "set" "5%-"; }
+
+    // ── Lock / Power ──────────────────────────────────────────────────
+    Mod+Escape           { spawn-sh "qs -c noctalia-shell ipc call lockScreen lock"; }
+    Mod+Shift+P          { power-off-monitors; }
+
+    // ── Clipboard ─────────────────────────────────────────────────────
+    Mod+V                { spawn "sh" "-c" "cliphist list | fuzzel -d | cliphist decode | wl-copy"; }
+
+    // ── Applications ──────────────────────────────────────────────────
+    Mod+B                { spawn "firefox"; }
+    Mod+E                { spawn "thunar"; }
+    Mod+N                { spawn "kitty" "-e" "nvim"; }
+    // Telia (TUI coding agent) in a floating kitty. The `telia-float`
+    // app-id matches the window-rule above (open-floating + sized).
+    Mod+T                { spawn "kitty" "--class" "telia-float" "-e" "telia"; }
+
+    // ── Cybersecurity Quick-Launch ────────────────────────────────────
+    Mod+Ctrl+W           { spawn "kitty" "--class" "wireshark-term" "-e" "sudo" "wireshark"; }
+    Mod+Ctrl+B           { spawn "burpsuite"; }
+    Mod+Ctrl+M           { spawn "kitty" "--class" "metasploit" "-e" "msfconsole"; }
+    Mod+Ctrl+N           { spawn "kitty" "--class" "nmap-term" "-e" "sh" "-c" "echo '--- nmap ready ---' && zsh"; }
+    Mod+Ctrl+T           { spawn "kitty" "--class" "htop-term" "-e" "btop"; }
+
+    // ── AI / Local LLM ────────────────────────────────────────────────
+    Mod+Ctrl+A           { spawn "lm-studio"; }
+
+    // ── On-screen keyboard (tablet mode) ──────────────────────────────
+    // Toggle wvkbd: kill if running, otherwise spawn. Useful on
+    // convertibles when the keyboard is detached/folded.
+    Mod+O                { spawn-sh "pkill -x wvkbd-mobintl || wvkbd-mobintl"; }
+
+    // ── Noctalia shell toggle (overview / control center) ────────────
+    // Launcher already bound above (Mod+D, Mod+Space).
+    Mod+S     { spawn-sh "qs -c noctalia-shell ipc call controlCenter toggle"; }
+    Mod+Comma { spawn-sh "qs -c noctalia-shell ipc call settings toggle"; }
+    // Opens Noctalia's wallpaper selector. Picking a wallpaper fires
+    // Noctalia's `wallpaperChange` hook, which runs grogu to repaint
+    // niri/kitty/ghostty/tmux/vim/telia + Noctalia itself.
+    Mod+W     { spawn-sh "qs -c noctalia-shell ipc call wallpaper toggle"; }
+}
+
+// grogu — wallpaper-driven focus-ring colours, regenerated on every Meta+W pick.
+include "grogu.kdl"
