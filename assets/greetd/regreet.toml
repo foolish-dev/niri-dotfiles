@@ -1,0 +1,13 @@
+# ReGreet config — noctalia-styled greetd greeter.
+# Sessions are auto-discovered from /usr/share/wayland-sessions
+# (niri.desktop → niri-session), so no session command is hardcoded here.
+
+[background]
+# Root-owned + readable by the `greeter` user, unlike anything under /home.
+path = "/etc/xdg/quickshell/noctalia-shell/Assets/Wallpaper/noctalia.png"
+fit = "Cover"
+
+[GTK]
+application_prefer_dark_theme = true
+cursor_theme_name = "Bibata-Modern-Classic"
+font_name = "Cantarell 12"
