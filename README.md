@@ -20,7 +20,7 @@ An AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP
 ## Install
 
 ```bash
-cargo install --git https://github.com/foolish-dev/dotfiles --locked && dotctl all
+cargo install --git https://github.com/foolish-dev/niri-dotfiles --locked && dotctl all
 ```
 
 Needs `cargo` (install rustup if you don't have it). `cargo install` fetches the source, builds, and drops `dotctl` into `~/.cargo/bin`. `dotctl all` then clones (or pulls) the repo into `~/dotfiles`, runs `install`, and runs `deploy`.
@@ -28,7 +28,7 @@ Needs `cargo` (install rustup if you don't have it). `cargo install` fetches the
 Manual:
 
 ```bash
-git clone https://github.com/foolish-dev/dotfiles.git ~/dotfiles
+git clone https://github.com/foolish-dev/niri-dotfiles.git ~/dotfiles
 cd ~/dotfiles
 cargo build --release
 ./target/release/dotctl install   # tools + Chaotic AUR + BlackArch, idempotent

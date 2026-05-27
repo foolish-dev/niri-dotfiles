@@ -9,7 +9,7 @@ use std::time::SystemTime;
 #[derive(Parser)]
 #[command(
     version,
-    about = "Installer/deployer for foolish-dev/dotfiles",
+    about = "Installer/deployer for foolish-dev/niri-dotfiles",
     propagate_version = true
 )]
 struct Cli {
@@ -461,7 +461,7 @@ fn ensure_repo(repo: &Path) -> Result<()> {
             "git",
             &[
                 "clone",
-                "https://github.com/foolish-dev/dotfiles.git",
+                "https://github.com/foolish-dev/niri-dotfiles.git",
                 repo_str,
             ],
         )?;

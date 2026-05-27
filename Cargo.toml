@@ -2,8 +2,8 @@
 name = "dotctl"
 version = "0.1.0"
 edition = "2021"
-description = "Installer/deployer for foolish-dev/dotfiles"
-repository = "https://github.com/foolish-dev/dotfiles"
+description = "Installer/deployer for foolish-dev/niri-dotfiles"
+repository = "https://github.com/foolish-dev/niri-dotfiles"
 license = "MIT"
 
 [[bin]]
