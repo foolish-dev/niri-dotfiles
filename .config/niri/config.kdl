@@ -411,7 +411,7 @@ binds {
     Mod+Shift+Up        { move-window-up; }
 
     // ── Column width ──────────────────────────────────────────────────
-    Mod+R               { switch-preset-column-width; }
+    Mod+Shift+R         { switch-preset-column-width; }
     Mod+Minus           { set-column-width "-10%"; }
     Mod+Equal           { set-column-width "+10%"; }
     Mod+Shift+Minus     { set-window-height "-10%"; }
@@ -503,6 +503,8 @@ binds {
     // Noctalia's `wallpaperChange` hook, which runs grogu to repaint
     // niri/kitty/ghostty/tmux/vim/telia + Noctalia itself.
     Mod+W     { spawn-sh "qs -c noctalia-shell ipc call wallpaper toggle"; }
+    // Randomize: one random wallpaper applied to all monitors (fires grogu too).
+    Mod+R     { spawn-sh "qs -c noctalia-shell ipc call wallpaper random all"; }
 }
 
 // grogu — wallpaper-driven focus-ring colours, regenerated on every Meta+W pick.
