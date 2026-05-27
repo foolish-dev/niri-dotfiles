@@ -795,6 +795,14 @@ fn setup_gitconfig(repo: &Path, h: &Path, backup_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Canonical marker that the Niri base desktop is installed. dotctl deploys
+/// configs for it but never installs it — that's foolish-dev/distro-work's job.
+const BASE_DESKTOP_MARKER: &str = "niri";
+const BASE_DESKTOP_HINT: &str = "niri not found — dotctl deploys dotfiles but not the base desktop \
+    (compositor / terminal / launcher / clipboard). Install those first via foolish-dev/distro-work \
+    (or an equivalent Arch + Niri setup); otherwise the niri/fuzzel/kitty/etc. configs deployed here \
+    target software that isn't present.";
+
 fn deploy(repo: &Path) -> Result<()> {
     if !repo.exists() {
         return Err(anyhow!("repo path not found: {}", repo.display()));
@@ -808,6 +816,15 @@ fn deploy(repo: &Path) -> Result<()> {
     let backup_dir = h.join(format!(".dotfiles-backup/{ts}"));
 
     info(&format!("=== Deploying from {} ===", repo.display()));
+
+    // dotctl deploys dotfiles onto an existing Niri base desktop (the
+    // compositor/terminal/launcher/clipboard packages are foolish-dev/distro-work's
+    // job, not dotctl's). `niri` absent ⇒ bare box: deploy the configs anyway
+    // (best-effort), but warn so the user isn't left with configs for software
+    // that isn't installed.
+    if !command_exists(BASE_DESKTOP_MARKER) {
+        warn(BASE_DESKTOP_HINT);
+    }
 
     // .config trees (and starship.toml, a bare file — link_item handles both).
     for d in [
@@ -994,7 +1011,8 @@ mod tests {
     use super::{
         aur_failure_marker_in, command_exists, git_pull, link_item, login_action,
         marker_still_valid_at, pacman_pkg_installed, patch_pkgbuild_unistd, LoginAction,
-        GITCONFIG_STUB, GREETD_CONFIG_BODY, REGREET_CSS, REGREET_TOML,
+        BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, REGREET_CSS,
+        REGREET_TOML,
     };
     use std::fs;
     use std::os::unix::fs::symlink;
@@ -1348,6 +1366,15 @@ mod tests {
         assert!(GREETD_CONFIG_BODY.contains("regreet"));
         assert!(!REGREET_TOML.trim().is_empty());
         assert!(!REGREET_CSS.trim().is_empty());
+    }
+
+    // The base-desktop preflight is a user-visible contract: if it fires, it
+    // must name the actionable marker and where to get the desktop, else it's
+    // just noise. Pin both so a reworded hint can't silently drop them.
+    #[test]
+    fn base_desktop_hint_names_marker_and_distro_work() {
+        assert!(BASE_DESKTOP_HINT.contains(BASE_DESKTOP_MARKER));
+        assert!(BASE_DESKTOP_HINT.contains("distro-work"));
     }
 
     // The ~/.gitconfig stub must [include] both the tracked config and the
