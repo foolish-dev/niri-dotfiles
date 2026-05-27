@@ -923,10 +923,14 @@ fn deploy(repo: &Path) -> Result<()> {
         }
     }
 
-    // Wallpapers: symlink the curated set into ~/Pictures/Wallpapers, the
+    // Wallpapers: copy the curated set into ~/Pictures/Wallpapers, the
     // directory noctalia's wallpaper picker watches (setWallpaperOnAllMonitors
-    // is on, so they apply to every output). link_item backs up any real file
-    // of the same name first, and re-linking ours is idempotent.
+    // is on, so they apply to every output). Copies, NOT symlinks: noctalia's
+    // SDDM-greeter background-sync `cp`s the current wallpaper into the theme,
+    // and a symlink here would carry through — leaving that copy pointed back
+    // into the tracked repo, which then gets clobbered on the next wallpaper
+    // change. copy_item backs up any differing real file first and is a no-op
+    // once deployed.
     let wall_src = repo.join("wallpapers");
     let wall_dest = h.join("Pictures/Wallpapers");
     if wall_src.is_dir() {
@@ -935,7 +939,7 @@ fn deploy(repo: &Path) -> Result<()> {
             let entry = entry?;
             if entry.file_type()?.is_file() {
                 let dst = wall_dest.join(entry.file_name());
-                link_item(&entry.path(), &dst, &backup_dir, &h)?;
+                copy_item(&entry.path(), &dst, &backup_dir, &h)?;
             }
         }
     }
@@ -1018,10 +1022,54 @@ fn link_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
     Ok(())
 }
 
+/// Copy `src` to `dest` as a real file, idempotently. Unlike [`link_item`],
+/// this must NOT leave a symlink into the repo: noctalia's SDDM-greeter
+/// background-sync `cp`s the current wallpaper into the theme's assets, and a
+/// symlink here would carry through, leaving that copy pointed back at the
+/// tracked repo file — which then gets clobbered on the next wallpaper change.
+/// A real copy is inert.
+///
+/// No-op when an identical file is already present. A leftover symlink from an
+/// older symlink-based deploy is dropped (its target — our repo — is left
+/// alone) and replaced with a copy. A *different* real file of the same name
+/// is backed up first, mirroring [`link_item`].
+fn copy_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<()> {
+    if dest.is_symlink() {
+        fs::remove_file(dest)
+            .with_context(|| format!("remove stale symlink {}", dest.display()))?;
+    } else if dest.is_file() {
+        if fs::read(src)? == fs::read(dest)? {
+            return Ok(());
+        }
+        let rel = dest.strip_prefix(home).unwrap_or(dest);
+        let backup_target = backup_dir.join(rel);
+        if let Some(parent) = backup_target.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::rename(dest, &backup_target)
+            .with_context(|| format!("backup {} -> {}", dest.display(), backup_target.display()))?;
+        warn(&format!(
+            "Backed up: {} -> {}",
+            dest.display(),
+            backup_target.display()
+        ));
+    }
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::copy(src, dest).with_context(|| format!("copy {} -> {}", src.display(), dest.display()))?;
+    let pretty = dest
+        .strip_prefix(home)
+        .map(|p| format!("~/{}", p.display()))
+        .unwrap_or_else(|_| dest.display().to_string());
+    ok(&format!("Copied: {pretty}"));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        aur_failure_marker_in, command_exists, git_pull, link_item, login_action,
+        aur_failure_marker_in, command_exists, copy_item, git_pull, link_item, login_action,
         marker_still_valid_at, pacman_pkg_installed, patch_pkgbuild_unistd, LoginAction,
         BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, REGREET_CSS,
         REGREET_TOML,
@@ -1180,6 +1228,85 @@ mod tests {
             fs::read_to_string(&backed_up).expect("read backup"),
             "user-precious",
             "backup must preserve user content byte-for-byte"
+        );
+    }
+
+    #[test]
+    fn copy_item_writes_real_file_when_dest_missing() {
+        let f = LinkItemFixture::new();
+        let src = f.write_src("wall.png", "image-bytes");
+        let dest = f.home.join("Pictures/Wallpapers/wall.png");
+
+        copy_item(&src, &dest, &f.backup, &f.home).expect("copy_item");
+
+        assert!(
+            dest.is_file() && !dest.is_symlink(),
+            "dest must be a real file, not a symlink"
+        );
+        assert_eq!(fs::read_to_string(&dest).expect("read dest"), "image-bytes");
+        assert!(!f.backup.exists(), "no backup when dest was missing");
+    }
+
+    #[test]
+    fn copy_item_is_noop_when_identical_file_present() {
+        let f = LinkItemFixture::new();
+        let src = f.write_src("wall.png", "same");
+        let dest = f.write_dest("Pictures/Wallpapers/wall.png", "same");
+
+        copy_item(&src, &dest, &f.backup, &f.home).expect("copy_item");
+
+        assert!(dest.is_file() && !dest.is_symlink());
+        assert!(
+            !f.backup.exists(),
+            "an identical file must not trigger a backup"
+        );
+    }
+
+    #[test]
+    fn copy_item_replaces_stale_symlink_without_touching_repo() {
+        // Migration case: an older deploy symlinked wallpapers into the repo.
+        // copy_item must drop that symlink and write a real copy, leaving the
+        // repo file untouched — otherwise a greeter `cp` through the symlink
+        // would clobber the tracked wallpaper.
+        let f = LinkItemFixture::new();
+        let src = f.write_src("wall.png", "repo-image");
+        let dest = f.home.join("Pictures/Wallpapers/wall.png");
+        fs::create_dir_all(dest.parent().unwrap()).expect("mkdir dest parent");
+        symlink(&src, &dest).expect("seed symlink");
+
+        copy_item(&src, &dest, &f.backup, &f.home).expect("copy_item");
+
+        assert!(!dest.is_symlink(), "stale symlink must be replaced");
+        assert!(dest.is_file());
+        assert_eq!(fs::read_to_string(&dest).expect("read dest"), "repo-image");
+        assert_eq!(
+            fs::read_to_string(&src).expect("read src"),
+            "repo-image",
+            "the tracked repo file must be left untouched"
+        );
+        assert!(
+            !f.backup.exists(),
+            "dropping our own symlink is not a backup-worthy event"
+        );
+    }
+
+    #[test]
+    fn copy_item_backs_up_differing_real_file() {
+        let f = LinkItemFixture::new();
+        let src = f.write_src("wall.png", "from-repo");
+        let dest = f.write_dest("Pictures/Wallpapers/wall.png", "user-edited");
+
+        copy_item(&src, &dest, &f.backup, &f.home).expect("copy_item");
+
+        assert_eq!(fs::read_to_string(&dest).expect("read dest"), "from-repo");
+        let backed_up = f.backup.join("Pictures/Wallpapers/wall.png");
+        assert!(
+            backed_up.is_file(),
+            "a differing user file must be backed up"
+        );
+        assert_eq!(
+            fs::read_to_string(&backed_up).expect("read backup"),
+            "user-edited"
         );
     }
 
