@@ -40,7 +40,7 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
 
 | Subcommand | What it does |
 |---|---|
-| `dotctl install` | Wire Chaotic AUR + BlackArch (both idempotent), `cargo install` grogu, clone+venv HexStrike AI, `pacman -S` tmux/fastfetch/neovim/noctalia-shell, `yay -S` `sddm-theme-noctalia-git`, and build `noctalia-unofficial-auth-agent-git` from a locally patched PKGBUILD (GCC 16 fix). |
+| `dotctl install` | Wire Chaotic AUR + BlackArch (both idempotent), `cargo install` grogu, clone+venv HexStrike AI, `pacman -S` tmux/fastfetch/neovim/noctalia-shell, `yay -S` `sddm-theme-noctalia-git` (then point SDDM at the `noctalia` theme via `/etc/sddm.conf.d/` and enable `sddm.service`, unless another display manager is already enabled), and build `noctalia-unofficial-auth-agent-git` from a locally patched PKGBUILD (GCC 16 fix). |
 | `dotctl deploy` | Symlink `.config/{teleia,nvim,noctalia,fastfetch,tmux}` and every `.local/bin/*` into `$HOME`. Symlink the hexstrike systemd unit, `daemon-reload`, then `enable --now` it plus the package-provided `bb-auth.service`. Back up displaced files. |
 | `dotctl all` | `install` then `deploy`. |
 

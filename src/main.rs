@@ -23,7 +23,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Install tools: grogu, HexStrike AI, Neovim, tmux, fastfetch, Noctalia (shell + qs + SDDM theme + auth agent)
+    /// Install tools: grogu, HexStrike AI, Neovim, tmux, fastfetch, Noctalia (shell + qs + SDDM login screen + auth agent)
     Install,
     /// Symlink .config/* + .local/bin/* into $HOME and enable user services
     Deploy,
@@ -443,6 +443,84 @@ fn ensure_noctalia_auth_agent() -> Result<()> {
     Ok(())
 }
 
+/// SDDM reads every `*.conf` here; we own one drop-in instead of editing
+/// /etc/sddm.conf so other settings (autologin, numlock, …) are left alone.
+const SDDM_THEME_CONF: &str = "/etc/sddm.conf.d/10-noctalia-theme.conf";
+
+/// The systemd alias symlinked to whichever display manager is enabled.
+/// `systemctl enable sddm.service` writes this; if it already points
+/// elsewhere, another DM owns the login screen.
+const DISPLAY_MANAGER_UNIT: &str = "/etc/systemd/system/display-manager.service";
+
+/// Basename of the unit `display-manager.service` points at (e.g.
+/// `sddm.service`, `gdm.service`), or `None` when no display manager is
+/// enabled. Reading the symlink needs no root, so the "is another DM
+/// already wired up?" decision stays cheap and side-effect-free.
+fn current_display_manager() -> Option<String> {
+    let target = fs::read_link(DISPLAY_MANAGER_UNIT).ok()?;
+    target.file_name()?.to_str().map(str::to_string)
+}
+
+/// What to do with `sddm.service` given the currently-enabled display
+/// manager. Pure, so the "never steal the login screen from another DM"
+/// rule is unit-testable without touching systemd.
+enum LoginAction {
+    AlreadySddm,
+    OtherDm(String),
+    Enable,
+}
+
+fn login_action(current_dm: Option<String>) -> LoginAction {
+    match current_dm {
+        Some(dm) if dm == "sddm.service" => LoginAction::AlreadySddm,
+        Some(other) => LoginAction::OtherDm(other),
+        None => LoginAction::Enable,
+    }
+}
+
+/// Make the noctalia SDDM theme the actual login screen. The theme package
+/// installed above pulls in `sddm` and ships the theme to
+/// /usr/share/sddm/themes/noctalia; this writes the drop-in that selects it
+/// and enables `sddm.service` — but only when no other display manager is
+/// already enabled, so we never silently steal the login screen from gdm/
+/// lightdm/ly. Best-effort like the rest of `install()`: a missing sddm or a
+/// failed `systemctl enable` warns and returns Ok rather than aborting.
+fn setup_noctalia_login() -> Result<()> {
+    if !command_exists("sddm") {
+        warn("sddm not found (theme install may have failed) — skipping login-screen setup");
+        return Ok(());
+    }
+    info("Configuring SDDM to use the noctalia theme ...");
+    run(
+        "sudo",
+        &[
+            "sh",
+            "-c",
+            &format!(
+                "mkdir -p /etc/sddm.conf.d && printf '[Theme]\\nCurrent=noctalia\\n' > {SDDM_THEME_CONF}"
+            ),
+        ],
+    )?;
+    ok("SDDM theme set to noctalia");
+
+    match login_action(current_display_manager()) {
+        LoginAction::AlreadySddm => ok("sddm is already the active display manager"),
+        LoginAction::OtherDm(other) => warn(&format!(
+            "{other} is already the enabled display manager — leaving it in place; \
+             run `sudo systemctl enable sddm.service` to switch to SDDM"
+        )),
+        LoginAction::Enable => {
+            info("Enabling sddm.service ...");
+            if let Err(e) = run("sudo", &["systemctl", "enable", "sddm.service"]) {
+                warn(&format!("failed to enable sddm.service: {e} — continuing"));
+            } else {
+                ok("sddm.service enabled — noctalia login screen active on next boot");
+            }
+        }
+    }
+    Ok(())
+}
+
 fn ensure_repo(repo: &Path) -> Result<()> {
     let repo_str = repo
         .to_str()
@@ -523,12 +601,15 @@ fn install() -> Result<()> {
         &["noctalia-shell", "noctalia-qs"],
     )?;
     // AUR add-ons for the full Noctalia ecosystem.
-    // sddm-theme-noctalia-git (yay): login-screen theme matched to the shell.
+    // sddm-theme-noctalia-git (yay): login-screen theme matched to the shell;
+    //   depends on sddm, so this also pulls in the display manager itself.
+    //   setup_noctalia_login then selects the theme + enables sddm.service.
     // noctalia-unofficial-auth-agent-git: ships /usr/libexec/bb-auth (polkit
     //   agent + GNOME-keyring prompter) and its own bb-auth.service user unit,
     //   which `dotctl deploy` enables. Built from a locally patched PKGBUILD —
     //   see ensure_noctalia_auth_agent for the GCC 16 fix.
     ensure_aur_pkg("Noctalia SDDM theme", "sddm-theme-noctalia-git")?;
+    setup_noctalia_login()?;
     ensure_noctalia_auth_agent()?;
 
     // HexStrike AI
@@ -705,8 +786,8 @@ fn link_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        aur_failure_marker_in, command_exists, link_item, marker_still_valid_at,
-        pacman_pkg_installed, patch_pkgbuild_unistd,
+        aur_failure_marker_in, command_exists, link_item, login_action, marker_still_valid_at,
+        pacman_pkg_installed, patch_pkgbuild_unistd, LoginAction,
     };
     use std::fs;
     use std::os::unix::fs::symlink;
@@ -1012,5 +1093,32 @@ mod tests {
         assert!(marker_still_valid_at(None, Some(t)));
         assert!(marker_still_valid_at(Some(t), None));
         assert!(marker_still_valid_at(None, None));
+    }
+
+    // ── login_action ───────────────────────────────────────────────────────
+    //
+    // The protective invariant for the noctalia login screen: enable
+    // sddm.service only when no display manager is already wired up, so
+    // dotctl never silently steals the login screen from gdm/lightdm/ly.
+
+    #[test]
+    fn login_action_enables_sddm_when_no_dm_is_set() {
+        assert!(matches!(login_action(None), LoginAction::Enable));
+    }
+
+    #[test]
+    fn login_action_is_noop_when_sddm_already_active() {
+        assert!(matches!(
+            login_action(Some("sddm.service".into())),
+            LoginAction::AlreadySddm
+        ));
+    }
+
+    #[test]
+    fn login_action_leaves_another_dm_alone() {
+        match login_action(Some("gdm.service".into())) {
+            LoginAction::OtherDm(dm) => assert_eq!(dm, "gdm.service"),
+            _ => panic!("an already-enabled DM must be left in place, never overridden"),
+        }
     }
 }
