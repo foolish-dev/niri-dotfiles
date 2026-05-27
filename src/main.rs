@@ -404,7 +404,8 @@ fn build_noctalia_auth_agent(pkg: &str) -> Result<()> {
 }
 
 /// Build + install `noctalia-unofficial-auth-agent-git` (ships
-/// `/usr/bin/bb-auth`) from a locally patched PKGBUILD. A plain
+/// `/usr/libexec/bb-auth` + a packaged `bb-auth.service` user unit) from a
+/// locally patched PKGBUILD. A plain
 /// [`ensure_aur_pkg`] won't do: the upstream sources omit `<unistd.h>` and
 /// so fail to compile under GCC 16, and `yay -S` would refetch that broken
 /// PKGBUILD and lose the fix on every run. Reuses the same failure-marker
@@ -523,10 +524,10 @@ fn install() -> Result<()> {
     )?;
     // AUR add-ons for the full Noctalia ecosystem.
     // sddm-theme-noctalia-git (yay): login-screen theme matched to the shell.
-    // noctalia-unofficial-auth-agent-git: ships /usr/bin/bb-auth (polkit
-    //   agent + GNOME-keyring prompter), wired up as a systemd user unit by
-    //   `dotctl deploy`. Built from a locally patched PKGBUILD — see
-    //   ensure_noctalia_auth_agent for the GCC 16 fix.
+    // noctalia-unofficial-auth-agent-git: ships /usr/libexec/bb-auth (polkit
+    //   agent + GNOME-keyring prompter) and its own bb-auth.service user unit,
+    //   which `dotctl deploy` enables. Built from a locally patched PKGBUILD —
+    //   see ensure_noctalia_auth_agent for the GCC 16 fix.
     ensure_aur_pkg("Noctalia SDDM theme", "sddm-theme-noctalia-git")?;
     ensure_noctalia_auth_agent()?;
 
@@ -602,12 +603,13 @@ fn deploy(repo: &Path) -> Result<()> {
         &h,
     )?;
 
-    link_item(
-        &repo.join(".config/systemd/user/noctalia-auth-agent.service"),
-        &h.join(".config/systemd/user/noctalia-auth-agent.service"),
-        &backup_dir,
-        &h,
-    )?;
+    // The noctalia auth agent now uses its packaged `bb-auth.service` unit
+    // (enabled below), so drop the obsolete custom unit symlink an earlier
+    // deploy may have left behind — otherwise it lingers as a dangling link.
+    let stale_unit = h.join(".config/systemd/user/noctalia-auth-agent.service");
+    if stale_unit.is_symlink() {
+        let _ = fs::remove_file(&stale_unit);
+    }
 
     let bin_src = repo.join(".local/bin");
     let bin_dest = h.join(".local/bin");
@@ -631,9 +633,9 @@ fn deploy(repo: &Path) -> Result<()> {
         "run `dotctl install` first to clone + venv hexstrike-ai",
     );
     enable_user_unit(
-        "noctalia-auth-agent.service",
-        Path::new("/usr/bin/bb-auth"),
-        "rm ~/.cache/dotctl/aur-failed/noctalia-unofficial-auth-agent-git and rerun `dotctl install`, or `yay -S noctalia-unofficial-auth-agent-git` manually",
+        "bb-auth.service",
+        Path::new("/usr/libexec/bb-auth"),
+        "reinstall dotctl (or run `dotctl install`) to build noctalia-unofficial-auth-agent-git",
     );
 
     ok("Deploy complete");
