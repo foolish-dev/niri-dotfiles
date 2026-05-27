@@ -186,15 +186,27 @@ fn setup_blackarch() -> Result<()> {
         return Ok(());
     }
     info("Adding BlackArch repository (via strap.sh) ...");
-    let strap = "/tmp/blackarch-strap.sh";
+    // Stage strap.sh in dotctl's own cache dir, not a predictable path in
+    // world-writable /tmp. strap.sh is executed as root, so a symlink/TOCTOU
+    // swap between download and exec in shared /tmp would be a root-exec
+    // primitive (CWE-377/CWE-379); ~/.cache is owned by and writable only by
+    // the user. Remove it afterwards rather than leaving it around.
+    let dir = cache_dir().join("dotctl");
+    fs::create_dir_all(&dir)?;
+    let strap = dir.join("blackarch-strap.sh");
+    let strap_str = strap.to_str().context("strap.sh path is not valid utf-8")?;
     run(
         "curl",
-        &["-fsSL", "-o", strap, "https://blackarch.org/strap.sh"],
+        &["-fsSL", "-o", strap_str, "https://blackarch.org/strap.sh"],
     )?;
-    run("sudo", &["chmod", "+x", strap])?;
+    run("sudo", &["chmod", "+x", strap_str])?;
     // strap.sh prompts for confirmation; pipe `yes` through so the install is
-    // non-interactive like the rest of dotctl.
-    run("sh", &["-c", &format!("yes | sudo {strap}")])?;
+    // non-interactive. Pass the path as a positional arg ("$1") rather than
+    // interpolating it into the script — same injection-safe shape as
+    // `command_exists`, so a path with shell metacharacters can't break out.
+    let res = run("sh", &["-c", r#"yes | sudo "$1""#, "sh", strap_str]);
+    let _ = fs::remove_file(&strap);
+    res?;
     ok("BlackArch repo added");
     Ok(())
 }
