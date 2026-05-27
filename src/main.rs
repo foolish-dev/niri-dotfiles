@@ -638,6 +638,14 @@ fn ensure_repo(repo: &Path) -> Result<()> {
 
 // ── install ───────────────────────────────────────────────────────────────────
 
+/// Whether a Python venv at `venv` is usable. The directory merely existing
+/// isn't enough — a run interrupted mid-creation (Ctrl-C, disk full, a failed
+/// ensurepip) leaves it present but without `bin/pip`, the binary install's
+/// dependency steps actually invoke. That binary is the real readiness signal.
+fn venv_ready(venv: &Path) -> bool {
+    venv.join("bin/pip").exists()
+}
+
 fn install() -> Result<()> {
     if !command_exists("cargo") {
         return Err(anyhow!(
@@ -725,9 +733,16 @@ fn install() -> Result<()> {
     }
 
     let hex_env = hex_dir.join("hexstrike-env");
-    if !hex_env.exists() {
+    // Gate on the venv's `bin/pip`, not just the directory: a run interrupted
+    // mid-venv leaves hexstrike-env/ present but pip-less, which would then
+    // make the pip steps below fail on every retry. `--clear` resets such a
+    // partial venv (no-op on a fresh path) so install self-heals.
+    if !venv_ready(&hex_env) {
         info("Creating HexStrike Python venv ...");
-        run("python3", &["-m", "venv", hex_env.to_str().unwrap()])?;
+        run(
+            "python3",
+            &["-m", "venv", "--clear", hex_env.to_str().unwrap()],
+        )?;
     }
 
     info("Installing HexStrike Python dependencies ...");
@@ -1070,9 +1085,9 @@ fn copy_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 mod tests {
     use super::{
         aur_failure_marker_in, command_exists, copy_item, git_pull, link_item, login_action,
-        marker_still_valid_at, pacman_pkg_installed, patch_pkgbuild_unistd, LoginAction,
-        BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, REGREET_CSS,
-        REGREET_TOML,
+        marker_still_valid_at, pacman_pkg_installed, patch_pkgbuild_unistd, venv_ready,
+        LoginAction, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY,
+        REGREET_CSS, REGREET_TOML,
     };
     use std::fs;
     use std::os::unix::fs::symlink;
@@ -1090,6 +1105,22 @@ mod tests {
     #[test]
     fn does_not_find_a_command_that_does_not_exist() {
         assert!(!command_exists("__dotctl_nonexistent_xyz123"));
+    }
+
+    #[test]
+    fn venv_ready_requires_pip_not_just_the_directory() {
+        // The bug this guards: a venv dir left behind by an interrupted run
+        // (no bin/pip) must trigger a rebuild, not a skip.
+        let tmp = TempDir::new().expect("tempdir");
+        let venv = tmp.path().join("hexstrike-env");
+        fs::create_dir_all(&venv).expect("mkdir venv");
+        assert!(
+            !venv_ready(&venv),
+            "a bare directory (interrupted venv) must not count as ready"
+        );
+        fs::create_dir_all(venv.join("bin")).expect("mkdir bin");
+        fs::write(venv.join("bin/pip"), "#!/bin/sh\n").expect("write pip");
+        assert!(venv_ready(&venv), "bin/pip present ⇒ ready");
     }
 
     #[test]
