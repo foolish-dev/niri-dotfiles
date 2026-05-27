@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -23,7 +24,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Install tools: grogu, HexStrike AI, Neovim, tmux, fastfetch, Noctalia (shell + qs + greetd/tuigreet login + auth agent)
+    /// Install tools: grogu, HexStrike AI, Neovim, tmux, fastfetch, Noctalia (shell + qs + greetd/ReGreet graphical login + auth agent)
     Install,
     /// Symlink .config/* + .local/bin/* into $HOME and enable user services
     Deploy,
@@ -96,6 +97,32 @@ fn run_in(dir: &str, prog: &str, args: &[&str]) -> Result<()> {
         .with_context(|| format!("spawn `{prog}`"))?;
     if !status.success() {
         return Err(anyhow!("`{prog}` exited with {status}"));
+    }
+    Ok(())
+}
+
+/// Write `content` to a root-owned `path` via `sudo tee`, creating parent
+/// directories first. Used for greeter config files whose multi-line TOML/CSS
+/// bodies don't fit the inline `printf` pattern the smaller drop-ins use.
+fn sudo_write(path: &str, content: &str) -> Result<()> {
+    if let Some(dir) = Path::new(path).parent() {
+        run("sudo", &["mkdir", "-p", &dir.display().to_string()])?;
+    }
+    let mut child = Command::new("sudo")
+        .args(["tee", path])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .with_context(|| format!("spawn `sudo tee {path}`"))?;
+    child
+        .stdin
+        .take()
+        .context("sudo tee stdin")?
+        .write_all(content.as_bytes())?;
+    let status = child.wait()?;
+    if !status.success() {
+        return Err(anyhow!("`sudo tee {path}` exited with {status}"));
     }
     Ok(())
 }
@@ -450,11 +477,19 @@ fn ensure_noctalia_auth_agent() -> Result<()> {
 const SDDM_THEME_CONF: &str = "/etc/sddm.conf.d/10-noctalia-theme.conf";
 
 /// greetd's whole config (we own the file; the package ships only an
-/// example). tuigreet launches the niri session via `niri-session`, the
-/// entry the niri package installs under /usr/share/wayland-sessions. The
+/// example). cage hosts ReGreet, which lists the niri session it discovers
+/// under /usr/share/wayland-sessions (niri.desktop → niri-session). The
 /// `greeter` system user is created by the greetd package.
 const GREETD_CONF: &str = "/etc/greetd/config.toml";
-const GREETD_CONFIG_BODY: &str = "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"tuigreet --time --remember --asterisks --cmd niri-session\"\nuser = \"greeter\"\n";
+const GREETD_CONFIG_BODY: &str = "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"dbus-run-session cage -s -mlast -d -- regreet\"\nuser = \"greeter\"\n";
+
+/// ReGreet's own config + GTK CSS, embedded at build time and written to
+/// /etc/greetd/ at install. The CSS approximates the noctalia look; sessions
+/// are auto-discovered from /usr/share/wayland-sessions (niri-session).
+const REGREET_CONF: &str = "/etc/greetd/regreet.toml";
+const REGREET_TOML: &str = include_str!("../assets/greetd/regreet.toml");
+const REGREET_CSS_PATH: &str = "/etc/greetd/regreet.css";
+const REGREET_CSS: &str = include_str!("../assets/greetd/regreet.css");
 
 /// The systemd alias symlinked to whichever display manager is enabled.
 /// `systemctl enable sddm.service` writes this; if it already points
@@ -490,9 +525,10 @@ fn login_action(current_dm: Option<String>) -> LoginAction {
     }
 }
 
-/// Set up the login screen: greetd + tuigreet as the active display
-/// manager, with the noctalia-themed SDDM left installed as a disabled
-/// fallback. Writes /etc/greetd/config.toml and enables `greetd.service` —
+/// Set up the login screen: greetd + ReGreet (graphical, noctalia-themed via
+/// GTK CSS, hosted by cage) as the active display manager, with the
+/// noctalia-themed SDDM left installed as a disabled fallback. Writes the
+/// greetd + ReGreet config under /etc/greetd/ and enables `greetd.service` —
 /// but only when no third-party DM (gdm/lightdm/ly) is already enabled, so
 /// we never silently steal someone else's login screen. `sddm.service` is
 /// ours to replace, so switching off it to greetd is allowed. Best-effort
@@ -520,16 +556,11 @@ fn setup_noctalia_login() -> Result<()> {
         warn("greetd not found (install may have failed) — skipping login-screen setup");
         return Ok(());
     }
-    info("Writing greetd config (tuigreet → niri-session) ...");
-    run(
-        "sudo",
-        &[
-            "sh",
-            "-c",
-            &format!("mkdir -p /etc/greetd && printf '%s' '{GREETD_CONFIG_BODY}' > {GREETD_CONF}"),
-        ],
-    )?;
-    ok("greetd config written");
+    info("Writing greetd + ReGreet config (cage → regreet → niri-session) ...");
+    sudo_write(GREETD_CONF, GREETD_CONFIG_BODY)?;
+    sudo_write(REGREET_CONF, REGREET_TOML)?;
+    sudo_write(REGREET_CSS_PATH, REGREET_CSS)?;
+    ok("greetd + ReGreet config written");
 
     match login_action(current_display_manager()) {
         LoginAction::AlreadyGreetd => ok("greetd is already the active display manager"),
@@ -547,7 +578,7 @@ fn setup_noctalia_login() -> Result<()> {
                     "failed to enable greetd.service: {e} — continuing"
                 ));
             } else {
-                ok("greetd.service enabled — tuigreet login active on next boot");
+                ok("greetd.service enabled — ReGreet login active on next boot");
             }
         }
     }
@@ -657,10 +688,11 @@ fn install() -> Result<()> {
     //   which `dotctl deploy` enables. Built from a locally patched PKGBUILD —
     //   see ensure_noctalia_auth_agent for the GCC 16 fix.
     ensure_aur_pkg("Noctalia SDDM theme", "sddm-theme-noctalia-git")?;
-    // greetd + tuigreet is the active login screen; the SDDM theme above is
-    // installed as a disabled fallback. Both live in the `extra` repo.
+    // greetd + ReGreet (graphical, hosted by cage) is the active login
+    // screen; the SDDM theme above is a disabled fallback. All in `extra`.
     ensure_pacman("greetd", "greetd", &["greetd"])?;
-    ensure_pacman("tuigreet", "tuigreet", &["greetd-tuigreet"])?;
+    ensure_pacman("regreet", "regreet", &["greetd-regreet"])?;
+    ensure_pacman("cage", "cage", &["cage"])?;
     setup_noctalia_login()?;
     ensure_noctalia_auth_agent()?;
 
@@ -840,6 +872,7 @@ mod tests {
     use super::{
         aur_failure_marker_in, command_exists, git_pull, link_item, login_action,
         marker_still_valid_at, pacman_pkg_installed, patch_pkgbuild_unistd, LoginAction,
+        GREETD_CONFIG_BODY, REGREET_CSS, REGREET_TOML,
     };
     use std::fs;
     use std::os::unix::fs::symlink;
@@ -1182,6 +1215,17 @@ mod tests {
             LoginAction::OtherDm(dm) => assert_eq!(dm, "gdm.service"),
             _ => panic!("a third-party DM must be left in place, never overridden"),
         }
+    }
+
+    // The greeter is wired greetd → cage → regreet, with the noctalia-themed
+    // ReGreet config embedded at build time. Guard the wiring so a stray edit
+    // to the command string or an emptied asset fails CI instead of the boot.
+    #[test]
+    fn greetd_launches_cage_and_regreet() {
+        assert!(GREETD_CONFIG_BODY.contains("cage"));
+        assert!(GREETD_CONFIG_BODY.contains("regreet"));
+        assert!(!REGREET_TOML.trim().is_empty());
+        assert!(!REGREET_CSS.trim().is_empty());
     }
 
     // ── git_pull ───────────────────────────────────────────────────────────

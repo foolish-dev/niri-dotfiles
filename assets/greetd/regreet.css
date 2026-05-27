@@ -1,0 +1,46 @@
+/* noctalia-styled ReGreet (GTK CSS approximation of the noctalia shell).
+   Colors mirror ~/.config/noctalia/colors.json (grogu live palette):
+   surface #0e112b · surfaceVariant #272658 · primary #61c3cf
+   onSurface #6ecfdc · outline #462e97. */
+
+window {
+  background-color: #0e112b;
+  color: #6ecfdc;
+  font-family: "Cantarell";
+}
+
+/* Translucent rounded login card over the wallpaper. */
+.background > * {
+  background-color: rgba(14, 17, 43, 0.78);
+  border-radius: 18px;
+  padding: 24px;
+}
+
+label {
+  color: #6ecfdc;
+}
+
+entry,
+combobox button {
+  background-color: #272658;
+  color: #6ecfdc;
+  border: 1px solid #462e97;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+entry:focus {
+  border-color: #61c3cf;
+}
+
+button {
+  background-color: #61c3cf;
+  color: #0e112b;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 16px;
+}
+
+button:hover {
+  background-color: #6ecfdc;
+}
