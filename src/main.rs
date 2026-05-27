@@ -874,6 +874,13 @@ fn deploy(repo: &Path) -> Result<()> {
         let _ = fs::remove_file(&stale_unit);
     }
 
+    // `telia` was renamed to `teleia`; drop the obsolete config symlink an
+    // older deploy left behind so it doesn't dangle at ~/.config/telia.
+    let stale_telia = h.join(".config/telia");
+    if stale_telia.is_symlink() {
+        let _ = fs::remove_file(&stale_telia);
+    }
+
     let bin_src = repo.join(".local/bin");
     let bin_dest = h.join(".local/bin");
     fs::create_dir_all(&bin_dest)?;
