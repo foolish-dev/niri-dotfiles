@@ -9,6 +9,9 @@
 # tmux — generated at runtime by grogu
 .config/tmux/grogu.conf
 
+# kitty — grogu writes the palette fragment at runtime (kitty.conf includes it)
+.config/kitty/grogu.conf
+
 # Go — local telemetry counters, per-machine
 .config/go/
 

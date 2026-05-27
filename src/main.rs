@@ -597,8 +597,8 @@ fn setup_noctalia_login() -> Result<()> {
 
 /// `git -C <repo> pull --ff-only --autostash`. The `--autostash` matters:
 /// `dotctl deploy` symlinks `~/.config/noctalia` straight at this repo, and
-/// grogu rewrites the tracked `colors.json` + `colorschemes/Grogu/Grogu.json`
-/// in place on every wallpaper change (live theme repaint). A plain
+/// grogu rewrites the tracked `colorschemes/Grogu/Grogu.json` in place on
+/// every wallpaper change (live theme repaint). A plain
 /// `git pull --ff-only` then bails on the dirty tree, so re-running
 /// `dotctl all` to update would silently skip the pull once the theme had
 /// ever been repainted. Autostash shelves the repaint, fast-forwards, then
