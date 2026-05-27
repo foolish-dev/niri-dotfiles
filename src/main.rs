@@ -788,6 +788,23 @@ fn deploy(repo: &Path) -> Result<()> {
         }
     }
 
+    // Wallpapers: symlink the curated set into ~/Pictures/Wallpapers, the
+    // directory noctalia's wallpaper picker watches (setWallpaperOnAllMonitors
+    // is on, so they apply to every output). link_item backs up any real file
+    // of the same name first, and re-linking ours is idempotent.
+    let wall_src = repo.join("wallpapers");
+    let wall_dest = h.join("Pictures/Wallpapers");
+    if wall_src.is_dir() {
+        fs::create_dir_all(&wall_dest)?;
+        for entry in fs::read_dir(&wall_src)? {
+            let entry = entry?;
+            if entry.file_type()?.is_file() {
+                let dst = wall_dest.join(entry.file_name());
+                link_item(&entry.path(), &dst, &backup_dir, &h)?;
+            }
+        }
+    }
+
     if let Err(e) = run("systemctl", &["--user", "daemon-reload"]) {
         warn(&format!("systemctl --user daemon-reload failed: {e}"));
     }
