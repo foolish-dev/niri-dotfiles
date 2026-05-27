@@ -79,7 +79,15 @@ fn command_exists(cmd: &str) -> bool {
 }
 
 fn run(prog: &str, args: &[&str]) -> Result<()> {
+    run_in(".", prog, args)
+}
+
+/// Like [`run`] but with an explicit working directory. `makepkg` builds
+/// in the directory that holds the PKGBUILD, so it can't just inherit
+/// dotctl's cwd the way every other command can.
+fn run_in(dir: &str, prog: &str, args: &[&str]) -> Result<()> {
     let status = Command::new(prog)
+        .current_dir(dir)
         .args(args)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
@@ -295,14 +303,109 @@ fn ensure_aur_pkg(label: &str, pkg: &str) -> Result<()> {
     // Yay was present and a build was attempted but pacman still doesn't
     // see the package → real build failure, record it.
     if command_exists("yay") && !pacman_pkg_installed(pkg) {
-        if let Some(parent) = marker.parent() {
-            let _ = fs::create_dir_all(parent);
+        record_aur_failure(&marker);
+    }
+    Ok(())
+}
+
+/// Cache an AUR build failure so the next `dotctl` run skips the known-bad
+/// rebuild instead of burning minutes on it again. Shared by
+/// [`ensure_aur_pkg`] and [`ensure_noctalia_auth_agent`].
+fn record_aur_failure(marker: &Path) {
+    if let Some(parent) = marker.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(marker, "");
+    warn(&format!(
+        "cached failure marker at {} — rm to retry next run",
+        marker.display()
+    ));
+}
+
+/// Force-include `<unistd.h>` into a PKGBUILD's `build()` step. GCC 16
+/// stopped leaking `<unistd.h>` through unrelated headers, so sources that
+/// call `getpid()`/`read()`/etc. without including it no longer compile;
+/// `-include unistd.h` puts it back for every translation unit, and CMake
+/// folds the appended CXXFLAGS/CFLAGS into the configure step. Idempotent,
+/// and a no-op for any PKGBUILD without a `build() {` line to anchor on.
+fn patch_pkgbuild_unistd(pkgbuild: &str) -> String {
+    const MARKER: &str = "# dotctl: force-include <unistd.h> (GCC 16 transitive-include fix)";
+    if pkgbuild.contains(MARKER) {
+        return pkgbuild.to_string();
+    }
+    let replacement = format!(
+        "build() {{\n    {MARKER}\n    export CXXFLAGS+=\" -include unistd.h\"\n    export CFLAGS+=\" -include unistd.h\"\n"
+    );
+    pkgbuild.replacen("build() {\n", &replacement, 1)
+}
+
+/// Clone (or refresh) the AUR repo for `pkg`, patch its PKGBUILD to
+/// force-include `<unistd.h>`, then build + install with `makepkg -si`.
+fn build_noctalia_auth_agent(pkg: &str) -> Result<()> {
+    let dir = cache_dir().join("dotctl/aur").join(pkg);
+    let dir_str = dir.to_str().context("AUR build dir path is not utf-8")?;
+    if dir.join(".git").exists() {
+        info(&format!("Refreshing {pkg} AUR clone ..."));
+        // Best-effort: upstream may have fixed the build since last time.
+        let _ = run("git", &["-C", dir_str, "pull", "--ff-only"]);
+    } else {
+        info(&format!("Cloning {pkg} from the AUR ..."));
+        if let Some(parent) = dir.parent() {
+            fs::create_dir_all(parent)?;
         }
-        let _ = fs::write(&marker, "");
+        run(
+            "git",
+            &[
+                "clone",
+                &format!("https://aur.archlinux.org/{pkg}.git"),
+                dir_str,
+            ],
+        )?;
+    }
+    let pkgbuild = dir.join("PKGBUILD");
+    let patched = patch_pkgbuild_unistd(&fs::read_to_string(&pkgbuild)?);
+    fs::write(&pkgbuild, patched)?;
+    info("Building patched PKGBUILD (force-include <unistd.h>) ...");
+    // -s pulls any missing makedepends, -i installs the built package
+    // (both shell out to sudo pacman — interactive, like the rest of dotctl).
+    run_in(dir_str, "makepkg", &["-si", "--noconfirm"])
+}
+
+/// Build + install `noctalia-unofficial-auth-agent-git` (ships
+/// `/usr/bin/bb-auth`) from a locally patched PKGBUILD. A plain
+/// [`ensure_aur_pkg`] won't do: the upstream sources omit `<unistd.h>` and
+/// so fail to compile under GCC 16, and `yay -S` would refetch that broken
+/// PKGBUILD and lose the fix on every run. Reuses the same failure-marker
+/// bookkeeping, so a still-broken build (a *different* toolchain break) is
+/// skipped next run and the marker self-heals once pacman reports the
+/// package installed.
+fn ensure_noctalia_auth_agent() -> Result<()> {
+    const PKG: &str = "noctalia-unofficial-auth-agent-git";
+    let label = "Noctalia auth agent";
+    let marker = aur_failure_marker(PKG);
+    if pacman_pkg_installed(PKG) {
+        let _ = fs::remove_file(&marker);
+        ok(&format!("{label} already installed"));
+        return Ok(());
+    }
+    if marker.exists() {
         warn(&format!(
-            "cached failure marker at {} — rm to retry next run",
+            "{label} build previously failed — skipping (rm {} to retry)",
             marker.display()
         ));
+        return Ok(());
+    }
+    if !command_exists("git") || !command_exists("makepkg") {
+        warn(&format!(
+            "{label} needs git + makepkg (base-devel) to build — install them then rerun `dotctl install`"
+        ));
+        return Ok(());
+    }
+    if let Err(e) = build_noctalia_auth_agent(PKG) {
+        warn(&format!("{label} build failed: {e} — continuing"));
+    }
+    if !pacman_pkg_installed(PKG) {
+        record_aur_failure(&marker);
     }
     Ok(())
 }
@@ -386,13 +489,14 @@ fn install() -> Result<()> {
         "noctalia-shell",
         &["noctalia-shell", "noctalia-qs"],
     )?;
-    // AUR add-ons for the full Noctalia ecosystem (yay required).
-    // sddm-theme-noctalia-git: login-screen theme matched to the shell.
-    // noctalia-unofficial-auth-agent-git: ships /usr/bin/bb-auth, the
-    //   polkit agent + GNOME-keyring prompter. Wired up as a systemd
-    //   user unit by `dotctl deploy`.
+    // AUR add-ons for the full Noctalia ecosystem.
+    // sddm-theme-noctalia-git (yay): login-screen theme matched to the shell.
+    // noctalia-unofficial-auth-agent-git: ships /usr/bin/bb-auth (polkit
+    //   agent + GNOME-keyring prompter), wired up as a systemd user unit by
+    //   `dotctl deploy`. Built from a locally patched PKGBUILD — see
+    //   ensure_noctalia_auth_agent for the GCC 16 fix.
     ensure_aur_pkg("Noctalia SDDM theme", "sddm-theme-noctalia-git")?;
-    ensure_aur_pkg("Noctalia auth agent", "noctalia-unofficial-auth-agent-git")?;
+    ensure_noctalia_auth_agent()?;
 
     // HexStrike AI
     let hex_dir = home().join("tools/hexstrike-ai");
@@ -566,7 +670,10 @@ fn link_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 
 #[cfg(test)]
 mod tests {
-    use super::{aur_failure_marker_in, command_exists, link_item, pacman_pkg_installed};
+    use super::{
+        aur_failure_marker_in, command_exists, link_item, pacman_pkg_installed,
+        patch_pkgbuild_unistd,
+    };
     use std::fs;
     use std::os::unix::fs::symlink;
     use std::path::PathBuf;
@@ -790,5 +897,50 @@ mod tests {
 
         assert!(dest.is_symlink());
         assert_eq!(fs::read_link(&dest).expect("read_link"), src);
+    }
+
+    // ── patch_pkgbuild_unistd ──────────────────────────────────────────────
+    //
+    // The GCC 16 fix that lets noctalia-unofficial-auth-agent-git compile.
+    // It's pure string surgery on a fetched PKGBUILD, so pin the contract:
+    // inject the force-include at the top of build(), do it exactly once,
+    // and never corrupt a PKGBUILD it can't anchor on.
+
+    #[test]
+    fn patch_pkgbuild_unistd_injects_force_include_at_top_of_build() {
+        let pkgbuild = "pkgname=foo\nbuild() {\n    cmake -B build .\n    cmake --build build\n}\n";
+        let patched = patch_pkgbuild_unistd(pkgbuild);
+
+        let build_open = patched.find("build() {").expect("build() kept");
+        let flag = patched.find("-include unistd.h").expect("flag injected");
+        let first_cmake = patched.find("cmake -B build").expect("cmake kept");
+        assert!(
+            build_open < flag && flag < first_cmake,
+            "force-include must sit at the top of build(), before the build commands"
+        );
+        assert!(patched.contains("export CXXFLAGS+=\" -include unistd.h\""));
+        assert!(patched.contains("export CFLAGS+=\" -include unistd.h\""));
+    }
+
+    #[test]
+    fn patch_pkgbuild_unistd_is_idempotent() {
+        let pkgbuild = "build() {\n    cmake --build build\n}\n";
+        let once = patch_pkgbuild_unistd(pkgbuild);
+        let twice = patch_pkgbuild_unistd(&once);
+        assert_eq!(once, twice, "re-patching must not stack a second copy");
+        assert_eq!(
+            once.matches("-include unistd.h").count(),
+            2,
+            "exactly two exports (CXXFLAGS + CFLAGS), even across repeated patches"
+        );
+    }
+
+    #[test]
+    fn patch_pkgbuild_unistd_leaves_pkgbuild_without_build_untouched() {
+        // No `build() {` to anchor on (e.g. a -bin package) → return the
+        // input verbatim rather than emit a broken file.
+        let pkgbuild =
+            "pkgname=foo-bin\npackage() {\n    install -Dm755 foo \"$pkgdir/usr/bin/foo\"\n}\n";
+        assert_eq!(patch_pkgbuild_unistd(pkgbuild), pkgbuild);
     }
 }
