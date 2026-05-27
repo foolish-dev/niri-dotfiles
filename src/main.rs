@@ -23,7 +23,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Install tools: grogu, HexStrike AI, Neovim, tmux, fastfetch, Noctalia (shell + qs + SDDM login screen + auth agent)
+    /// Install tools: grogu, HexStrike AI, Neovim, tmux, fastfetch, Noctalia (shell + qs + greetd/tuigreet login + auth agent)
     Install,
     /// Symlink .config/* + .local/bin/* into $HOME and enable user services
     Deploy,
@@ -445,7 +445,16 @@ fn ensure_noctalia_auth_agent() -> Result<()> {
 
 /// SDDM reads every `*.conf` here; we own one drop-in instead of editing
 /// /etc/sddm.conf so other settings (autologin, numlock, …) are left alone.
+/// SDDM stays installed as a themed fallback even though greetd is the
+/// active display manager.
 const SDDM_THEME_CONF: &str = "/etc/sddm.conf.d/10-noctalia-theme.conf";
+
+/// greetd's whole config (we own the file; the package ships only an
+/// example). tuigreet launches the niri session via `niri-session`, the
+/// entry the niri package installs under /usr/share/wayland-sessions. The
+/// `greeter` system user is created by the greetd package.
+const GREETD_CONF: &str = "/etc/greetd/config.toml";
+const GREETD_CONFIG_BODY: &str = "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"tuigreet --time --remember --asterisks --cmd niri-session\"\nuser = \"greeter\"\n";
 
 /// The systemd alias symlinked to whichever display manager is enabled.
 /// `systemctl enable sddm.service` writes this; if it already points
@@ -461,60 +470,84 @@ fn current_display_manager() -> Option<String> {
     target.file_name()?.to_str().map(str::to_string)
 }
 
-/// What to do with `sddm.service` given the currently-enabled display
-/// manager. Pure, so the "never steal the login screen from another DM"
-/// rule is unit-testable without touching systemd.
+/// What to do about `greetd.service` given the currently-enabled display
+/// manager. Pure, so the "never steal the login screen from a third-party
+/// DM" rule is unit-testable without touching systemd. `sddm.service` is
+/// treated as ours to replace (it's our own former default + themed
+/// fallback); gdm/lightdm/ly are left alone.
 enum LoginAction {
-    AlreadySddm,
+    AlreadyGreetd,
     OtherDm(String),
     Enable,
 }
 
 fn login_action(current_dm: Option<String>) -> LoginAction {
     match current_dm {
-        Some(dm) if dm == "sddm.service" => LoginAction::AlreadySddm,
+        Some(dm) if dm == "greetd.service" => LoginAction::AlreadyGreetd,
+        Some(dm) if dm == "sddm.service" => LoginAction::Enable,
         Some(other) => LoginAction::OtherDm(other),
         None => LoginAction::Enable,
     }
 }
 
-/// Make the noctalia SDDM theme the actual login screen. The theme package
-/// installed above pulls in `sddm` and ships the theme to
-/// /usr/share/sddm/themes/noctalia; this writes the drop-in that selects it
-/// and enables `sddm.service` — but only when no other display manager is
-/// already enabled, so we never silently steal the login screen from gdm/
-/// lightdm/ly. Best-effort like the rest of `install()`: a missing sddm or a
-/// failed `systemctl enable` warns and returns Ok rather than aborting.
+/// Set up the login screen: greetd + tuigreet as the active display
+/// manager, with the noctalia-themed SDDM left installed as a disabled
+/// fallback. Writes /etc/greetd/config.toml and enables `greetd.service` —
+/// but only when no third-party DM (gdm/lightdm/ly) is already enabled, so
+/// we never silently steal someone else's login screen. `sddm.service` is
+/// ours to replace, so switching off it to greetd is allowed. Best-effort
+/// like the rest of `install()`: a missing greetd or a failed `systemctl`
+/// call warns and returns Ok rather than aborting.
 fn setup_noctalia_login() -> Result<()> {
-    if !command_exists("sddm") {
-        warn("sddm not found (theme install may have failed) — skipping login-screen setup");
+    // Keep the SDDM fallback themed, so a manual `systemctl enable sddm`
+    // still drops the user onto the noctalia greeter.
+    if command_exists("sddm") {
+        info("Theming the SDDM fallback (noctalia) ...");
+        run(
+            "sudo",
+            &[
+                "sh",
+                "-c",
+                &format!(
+                    "mkdir -p /etc/sddm.conf.d && printf '[Theme]\\nCurrent=noctalia\\n' > {SDDM_THEME_CONF}"
+                ),
+            ],
+        )?;
+        ok("SDDM fallback theme set to noctalia");
+    }
+
+    if !command_exists("greetd") {
+        warn("greetd not found (install may have failed) — skipping login-screen setup");
         return Ok(());
     }
-    info("Configuring SDDM to use the noctalia theme ...");
+    info("Writing greetd config (tuigreet → niri-session) ...");
     run(
         "sudo",
         &[
             "sh",
             "-c",
-            &format!(
-                "mkdir -p /etc/sddm.conf.d && printf '[Theme]\\nCurrent=noctalia\\n' > {SDDM_THEME_CONF}"
-            ),
+            &format!("mkdir -p /etc/greetd && printf '%s' '{GREETD_CONFIG_BODY}' > {GREETD_CONF}"),
         ],
     )?;
-    ok("SDDM theme set to noctalia");
+    ok("greetd config written");
 
     match login_action(current_display_manager()) {
-        LoginAction::AlreadySddm => ok("sddm is already the active display manager"),
+        LoginAction::AlreadyGreetd => ok("greetd is already the active display manager"),
         LoginAction::OtherDm(other) => warn(&format!(
             "{other} is already the enabled display manager — leaving it in place; \
-             run `sudo systemctl enable sddm.service` to switch to SDDM"
+             run `sudo systemctl disable {other} && sudo systemctl enable greetd.service` to switch"
         )),
         LoginAction::Enable => {
-            info("Enabling sddm.service ...");
-            if let Err(e) = run("sudo", &["systemctl", "enable", "sddm.service"]) {
-                warn(&format!("failed to enable sddm.service: {e} — continuing"));
+            // Disable sddm first: a second DM can't claim display-manager.service
+            // while sddm still owns the alias. Harmless no-op when sddm isn't set.
+            let _ = run("sudo", &["systemctl", "disable", "sddm.service"]);
+            info("Enabling greetd.service ...");
+            if let Err(e) = run("sudo", &["systemctl", "enable", "greetd.service"]) {
+                warn(&format!(
+                    "failed to enable greetd.service: {e} — continuing"
+                ));
             } else {
-                ok("sddm.service enabled — noctalia login screen active on next boot");
+                ok("greetd.service enabled — tuigreet login active on next boot");
             }
         }
     }
@@ -624,6 +657,10 @@ fn install() -> Result<()> {
     //   which `dotctl deploy` enables. Built from a locally patched PKGBUILD —
     //   see ensure_noctalia_auth_agent for the GCC 16 fix.
     ensure_aur_pkg("Noctalia SDDM theme", "sddm-theme-noctalia-git")?;
+    // greetd + tuigreet is the active login screen; the SDDM theme above is
+    // installed as a disabled fallback. Both live in the `extra` repo.
+    ensure_pacman("greetd", "greetd", &["greetd"])?;
+    ensure_pacman("tuigreet", "tuigreet", &["greetd-tuigreet"])?;
     setup_noctalia_login()?;
     ensure_noctalia_auth_agent()?;
 
@@ -1113,20 +1150,29 @@ mod tests {
 
     // ── login_action ───────────────────────────────────────────────────────
     //
-    // The protective invariant for the noctalia login screen: enable
-    // sddm.service only when no display manager is already wired up, so
-    // dotctl never silently steals the login screen from gdm/lightdm/ly.
+    // The protective invariant for the login screen: enable greetd.service
+    // only when no third-party DM is already wired up, so dotctl never
+    // silently steals the login screen from gdm/lightdm/ly. sddm is our own
+    // former default + themed fallback, so switching off it to greetd is OK.
 
     #[test]
-    fn login_action_enables_sddm_when_no_dm_is_set() {
+    fn login_action_enables_greetd_when_no_dm_is_set() {
         assert!(matches!(login_action(None), LoginAction::Enable));
     }
 
     #[test]
-    fn login_action_is_noop_when_sddm_already_active() {
+    fn login_action_switches_to_greetd_from_our_own_sddm() {
         assert!(matches!(
             login_action(Some("sddm.service".into())),
-            LoginAction::AlreadySddm
+            LoginAction::Enable
+        ));
+    }
+
+    #[test]
+    fn login_action_is_noop_when_greetd_already_active() {
+        assert!(matches!(
+            login_action(Some("greetd.service".into())),
+            LoginAction::AlreadyGreetd
         ));
     }
 
@@ -1134,7 +1180,7 @@ mod tests {
     fn login_action_leaves_another_dm_alone() {
         match login_action(Some("gdm.service".into())) {
             LoginAction::OtherDm(dm) => assert_eq!(dm, "gdm.service"),
-            _ => panic!("an already-enabled DM must be left in place, never overridden"),
+            _ => panic!("a third-party DM must be left in place, never overridden"),
         }
     }
 
