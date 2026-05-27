@@ -497,7 +497,7 @@ fn deploy(repo: &Path) -> Result<()> {
     enable_user_unit(
         "noctalia-auth-agent.service",
         Path::new("/usr/bin/bb-auth"),
-        "run `dotctl install` first to AUR-install noctalia-unofficial-auth-agent-git",
+        "rm ~/.cache/dotctl/aur-failed/noctalia-unofficial-auth-agent-git and rerun `dotctl install`, or `yay -S noctalia-unofficial-auth-agent-git` manually",
     );
 
     ok("Deploy complete");
