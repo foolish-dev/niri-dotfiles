@@ -136,6 +136,8 @@ PKG_CORE=(
   ddcutil
   cava
   wlsunset
+  greetd
+  greetd-tuigreet
   sddm
   sddm-astronaut-theme
   sddm-theme-noctalia-git
@@ -597,7 +599,10 @@ sudo systemctl enable --now NetworkManager 2>/dev/null || true
 sudo systemctl enable --now iwd 2>/dev/null || true
 sudo systemctl enable --now bluetooth 2>/dev/null || true
 sudo systemctl enable --now docker 2>/dev/null || true
-sudo systemctl enable sddm 2>/dev/null || true
+# Display manager: greetd + tuigreet. SDDM stays installed as a disabled
+# fallback (flip back with: systemctl disable greetd && enable sddm).
+sudo systemctl disable sddm 2>/dev/null || true
+sudo systemctl enable greetd 2>/dev/null || true
 sudo systemctl enable --now power-profiles-daemon 2>/dev/null || true
 systemctl --user enable --now pipewire pipewire-pulse wireplumber 2>/dev/null || true
 sudo usermod -aG docker "$USER" 2>/dev/null || true

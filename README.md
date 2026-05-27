@@ -87,7 +87,7 @@ First `nvim` launch auto-installs every plugin and LSP server via lazy.nvim + Ma
 | AI coding agents | **[Telia](https://github.com/foolish-dev/telia)** (TUI) + [OpenCode](https://opencode.ai) (editor-integrated) |
 | Local LLM | [LM Studio](https://lmstudio.ai) on `127.0.0.1:1234` + Ollama |
 | AI security | [HexStrike AI](https://github.com/0x4m4/hexstrike-ai) MCP — 150+ tools over `127.0.0.1:8888` |
-| Display manager | [SDDM](https://github.com/sddm/sddm) — 9 themes, `sddm-theme` switcher |
+| Display manager | [greetd](https://git.sr.ht/~kennylevinsen/greetd) + tuigreet (SDDM kept installed as a disabled fallback, with 9 themes + `sddm-theme` switcher) |
 | File manager | Thunar (`Super+E`) |
 | Audio | PipeWire + WirePlumber |
 | Network | NetworkManager + iwd |

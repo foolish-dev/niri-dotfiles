@@ -324,7 +324,10 @@ fn enable_services(user: &str) -> Result<()> {
     for svc in ["NetworkManager", "iwd", "bluetooth", "docker", "power-profiles-daemon"] {
         let _ = sudo_ok(&["systemctl", "enable", "--now", svc]);
     }
-    let _ = sudo_ok(&["systemctl", "enable", "sddm"]);
+    // Display manager: greetd + tuigreet. SDDM stays installed as a disabled
+    // fallback (flip back with: systemctl disable greetd && enable sddm).
+    let _ = sudo_ok(&["systemctl", "disable", "sddm"]);
+    let _ = sudo_ok(&["systemctl", "enable", "greetd"]);
 
     // User-scope audio stack.
     let _ = run_ok("systemctl", &["--user", "enable", "--now",

@@ -258,6 +258,10 @@ spawn-at-startup "xwayland-satellite"
 
 // Clipboard manager
 spawn-at-startup "wl-paste" "--watch" "cliphist" "store"
+// Keep clipboard contents alive after the source app exits — fixes the
+// "set_text then process dies, paste returns empty" class of bug from
+// arboard, wl-copy in scripts, etc.
+spawn-at-startup "wl-clip-persist" "--clipboard" "regular"
 
 // Idle / lock is handled by noctalia-shell's built-in idle daemon
 // (Control Center → Idle).

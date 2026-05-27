@@ -217,6 +217,17 @@ elif [[ -f "$DOTFILES/etc/systemd/system/sddm-noctalia-sync.path" ]]; then
   fi
 fi
 
+# ── greetd config (system-wide, requires sudo) ───────────────────────────
+if [[ -d "$DOTFILES/etc/greetd" ]]; then
+  info "Deploying greetd config to /etc/greetd/ ..."
+  sudo mkdir -p /etc/greetd
+  for conf in "$DOTFILES/etc/greetd"/*; do
+    [[ -f "$conf" ]] || continue
+    sudo cp "$conf" "/etc/greetd/$(basename "$conf")"
+    ok "  Copied $(basename "$conf")"
+  done
+fi
+
 # ── SDDM config (system-wide, requires sudo) ─────────────────────────────
 if [[ -d "$DOTFILES/etc/sddm.conf.d" ]]; then
   info "Deploying SDDM config to /etc/sddm.conf.d/ ..."

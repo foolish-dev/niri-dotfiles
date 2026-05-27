@@ -380,6 +380,26 @@ fn deploy_sddm_sync_units(dotfiles: &Path, home: &Path) -> Result<()> {
     Ok(())
 }
 
+// ── Section: /etc/greetd/ ─────────────────────────────────────────────────
+
+fn deploy_greetd_conf(dotfiles: &Path) -> Result<()> {
+    let src_dir = dotfiles.join("etc/greetd");
+    if !src_dir.is_dir() { return Ok(()); }
+
+    info("Deploying greetd config to /etc/greetd/ ...");
+    sudo(&["mkdir", "-p", "/etc/greetd"])?;
+    for entry in fs::read_dir(&src_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() { continue; }
+        let name = entry.file_name();
+        let name_s = name.to_string_lossy();
+        sudo(&["cp", &entry.path().display().to_string(),
+               &format!("/etc/greetd/{name_s}")])?;
+        ok(format!("  Copied {name_s}"));
+    }
+    Ok(())
+}
+
 // ── Section: /etc/sddm.conf.d/ ────────────────────────────────────────────
 
 fn deploy_sddm_conf(dotfiles: &Path) -> Result<()> {
@@ -550,6 +570,7 @@ fn real_main() -> Result<()> {
     }
 
     enable_user_services();
+    deploy_greetd_conf(&dotfiles)?;
     deploy_sddm_sync_units(&dotfiles, &home)?;
     deploy_sddm_conf(&dotfiles)?;
     deploy_sddm_astronaut_theme(&dotfiles)?;

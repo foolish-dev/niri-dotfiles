@@ -1,0 +1,10 @@
+# greetd config -- Niri Wayland session via tuigreet
+# /etc/greetd/config.toml
+# Deployed by the installer (deploy_greetd_conf).
+
+[terminal]
+vt = 1
+
+[default_session]
+command = "tuigreet --time --remember --asterisks --cmd niri-session"
+user = "greeter"

@@ -17,7 +17,7 @@ you care about.
 - Adds your user to the `docker` and `wireshark` groups (effectively root for
   container escape / raw packet capture)
 - Enables **systemd units** at boot: NetworkManager, iwd, bluetooth, docker,
-  sddm
+  greetd (and disables sddm; it stays installed as a fallback)
 - Clones and runs [HexStrike AI](https://github.com/0x4m4/hexstrike-ai)
   locally, enabling a user service on `127.0.0.1:8888`
 
@@ -25,7 +25,8 @@ you care about.
 
 - Symlinks configs into `~/.config/`, shell config into `~/.zshrc`,
   scripts into `~/.local/bin/`
-- Copies system-wide SDDM config into `/etc/sddm.conf.d/` (requires sudo)
+- Copies the greetd config into `/etc/greetd/` and system-wide SDDM config
+  into `/etc/sddm.conf.d/` (requires sudo)
 - Installs the SDDM noctalia background-sync `.path` + `.service` units into
   `/etc/systemd/system/` and enables the path watcher (requires sudo).
   Skip with `DOTFILES_SKIP_SDDM_SYNC=1`.
