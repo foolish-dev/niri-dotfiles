@@ -19,7 +19,7 @@ An AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP
 
 ## Install
 
-> **Prerequisite — the base desktop.** `dotctl` installs curated tools (grogu, HexStrike, Neovim, tmux, fastfetch, Noctalia, the greeter) and deploys the dotfiles; it does **not** install the Niri base desktop itself (compositor, terminal, launcher, clipboard, GTK/Qt theming). Set that up first via **[foolish-dev/distro-work](https://github.com/foolish-dev/distro-work)** (or an equivalent Arch + Niri install). `dotctl deploy` warns if `niri` is missing.
+> **The base desktop.** `dotctl install` installs the Niri base desktop (`niri`, `fuzzel`, `kitty`, `wl-clip-persist`) alongside the curated tools (grogu, HexStrike, Neovim, tmux, fastfetch, Noctalia, the greeter), then `dotctl deploy` lays down the dotfiles. Running `dotctl deploy` on its own installs nothing, so it warns if `niri` is missing — run `dotctl install` (or `dotctl all`) first. For the heavier full bundle (ghostty, lazygit, GTK/Qt theming, 300+ BlackArch tools), see **[foolish-dev/distro-work](https://github.com/foolish-dev/distro-work)**.
 
 ```bash
 cargo install --git https://github.com/foolish-dev/niri-dotfiles --locked && dotctl all
