@@ -135,6 +135,14 @@ window-rule {
     opacity 0.88
 }
 
+// Browser: keep fully opaque so page content (images, video, dark themes)
+// renders without the wallpaper bleeding through. Matches both Wayland and
+// XWayland firefox.
+window-rule {
+    match app-id="firefox"
+    opacity 1.0
+}
+
 // Float specific utility windows.
 window-rule {
     match app-id=r#"^org\.gnome\.(Calculator|Calendar|clocks)"#
