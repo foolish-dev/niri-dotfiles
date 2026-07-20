@@ -160,7 +160,7 @@ window-rule {
     open-maximized true
 }
 
-// Telia floating panel — spawned by `Mod+T` (kitty --class telia-float -e telia).
+// Telia floating panel — spawned by `Mod+T` (kitty --class telia-float -e teleia).
 // grogu.kdl paints its focus-ring; this rule lifts it out of the tiled column.
 window-rule {
     match app-id="telia-float"
@@ -486,7 +486,7 @@ binds {
     Mod+N                { spawn "kitty" "-e" "nvim"; }
     // Telia (TUI coding agent) in a floating kitty. The `telia-float`
     // app-id matches the window-rule above (open-floating + sized).
-    Mod+T                { spawn "kitty" "--class" "telia-float" "-e" "telia"; }
+    Mod+T                { spawn "kitty" "--class" "telia-float" "-e" "teleia"; }
 
     // ── Cybersecurity Quick-Launch ────────────────────────────────────
     Mod+Ctrl+W           { spawn "kitty" "--class" "wireshark-term" "-e" "sudo" "wireshark"; }
