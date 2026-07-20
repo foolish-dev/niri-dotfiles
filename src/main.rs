@@ -664,6 +664,14 @@ fn install() -> Result<()> {
     ensure_pacman("curl", "curl", &["curl"])?;
     ensure_pacman("Python 3", "python3", &["python"])?;
 
+    // Niri base desktop — compositor, terminal, launcher, clipboard persistence.
+    // niri/fuzzel/kitty are in Arch `extra`; wl-clip-persist is AUR (keeps
+    // clipboard contents alive after the source window closes).
+    ensure_pacman("niri", "niri", &["niri"])?;
+    ensure_pacman("fuzzel", "fuzzel", &["fuzzel"])?;
+    ensure_pacman("kitty", "kitty", &["kitty"])?;
+    ensure_aur_pkg("wl-clip-persist", "wl-clip-persist")?;
+
     // Chaotic AUR (prereq for noctalia-shell, noctalia-qs on Arch)
     setup_chaotic_aur()?;
 
@@ -822,13 +830,14 @@ fn setup_gitconfig(repo: &Path, h: &Path, backup_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Canonical marker that the Niri base desktop is installed. dotctl deploys
-/// configs for it but never installs it — that's foolish-dev/distro-work's job.
+/// Canonical marker that the Niri base desktop is present. `dotctl install`
+/// installs it (niri/fuzzel/kitty/wl-clip-persist); `dotctl deploy` alone does
+/// not, so it warns when this marker binary is missing.
 const BASE_DESKTOP_MARKER: &str = "niri";
-const BASE_DESKTOP_HINT: &str = "niri not found — dotctl deploys dotfiles but not the base desktop \
-    (compositor / terminal / launcher / clipboard). Install those first via foolish-dev/distro-work \
-    (or an equivalent Arch + Niri setup); otherwise the niri/fuzzel/kitty/etc. configs deployed here \
-    target software that isn't present.";
+const BASE_DESKTOP_HINT: &str = "niri not found — `dotctl deploy` lays down configs but does not \
+    install the base desktop (compositor / terminal / launcher / clipboard). Run `dotctl install` \
+    (or `dotctl all`) first; otherwise the niri/fuzzel/kitty/etc. configs deployed here target \
+    software that isn't present.";
 
 fn deploy(repo: &Path) -> Result<()> {
     if !repo.exists() {
@@ -844,9 +853,9 @@ fn deploy(repo: &Path) -> Result<()> {
 
     info(&format!("=== Deploying from {} ===", repo.display()));
 
-    // dotctl deploys dotfiles onto an existing Niri base desktop (the
-    // compositor/terminal/launcher/clipboard packages are foolish-dev/distro-work's
-    // job, not dotctl's). `niri` absent ⇒ bare box: deploy the configs anyway
+    // `dotctl deploy` lays down dotfiles; `dotctl install` is what installs the
+    // base desktop (compositor/terminal/launcher/clipboard). `niri` absent ⇒
+    // deploy onto a box that hasn't been `install`ed: deploy the configs anyway
     // (best-effort), but warn so the user isn't left with configs for software
     // that isn't installed.
     if !command_exists(BASE_DESKTOP_MARKER) {
@@ -1539,12 +1548,12 @@ mod tests {
     }
 
     // The base-desktop preflight is a user-visible contract: if it fires, it
-    // must name the actionable marker and where to get the desktop, else it's
+    // must name the actionable marker and how to get the desktop, else it's
     // just noise. Pin both so a reworded hint can't silently drop them.
     #[test]
-    fn base_desktop_hint_names_marker_and_distro_work() {
+    fn base_desktop_hint_names_marker_and_install_cmd() {
         assert!(BASE_DESKTOP_HINT.contains(BASE_DESKTOP_MARKER));
-        assert!(BASE_DESKTOP_HINT.contains("distro-work"));
+        assert!(BASE_DESKTOP_HINT.contains("dotctl install"));
     }
 
     // The ~/.gitconfig stub must [include] both the tracked config and the
