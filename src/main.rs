@@ -672,6 +672,27 @@ fn install() -> Result<()> {
     ensure_pacman("kitty", "kitty", &["kitty"])?;
     ensure_aur_pkg("wl-clip-persist", "wl-clip-persist")?;
 
+    // ROG Flow Z13 GZ302EA hardware extras (see `gz302ea-pack bringup`). Detected
+    // by package name, not binary: XRT installs to /opt/xilinx (not on PATH).
+    //   NPU userspace — the in-tree amdxdna driver ships with the kernel; this is
+    //     the XRT + FastFlowLM userspace. Model loads need unlimited memlock.
+    //   Tablet auto-rotation — iio-sensor-proxy (D-Bus activated) + the iio-niri
+    //     bridge (AUR) that feeds orientation to niri.
+    //   On-screen keyboard — wvkbd (AUR); the Mod+O keybind is already in niri.
+    ensure_pacman_pkg("XRT (NPU)", "xrt", &["xrt", "xrt-plugin-amdxdna"])?;
+    ensure_pacman_pkg("FastFlowLM", "fastflowlm", &["fastflowlm"])?;
+    ensure_pacman_pkg(
+        "iio-sensor-proxy",
+        "iio-sensor-proxy",
+        &["iio-sensor-proxy"],
+    )?;
+    ensure_aur_pkg("iio-niri", "iio-niri")?;
+    ensure_aur_pkg("wvkbd", "wvkbd")?;
+    sudo_write(
+        "/etc/security/limits.d/99-amdxdna.conf",
+        "*  soft  memlock  unlimited\n*  hard  memlock  unlimited\n",
+    )?;
+
     // Chaotic AUR (prereq for noctalia-shell, noctalia-qs on Arch)
     setup_chaotic_aur()?;
 
