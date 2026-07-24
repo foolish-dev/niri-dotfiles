@@ -169,6 +169,15 @@ window-rule {
     default-window-height { fixed 700; }
 }
 
+// GZ302EA driver-installer TUI — spawned by `Mod+Shift+I`
+// (kitty --class gz302ea-install -e gz302ea-pack tui). Same floating treatment.
+window-rule {
+    match app-id="gz302ea-install"
+    open-floating true
+    default-column-width { fixed 1000; }
+    default-window-height { fixed 720; }
+}
+
 // ---------------------------------------------------------------------------
 // Layer rules  (Noctalia shell layers)
 // ---------------------------------------------------------------------------
@@ -487,6 +496,8 @@ binds {
     // Telia (TUI coding agent) in a floating kitty. The `telia-float`
     // app-id matches the window-rule above (open-floating + sized).
     Mod+T                { spawn "kitty" "--class" "telia-float" "-e" "teleia"; }
+    // GZ302EA driver installer (TUI) in a floating kitty — see window-rule.
+    Mod+Shift+I          { spawn "kitty" "--class" "gz302ea-install" "-e" "gz302ea-pack" "tui" "--base" "/home/fool/Projects/GZ302EA-active"; }
 
     // ── Cybersecurity Quick-Launch ────────────────────────────────────
     Mod+Ctrl+W           { spawn "kitty" "--class" "wireshark-term" "-e" "sudo" "wireshark"; }
