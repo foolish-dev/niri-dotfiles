@@ -481,6 +481,10 @@ binds {
     XF86AudioMicMute      { spawn "wpctl" "set-mute"   "@DEFAULT_AUDIO_SOURCE@" "toggle"; }
     XF86MonBrightnessUp   { spawn "brightnessctl" "set" "5%+"; }
     XF86MonBrightnessDown { spawn "brightnessctl" "set" "5%-"; }
+    // ROG / Armoury Crate key → rog-control-center (the Linux Armoury Crate).
+    // `--windowed` forces a visible window (its config starts it hidden to tray).
+    // If the button emits a different keysym, `wev` reveals it.
+    XF86Launch1           { spawn "rog-control-center" "--windowed"; }
 
     // ── Lock / Power ──────────────────────────────────────────────────
     Mod+Escape           { spawn-sh "qs -c noctalia-shell ipc call lockScreen lock"; }
