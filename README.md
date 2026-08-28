@@ -128,13 +128,12 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 ├── assets/                                  # README screenshots (desktop, teleia, nvim, tmux, fastfetch, noctalia)
 ├── .config/
 │   ├── teleia/config.toml                   # 10 MCP servers
-│   ├── nvim/                                # lazy.nvim + Mason, 110 plugins, 35 LSPs
+│   ├── nvim/                                # lazy.nvim + Mason, 109 plugins, 35 LSPs
 │   ├── tmux/                                # tmux.conf, scripts/mem.sh
 │   ├── noctalia/                            # settings.json, plugins.json, colorschemes/Grogu/
 │   ├── fastfetch/config.jsonc               # terminal banner
 │   └── systemd/user/
-│       ├── hexstrike-server.service         # :8888, loopback-pinned at install
-│       └── default.target.wants/...         # auto-enable on login
+│       └── hexstrike-server.service         # :8888, loopback-pinned at install
 ├── .local/bin/
 │   └── hexstrike-mcp                        # stdio bridge for MCP clients
 ├── src/main.rs                              # dotctl — Rust installer/deployer

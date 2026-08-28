@@ -721,15 +721,68 @@ fn record_aur_failure(marker: &Path) {
 /// load-bearing in name only.
 ///
 /// Idempotent, and a no-op on a file that has already been patched or that
-/// upstream has fixed. Returns `None` when there was nothing to change, so
-/// the caller can tell "already correct" from "rewritten".
-fn patch_hexstrike_bind(src: &str) -> Option<String> {
-    const NEEDLE: &str = r#"app.run(host="0.0.0.0""#;
-    if !src.contains(NEEDLE) {
-        return None;
+/// upstream has fixed.
+///
+/// Fails *closed*. An earlier version returned `Option<String>` and so had no
+/// way to say "this file does not look like anything I recognise": a `None`
+/// meant both "already loopback" and "needle not found", and the caller
+/// reported the first for both. Any upstream edit that moved the bind out of
+/// the single byte-exact literal this used to match — swapping the quote style
+/// would have been enough, and upstream's own
+/// `API_HOST = os.environ.get('HEXSTRIKE_HOST', '127.0.0.1')` is single-quoted,
+/// so a quote-style sweep over the module is entirely plausible — would then
+/// have printed a green
+/// "already loopback-only" over a server still listening on every interface.
+/// [`BindState::Unrecognized`] is that missing third answer, and the caller
+/// treats it as fatal.
+fn patch_hexstrike_bind(src: &str) -> BindState {
+    if let Some(needle) = ALL_INTERFACE_BINDS.iter().find(|n| src.contains(*n)) {
+        return BindState::Rewritten(src.replace(needle, "app.run(host=API_HOST"));
     }
-    Some(src.replace(NEEDLE, "app.run(host=API_HOST"))
+    if LOOPBACK_BINDS.iter().any(|n| src.contains(n)) {
+        return BindState::AlreadySafe;
+    }
+    BindState::Unrecognized
 }
+
+/// What [`patch_hexstrike_bind`] concluded about a `hexstrike_server.py`.
+#[derive(Debug, PartialEq, Eq)]
+enum BindState {
+    /// An all-interfaces bind was found and rewritten; the payload is the new
+    /// file contents, ready to write back.
+    Rewritten(String),
+    /// The bind is already `API_HOST` or a loopback literal — nothing to do.
+    AlreadySafe,
+    /// No `app.run(host=...)` spelling this function knows. Upstream has
+    /// drifted and the bind cannot be proven loopback-only.
+    Unrecognized,
+}
+
+/// Every spelling of "listen on every interface" that we know how to rewrite.
+/// `""`/`"::"` bind all interfaces just as `0.0.0.0` does.
+const ALL_INTERFACE_BINDS: [&str; 6] = [
+    r#"app.run(host="0.0.0.0""#,
+    r#"app.run(host='0.0.0.0'"#,
+    r#"app.run(host="::""#,
+    r#"app.run(host='::'"#,
+    r#"app.run(host="""#,
+    r#"app.run(host=''"#,
+];
+
+/// Every spelling that already keeps the API off the network. `API_HOST` is
+/// upstream's own variable: it reads `HEXSTRIKE_HOST` and defaults to
+/// `127.0.0.1`, and the unit pins that env var to loopback. Listing the plain
+/// loopback literals too means an upstream that fixes itself is accepted
+/// rather than fought over on every run.
+const LOOPBACK_BINDS: [&str; 7] = [
+    "app.run(host=API_HOST",
+    r#"app.run(host="127.0.0.1""#,
+    r#"app.run(host='127.0.0.1'"#,
+    r#"app.run(host="localhost""#,
+    r#"app.run(host='localhost'"#,
+    r#"app.run(host="::1""#,
+    r#"app.run(host='::1'"#,
+];
 
 /// Force-include `<unistd.h>` into a PKGBUILD's `build()` step. GCC 16
 /// stopped leaking `<unistd.h>` through unrelated headers, so sources that
@@ -1028,9 +1081,11 @@ fn git_pull(repo_str: &str) -> Result<()> {
 /// `git ls-files --unmerged` prints a line per conflicted stage and nothing at
 /// all for a clean index, so emptiness is the signal. A git that can't run at
 /// all answers false — the caller is already reporting that failure.
-fn git_has_conflicts(repo_str: &str) -> bool {
+fn git_has_conflicts(repo: impl AsRef<std::ffi::OsStr>) -> bool {
     Command::new("git")
-        .args(["-C", repo_str, "ls-files", "--unmerged"])
+        .arg("-C")
+        .arg(repo)
+        .args(["ls-files", "--unmerged"])
         .stderr(Stdio::null())
         .output()
         .map(|o| o.status.success() && !o.stdout.is_empty())
@@ -1274,11 +1329,11 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     let server_py = hex_dir.join("hexstrike_server.py");
     match fs::read_to_string(&server_py) {
         Ok(src) => match patch_hexstrike_bind(&src) {
-            Some(patched) => {
+            BindState::Rewritten(patched) => {
                 fs::write(&server_py, &patched).with_context(|| {
                     format!("rewriting the bind address in {}", server_py.display())
                 })?;
-                if patch_hexstrike_bind(&patched).is_some() {
+                if patch_hexstrike_bind(&patched) != BindState::AlreadySafe {
                     return Err(anyhow!(
                         "failed to pin {} to a loopback bind — refusing to continue, \
                          as the API would be reachable from the network",
@@ -1286,8 +1341,48 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
                     ));
                 }
                 ok("HexStrike bind pinned to $HEXSTRIKE_HOST (default 127.0.0.1)");
+                // The file is fixed, but a server that is *already running* keeps
+                // its old socket until it restarts, and the `enable --now` that
+                // deploy() runs later is a no-op on an active unit.
+                //
+                // Only restart when the unit is genuinely active. On a fresh
+                // machine deploy() has not symlinked hexstrike-server.service
+                // yet, and `try-restart` on an unknown unit exits 5 — which
+                // would print "may still be serving on 0.0.0.0" on every first
+                // install, when nothing was ever running. A scary warning that
+                // cries wolf on the common path teaches people to ignore the
+                // one case where it is real. `is-active` also answers no when
+                // there is no user bus at all (SSH without lingering), where
+                // nothing can be running either.
+                let running = Command::new("systemctl")
+                    .args(["--user", "is-active", "--quiet", "hexstrike-server.service"])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false);
+                if running {
+                    if let Err(e) = run(
+                        "systemctl",
+                        &["--user", "try-restart", "hexstrike-server.service"],
+                    ) {
+                        warn(&format!(
+                            "hexstrike-server.service did not restart, so it may still be \
+                             serving the old bind until you restart it by hand: {e}"
+                        ));
+                    }
+                }
             }
-            None => ok("HexStrike bind already loopback-only"),
+            BindState::AlreadySafe => ok("HexStrike bind already loopback-only"),
+            BindState::Unrecognized => {
+                return Err(anyhow!(
+                    "no recognisable `app.run(host=...)` in {} — upstream changed shape, so \
+                     dotctl cannot prove the API is bound to loopback. `/api/command` runs \
+                     arbitrary shell unauthenticated, so this refuses rather than guess. \
+                     Check the bind by hand and teach `patch_hexstrike_bind` the new spelling.",
+                    server_py.display()
+                ));
+            }
         },
         Err(e) => warn(&format!(
             "could not read {} to check its bind address: {e}",
@@ -1381,10 +1476,37 @@ const BASE_DESKTOP_HINT: &str = "niri not found — `dotctl deploy` lays down co
     (or `dotctl all`) first; otherwise the niri/fuzzel/kitty/etc. configs deployed here target \
     software that isn't present.";
 
+/// Refuse to act on a repo with unmerged paths.
+///
+/// `ensure_repo` already bailed on a conflicted autostash, but `dotctl deploy`
+/// is reachable on its own, and `deploy()` symlinks this repo straight into
+/// `~/.config` — so a tree left mid-merge by a hand-run pull would become the
+/// live config with the `<<<<<<<` markers intact.
+///
+/// Its own function rather than inline in `deploy()` so the test can exercise
+/// it without calling `deploy()`, which reads `$HOME` and writes to it.
+fn refuse_conflicted_tree(repo: &Path) -> Result<()> {
+    if git_has_conflicts(repo) {
+        let r = repo.display();
+        return Err(anyhow!(
+            "{r} has unmerged paths — deploying would symlink files with conflict markers \
+             straight into your live config. Resolve them and `git -C {r} stash drop` if a \
+             `dotctl` autostash is still listed, or `git -C {r} merge --abort` if you started \
+             the merge by hand. Then run this again."
+        ));
+    }
+    Ok(())
+}
+
 fn deploy(repo: &Path) -> Result<()> {
     if !repo.exists() {
         return Err(anyhow!("repo path not found: {}", repo.display()));
     }
+    // `ensure_repo` already refuses a conflicted tree, but only on the update
+    // path — `dotctl deploy` calls straight in here, so a tree left conflicted
+    // by a hand-run `git pull` or an abandoned merge would otherwise be
+    // symlinked into the live configs verbatim. Same check, same reason.
+    refuse_conflicted_tree(repo)?;
     let h = home();
 
     let ts = SystemTime::now()
@@ -1513,11 +1635,31 @@ fn deploy(repo: &Path) -> Result<()> {
     if let Err(e) = run("systemctl", &["--user", "daemon-reload"]) {
         warn(&format!("systemctl --user daemon-reload failed: {e}"));
     }
-    enable_user_unit(
-        "hexstrike-server.service",
-        &h.join("tools/hexstrike-ai/hexstrike-env/bin/python3"),
-        "run `dotctl install` first to clone + venv hexstrike-ai",
-    );
+    // install() is what pins the bind, but `dotctl deploy` is reachable on its
+    // own — and `enable --now` here would START the API with whatever bind the
+    // checkout currently holds. A hand-run `git pull` in that checkout is
+    // exactly the drift the install-time rewrite exists to undo, so re-verify
+    // instead of trusting it. An unreadable/absent server.py means there is no
+    // server to expose; enable_user_unit's own prereq check reports that case.
+    let hex_server_py = h.join("tools/hexstrike-ai/hexstrike_server.py");
+    let bind_safe = match fs::read_to_string(&hex_server_py) {
+        Ok(src) => patch_hexstrike_bind(&src) == BindState::AlreadySafe,
+        Err(_) => true,
+    };
+    if bind_safe {
+        enable_user_unit(
+            "hexstrike-server.service",
+            &h.join("tools/hexstrike-ai/hexstrike-env/bin/python3"),
+            "run `dotctl install` first to clone + venv hexstrike-ai",
+        );
+    } else {
+        warn(&format!(
+            "hexstrike-server.service NOT enabled — {} is not bound to loopback. \
+             Starting it would put an unauthenticated command API on every interface. \
+             Run `dotctl install` to re-pin the bind.",
+            hex_server_py.display()
+        ));
+    }
     enable_user_unit(
         "bb-auth.service",
         Path::new("/usr/libexec/bb-auth"),
@@ -1639,9 +1781,10 @@ mod tests {
         git_has_conflicts, git_pull, greetd_is_replaceable, greetd_session_command, link_item,
         login_action, marker_still_valid_at, noctalia_plan, os_release_value, pacman_conf_has_repo,
         pacman_pkg_installed, parse_distro, patch_hexstrike_bind, patch_pkgbuild_unistd,
-        preferred_aur_helper, venv_ready, ChaoticAur, Distro, LoginAction, NoctaliaPlan,
-        AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY,
-        REGREET_CSS, REGREET_TOML,
+        preferred_aur_helper, refuse_conflicted_tree, venv_ready, BindState, ChaoticAur, Distro,
+        LoginAction, NoctaliaPlan, ALL_INTERFACE_BINDS, AUR_HELPERS, BASE_DESKTOP_HINT,
+        BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS,
+        REGREET_TOML,
     };
     use std::fs;
     use std::os::unix::fs::symlink;
@@ -2051,7 +2194,9 @@ mod tests {
     fn patch_hexstrike_bind_rewrites_the_all_interfaces_bind() {
         // The upstream line, verbatim.
         let src = "    app.run(host=\"0.0.0.0\", port=API_PORT, debug=DEBUG_MODE)\n";
-        let out = patch_hexstrike_bind(src).expect("the 0.0.0.0 bind must be rewritten");
+        let BindState::Rewritten(out) = patch_hexstrike_bind(src) else {
+            panic!("the 0.0.0.0 bind must be rewritten");
+        };
         assert!(out.contains("app.run(host=API_HOST, port=API_PORT"));
         assert!(
             !out.contains("0.0.0.0"),
@@ -2061,18 +2206,139 @@ mod tests {
 
     #[test]
     fn patch_hexstrike_bind_is_idempotent_and_leaves_a_fixed_file_alone() {
-        // None means "nothing to do" — the caller reports "already loopback"
-        // rather than rewriting the file on every single run.
+        // AlreadySafe means "nothing to do" — the caller reports "already
+        // loopback" rather than rewriting the file on every single run.
         assert_eq!(
             patch_hexstrike_bind("app.run(host=API_HOST, port=API_PORT)\n"),
-            None
+            BindState::AlreadySafe
         );
         assert_eq!(
             patch_hexstrike_bind("app.run(host=\"127.0.0.1\", port=API_PORT)\n"),
-            None
+            BindState::AlreadySafe
         );
-        let once = patch_hexstrike_bind("app.run(host=\"0.0.0.0\", port=1)\n").unwrap();
-        assert_eq!(patch_hexstrike_bind(&once), None, "second pass is a no-op");
+        let BindState::Rewritten(once) =
+            patch_hexstrike_bind("app.run(host=\"0.0.0.0\", port=1)\n")
+        else {
+            panic!("first pass must rewrite");
+        };
+        assert_eq!(
+            patch_hexstrike_bind(&once),
+            BindState::AlreadySafe,
+            "second pass is a no-op"
+        );
+    }
+
+    #[test]
+    fn every_known_bind_spelling_is_classified() {
+        // Table-driven so the const arrays cannot grow an entry that nothing
+        // exercises. The security contract is per-spelling, not per-example.
+        for needle in ALL_INTERFACE_BINDS {
+            let src = format!("{needle}, port=API_PORT)\n");
+            let BindState::Rewritten(out) = patch_hexstrike_bind(&src) else {
+                panic!("{needle} must be recognised as an all-interfaces bind");
+            };
+            assert!(
+                out.contains("app.run(host=API_HOST"),
+                "{needle} must be rewritten to API_HOST, got: {out}"
+            );
+            assert_eq!(
+                patch_hexstrike_bind(&out),
+                BindState::AlreadySafe,
+                "{needle} must be safe after one rewrite"
+            );
+        }
+        for needle in LOOPBACK_BINDS {
+            let src = format!("{needle}, port=API_PORT)\n");
+            assert_eq!(
+                patch_hexstrike_bind(&src),
+                BindState::AlreadySafe,
+                "{needle} is a loopback bind and must be left alone"
+            );
+        }
+    }
+
+    #[test]
+    fn refuse_conflicted_tree_rejects_an_unresolved_merge() {
+        // deploy() symlinks this repo straight into ~/.config, so a tree with
+        // conflict markers would become the live config.
+        if !command_exists("git") {
+            return; // git-less host; nothing to exercise
+        }
+        let tmp = TempDir::new().expect("tempdir");
+        let repo = tmp.path().join("repo");
+        fs::create_dir_all(&repo).expect("mkdir repo");
+
+        git(&repo, &["init", "-q", "-b", "main"]);
+        git(&repo, &["config", "user.email", "t@t"]);
+        git(&repo, &["config", "user.name", "t"]);
+        fs::write(repo.join("f.json"), "base\n").expect("seed");
+        git(&repo, &["add", "-A"]);
+        git(&repo, &["commit", "-qm", "init"]);
+
+        git(&repo, &["checkout", "-q", "-b", "other"]);
+        fs::write(repo.join("f.json"), "theirs\n").expect("theirs");
+        git(&repo, &["commit", "-qam", "theirs"]);
+        git(&repo, &["checkout", "-q", "main"]);
+        fs::write(repo.join("f.json"), "ours\n").expect("ours");
+        git(&repo, &["commit", "-qam", "ours"]);
+        // Conflicting merge, left unresolved — the state a user lands in after
+        // a hand-run pull goes wrong.
+        let _ = Command::new("git")
+            .args(["-C", repo.to_str().unwrap(), "merge", "other"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+
+        assert!(
+            git_has_conflicts(&repo),
+            "fixture should be conflicted, or the test proves nothing"
+        );
+        // Deliberately NOT deploy(): that reads $HOME and symlinks into it, so
+        // a regression in the guard would scribble over the developer's real
+        // config when the suite runs. The guard is its own function for exactly
+        // that reason.
+        let err = refuse_conflicted_tree(&repo).expect_err("must refuse a conflicted tree");
+        assert!(
+            err.to_string().contains("unmerged paths"),
+            "the error must name the problem: {err}"
+        );
+    }
+
+    #[test]
+    fn patch_hexstrike_bind_fails_closed_on_an_unrecognised_bind() {
+        // The regression this guards: a file whose bind we cannot classify must
+        // never be reported as safe. Single quotes are the cheap real-world
+        // case — upstream's own `os.environ.get('HEXSTRIKE_HOST', '127.0.0.1')`
+        // is single-quoted, so a quote-style sweep is entirely plausible.
+        assert_eq!(
+            patch_hexstrike_bind("socketio.run(app, host=\"0.0.0.0\", port=API_PORT)\n"),
+            BindState::Unrecognized,
+            "a bind shape we do not understand must not pass as safe"
+        );
+        assert_eq!(
+            patch_hexstrike_bind("app.run(host = \"0.0.0.0\", port=1)\n"),
+            BindState::Unrecognized,
+            "whitespace we do not handle must fail closed, not silently pass"
+        );
+        assert_eq!(
+            patch_hexstrike_bind("if __name__ == '__main__':\n    main()\n"),
+            BindState::Unrecognized,
+            "no bind at all is not evidence of a safe bind"
+        );
+
+        // Single-quoted spellings ARE understood, in both directions.
+        let BindState::Rewritten(out) = patch_hexstrike_bind("app.run(host='0.0.0.0', port=1)\n")
+        else {
+            panic!("single-quoted all-interfaces bind must be rewritten");
+        };
+        assert!(
+            !out.contains("0.0.0.0"),
+            "no all-interfaces bind survives: {out}"
+        );
+        assert_eq!(
+            patch_hexstrike_bind("app.run(host='127.0.0.1', port=1)\n"),
+            BindState::AlreadySafe
+        );
     }
 
     #[test]
