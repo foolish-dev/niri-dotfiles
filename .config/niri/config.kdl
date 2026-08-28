@@ -283,7 +283,10 @@ spawn-at-startup "wl-clip-persist" "--clipboard" "regular"
 // Idle / lock is handled by noctalia-shell's built-in idle daemon
 // (Control Center → Idle).
 
-// Polkit agent
+// Polkit agent: bb-auth.service, from noctalia-unofficial-auth-agent-git.
+// It ships its own /usr/lib/systemd/user unit and `dotctl deploy` enables
+// it, so there is deliberately nothing to spawn here. ced20a1 removed the
+// spawn of /usr/lib/polkit-gnome/, which no package on this system installs.
 
 // ---------------------------------------------------------------------------
 // Animations
