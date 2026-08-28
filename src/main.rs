@@ -704,6 +704,45 @@ fn record_aur_failure(marker: &Path) {
     ));
 }
 
+/// What [`patch_hexstrike_bind`] concluded about a `hexstrike_server.py`.
+#[derive(Debug, PartialEq, Eq)]
+enum BindState {
+    /// An all-interfaces bind was found and rewritten; the payload is the new
+    /// file contents, ready to write back.
+    Rewritten(String),
+    /// The bind is already `API_HOST` or a loopback literal — nothing to do.
+    AlreadySafe,
+    /// No `app.run(host=...)` spelling this function knows. Upstream has
+    /// drifted and the bind cannot be proven loopback-only.
+    Unrecognized,
+}
+
+/// Every spelling of "listen on every interface" that we know how to rewrite.
+/// `""`/`"::"` bind all interfaces just as `0.0.0.0` does.
+const ALL_INTERFACE_BINDS: [&str; 6] = [
+    r#"app.run(host="0.0.0.0""#,
+    r#"app.run(host='0.0.0.0'"#,
+    r#"app.run(host="::""#,
+    r#"app.run(host='::'"#,
+    r#"app.run(host="""#,
+    r#"app.run(host=''"#,
+];
+
+/// Every spelling that already keeps the API off the network. `API_HOST` is
+/// upstream's own variable: it reads `HEXSTRIKE_HOST` and defaults to
+/// `127.0.0.1`, and the unit pins that env var to loopback. Listing the plain
+/// loopback literals too means an upstream that fixes itself is accepted
+/// rather than fought over on every run.
+const LOOPBACK_BINDS: [&str; 7] = [
+    "app.run(host=API_HOST",
+    r#"app.run(host="127.0.0.1""#,
+    r#"app.run(host='127.0.0.1'"#,
+    r#"app.run(host="localhost""#,
+    r#"app.run(host='localhost'"#,
+    r#"app.run(host="::1""#,
+    r#"app.run(host='::1'"#,
+];
+
 /// Rewrite HexStrike's hardcoded all-interfaces bind to honour the `API_HOST`
 /// the module already computes.
 ///
@@ -744,45 +783,6 @@ fn patch_hexstrike_bind(src: &str) -> BindState {
     }
     BindState::Unrecognized
 }
-
-/// What [`patch_hexstrike_bind`] concluded about a `hexstrike_server.py`.
-#[derive(Debug, PartialEq, Eq)]
-enum BindState {
-    /// An all-interfaces bind was found and rewritten; the payload is the new
-    /// file contents, ready to write back.
-    Rewritten(String),
-    /// The bind is already `API_HOST` or a loopback literal — nothing to do.
-    AlreadySafe,
-    /// No `app.run(host=...)` spelling this function knows. Upstream has
-    /// drifted and the bind cannot be proven loopback-only.
-    Unrecognized,
-}
-
-/// Every spelling of "listen on every interface" that we know how to rewrite.
-/// `""`/`"::"` bind all interfaces just as `0.0.0.0` does.
-const ALL_INTERFACE_BINDS: [&str; 6] = [
-    r#"app.run(host="0.0.0.0""#,
-    r#"app.run(host='0.0.0.0'"#,
-    r#"app.run(host="::""#,
-    r#"app.run(host='::'"#,
-    r#"app.run(host="""#,
-    r#"app.run(host=''"#,
-];
-
-/// Every spelling that already keeps the API off the network. `API_HOST` is
-/// upstream's own variable: it reads `HEXSTRIKE_HOST` and defaults to
-/// `127.0.0.1`, and the unit pins that env var to loopback. Listing the plain
-/// loopback literals too means an upstream that fixes itself is accepted
-/// rather than fought over on every run.
-const LOOPBACK_BINDS: [&str; 7] = [
-    "app.run(host=API_HOST",
-    r#"app.run(host="127.0.0.1""#,
-    r#"app.run(host='127.0.0.1'"#,
-    r#"app.run(host="localhost""#,
-    r#"app.run(host='localhost'"#,
-    r#"app.run(host="::1""#,
-    r#"app.run(host='::1'"#,
-];
 
 /// Force-include `<unistd.h>` into a PKGBUILD's `build()` step. GCC 16
 /// stopped leaking `<unistd.h>` through unrelated headers, so sources that

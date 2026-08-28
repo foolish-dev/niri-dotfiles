@@ -33,7 +33,7 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 #   "unit configures an IP firewall, but not running as root"
 # Confinement to loopback is enforced where it actually works: `dotctl install`
 # rewrites hexstrike_server.py's hardcoded `app.run(host="0.0.0.0")` to honour
-# API_HOST, which HEXSTRIKE_HOST below sets. This API is UNAUTHENTICATED and
+# API_HOST, which the HEXSTRIKE_HOST above sets. This API is UNAUTHENTICATED and
 # /api/command executes arbitrary shell — never expose it off loopback.
 
 [Install]
