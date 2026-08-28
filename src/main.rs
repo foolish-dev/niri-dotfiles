@@ -1005,7 +1005,36 @@ fn setup_noctalia_login() -> Result<()> {
 /// fragments: settings.json pins `predefinedScheme=Grogu`, so the committed
 /// scheme is the required first-boot default.)
 fn git_pull(repo_str: &str) -> Result<()> {
-    run("git", &["-C", repo_str, "pull", "--ff-only", "--autostash"])
+    run("git", &["-C", repo_str, "pull", "--ff-only", "--autostash"])?;
+    // `--autostash` re-applies the shelved repaint after the fast-forward — but
+    // `git pull` exits 0 even when that apply CONFLICTS. It prints a notice,
+    // leaves conflict markers in the working tree, and keeps the stash. Since
+    // `deploy()` symlinks ~/.config/noctalia straight at this repo, a
+    // conflicted Grogu.json would be handed to noctalia as its live config
+    // while `dotctl all` reported success. Refuse rather than deploy that.
+    if git_has_conflicts(repo_str) {
+        return Err(anyhow!(
+            "`git pull --autostash` fast-forwarded {repo_str}, but re-applying your local changes \
+             conflicted: the working tree has conflict markers and the autostash is still in \
+             `git stash list`. Resolve them and `git stash drop`, or run \
+             `git -C {repo_str} reset --hard && git -C {repo_str} stash pop`. \
+             Refusing to deploy a conflicted config."
+        ));
+    }
+    Ok(())
+}
+
+/// True if `repo_str` has any path in an unmerged (conflicted) index state.
+/// `git ls-files --unmerged` prints a line per conflicted stage and nothing at
+/// all for a clean index, so emptiness is the signal. A git that can't run at
+/// all answers false — the caller is already reporting that failure.
+fn git_has_conflicts(repo_str: &str) -> bool {
+    Command::new("git")
+        .args(["-C", repo_str, "ls-files", "--unmerged"])
+        .stderr(Stdio::null())
+        .output()
+        .map(|o| o.status.success() && !o.stdout.is_empty())
+        .unwrap_or(false)
 }
 
 fn ensure_repo(repo: &Path) -> Result<()> {
@@ -1014,7 +1043,14 @@ fn ensure_repo(repo: &Path) -> Result<()> {
         .ok_or_else(|| anyhow!("repo path is not valid utf-8: {}", repo.display()))?;
     if repo.join(".git").exists() {
         info(&format!("Updating {repo_str} ..."));
-        if git_pull(repo_str).is_err() {
+        if let Err(e) = git_pull(repo_str) {
+            // A conflicted autostash is not a "skip": the tree now holds
+            // conflict markers that deploy() would symlink into live configs.
+            // Everything else (diverged history, no network) leaves the tree
+            // untouched and is safe to continue past, as it always was.
+            if git_has_conflicts(repo_str) {
+                return Err(e);
+            }
             warn("git pull skipped (diverged history, or local changes git couldn't autostash?)");
         }
     } else {
@@ -1600,8 +1636,8 @@ fn copy_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 mod tests {
     use super::{
         aur_failure_marker_in, aur_helper_hint, chaotic_aur_policy, command_exists, copy_item,
-        git_pull, greetd_is_replaceable, greetd_session_command, link_item, login_action,
-        marker_still_valid_at, noctalia_plan, os_release_value, pacman_conf_has_repo,
+        git_has_conflicts, git_pull, greetd_is_replaceable, greetd_session_command, link_item,
+        login_action, marker_still_valid_at, noctalia_plan, os_release_value, pacman_conf_has_repo,
         pacman_pkg_installed, parse_distro, patch_hexstrike_bind, patch_pkgbuild_unistd,
         preferred_aur_helper, venv_ready, ChaoticAur, Distro, LoginAction, NoctaliaPlan,
         AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY,
@@ -1651,6 +1687,80 @@ mod tests {
         assert!(!command_exists("foo; true"));
         assert!(!command_exists("$(true)"));
         assert!(!command_exists("`true`"));
+    }
+
+    #[test]
+    fn git_pull_refuses_when_the_autostash_reapply_conflicts() {
+        // `git pull --ff-only --autostash` exits 0 even when re-applying the
+        // stash conflicts — it just prints a notice and leaves conflict
+        // markers behind. deploy() symlinks ~/.config/noctalia at this repo,
+        // so without this guard `dotctl all` would hand noctalia a JSON file
+        // full of `<<<<<<<` and report success.
+        if !command_exists("git") {
+            return; // git-less host; nothing to exercise
+        }
+        let tmp = TempDir::new().expect("tempdir");
+        let upstream = tmp.path().join("upstream");
+        let clone = tmp.path().join("clone");
+        fs::create_dir_all(&upstream).expect("mkdir upstream");
+
+        git(&upstream, &["init", "-q", "-b", "main"]);
+        git(&upstream, &["config", "user.email", "t@t"]);
+        git(&upstream, &["config", "user.name", "t"]);
+        fs::write(upstream.join("Grogu.json"), "{\"mPrimary\":\"#000\"}\n").expect("seed");
+        git(&upstream, &["add", "-A"]);
+        git(&upstream, &["commit", "-qm", "init"]);
+
+        git(
+            tmp.path(),
+            &[
+                "clone",
+                "-q",
+                upstream.to_str().unwrap(),
+                clone.to_str().unwrap(),
+            ],
+        );
+        git(&clone, &["config", "user.email", "t@t"]);
+        git(&clone, &["config", "user.name", "t"]);
+
+        // Upstream and the local repaint touch THE SAME line — the one case
+        // autostash cannot resolve.
+        fs::write(upstream.join("Grogu.json"), "{\"mPrimary\":\"#fff\"}\n").expect("upstream edit");
+        git(&upstream, &["commit", "-qam", "upstream repaint"]);
+        fs::write(clone.join("Grogu.json"), "{\"mPrimary\":\"#61c3cf\"}\n").expect("local repaint");
+
+        let err = git_pull(clone.to_str().unwrap())
+            .expect_err("a conflicted autostash re-apply must not be reported as success");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("conflict"),
+            "the error must name the problem: {msg}"
+        );
+        assert!(
+            git_has_conflicts(clone.to_str().unwrap()),
+            "the clone really should be in a conflicted state"
+        );
+    }
+
+    #[test]
+    fn git_has_conflicts_is_false_for_a_clean_checkout() {
+        if !command_exists("git") {
+            return;
+        }
+        let tmp = TempDir::new().expect("tempdir");
+        let repo = tmp.path().join("repo");
+        fs::create_dir_all(&repo).expect("mkdir");
+        git(&repo, &["init", "-q", "-b", "main"]);
+        git(&repo, &["config", "user.email", "t@t"]);
+        git(&repo, &["config", "user.name", "t"]);
+        fs::write(repo.join("f"), "x\n").expect("seed");
+        git(&repo, &["add", "-A"]);
+        git(&repo, &["commit", "-qm", "init"]);
+        assert!(!git_has_conflicts(repo.to_str().unwrap()));
+        // A merely *dirty* tree is not a conflicted one — the guard must not
+        // fire on every grogu repaint.
+        fs::write(repo.join("f"), "y\n").expect("dirty");
+        assert!(!git_has_conflicts(repo.to_str().unwrap()));
     }
 
     #[test]
