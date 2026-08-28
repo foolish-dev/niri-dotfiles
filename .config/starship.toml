@@ -62,7 +62,8 @@ disabled = false
 style    = "bg:#7aa2f7 fg:#1a1b26 bold"
 
 [os.symbols]
-Arch = " "
+Arch    = " "
+CachyOS = " "
 
 [directory]
 style             = "bg:#3d59a1 fg:#c0caf5 bold"

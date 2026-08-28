@@ -30,3 +30,8 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo build --all-targets --locked
+      # 51 pure-Rust tests (only dev-dep is tempfile). Deliberately NOT
+      # gated on `command -v pacman`: ubuntu-latest has none, and gating
+      # would mean the distro-detection logic is never exercised anywhere
+      # but the author's own box.
+      - run: cargo test --locked

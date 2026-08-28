@@ -104,6 +104,22 @@ export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
 [[ -f /usr/share/fzf/key-bindings.zsh ]] && source /usr/share/fzf/key-bindings.zsh
 [[ -f /usr/share/fzf/completion.zsh ]]    && source /usr/share/fzf/completion.zsh
 
+# ── CachyOS zsh defaults ───────────────────────────────────────────────────
+# CachyOS ships its zsh setup as a single sourced file (cachyos-zsh-config);
+# /etc/skel/.zshrc is literally just that one `source` line, and there is no
+# system-wide /etc/zsh/zshrc to re-add it. Deploying this .zshrc over ~/.zshrc
+# would otherwise discard it silently. No-op on stock Arch (file absent).
+#
+# It sources oh-my-zsh, whose lib/key-bindings.zsh does a bare `bindkey -e` and
+# whose ENABLE_CORRECTION adds `correct_all` — both of which land *after* the
+# Options/Vi-mode blocks above and silently undo them (verified: main keymap
+# flips viins -> emacs, `^p` demotes to up-line-or-history). Re-assert both.
+# `bindkey -v` alone restores the `^p`/`^n`/… binds above: they were written
+# into the viins keymap, which `bindkey -e` never touched.
+[[ -r /usr/share/cachyos-zsh-config/cachyos-config.zsh ]] && source /usr/share/cachyos-zsh-config/cachyos-config.zsh
+bindkey -v
+unsetopt correct_all
+
 # ── Aliases: General ───────────────────────────────────────────────────────
 alias v="nvim"
 alias vi="nvim"

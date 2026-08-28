@@ -25,22 +25,35 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmd {
     /// Install tools: grogu, HexStrike AI, Neovim, tmux, fastfetch, Noctalia (shell + qs + SDDM noctalia login, greetd/ReGreet fallback + auth agent)
-    Install,
+    Install {
+        /// Never install an AUR helper, even when one is available from a
+        /// configured repo. AUR-only add-ons are then skipped with a warning.
+        #[arg(long)]
+        no_aur_helper: bool,
+    },
     /// Symlink .config/* + home dotfiles + .local/bin/* + wallpapers into $HOME, set up gitconfig, enable user services
     Deploy,
     /// Clone (or pull) the repo, then install + deploy
-    All,
+    All {
+        /// Never install an AUR helper, even when one is available from a
+        /// configured repo. AUR-only add-ons are then skipped with a warning.
+        #[arg(long)]
+        no_aur_helper: bool,
+    },
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let repo = cli.repo.unwrap_or_else(|| home().join("niri-dotfiles"));
+    // Read once, thread everywhere: `install()` takes the distro as a plain
+    // parameter rather than re-probing /etc/os-release at each decision point.
+    let distro = detect_distro();
     match cli.cmd {
-        Cmd::Install => install(),
+        Cmd::Install { no_aur_helper } => install(distro, no_aur_helper),
         Cmd::Deploy => deploy(&repo),
-        Cmd::All => {
+        Cmd::All { no_aur_helper } => {
             ensure_repo(&repo)?;
-            install()?;
+            install(distro, no_aur_helper)?;
             deploy(&repo)
         }
     }
@@ -127,10 +140,223 @@ fn sudo_write(path: &str, content: &str) -> Result<()> {
     Ok(())
 }
 
-fn has_pacman_repo(name: &str) -> bool {
+/// [`sudo_write`], but never destroys an existing different file. Identical
+/// content is a no-op; differing content is copied to `<path>.dotctl-bak`
+/// first.
+///
+/// Used for `/etc/greetd/config.toml`, which dotctl does not exclusively own:
+/// the greetd package ships that exact path as a pacman *backup file* (its
+/// stock body runs `agreety`), and on CachyOS the first-party
+/// `noctalia-greeter` package is configured through it too.
+fn sudo_write_owned(path: &str, content: &str) -> Result<()> {
+    match fs::read_to_string(path) {
+        Ok(existing) if existing == content => {
+            ok(&format!("{path} already current"));
+            Ok(())
+        }
+        Ok(_) => {
+            let bak = format!("{path}.dotctl-bak");
+            run("sudo", &["cp", "-a", path, &bak])?;
+            warn(&format!("Backed up: {path} -> {bak}"));
+            sudo_write(path, content)
+        }
+        Err(_) => sudo_write(path, content),
+    }
+}
+
+// ── Distro detection ──────────────────────────────────────────────────────────
+
+/// Which pacman-family distribution we're running on. Every distro-conditional
+/// decision in dotctl is a `match` on this, so adding the next derivative is a
+/// compile error at each site that has to care rather than a silently-missed
+/// branch.
+///
+/// The safety rule for every one of those matches: **only [`Distro::CachyOs`]
+/// may diverge**. `Arch`, `ArchDerivative` and `Unknown` share the arm that
+/// encodes dotctl's pre-CachyOS behaviour, so a host we can't identify — or one
+/// with no readable os-release at all — keeps doing exactly what it did before.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Distro {
+    /// `ID=cachyos`. Ships the `[cachyos]` repo, which carries yay, paru,
+    /// noctalia-shell and noctalia-qs.
+    CachyOs,
+    /// `ID=arch` — stock Arch Linux.
+    Arch,
+    /// Not Arch or CachyOS by `ID`, but `ID_LIKE` lists `arch`
+    /// (EndeavourOS, Garuda, Artix, Manjaro, …). Treated as Arch.
+    ArchDerivative,
+    /// No os-release, unreadable, or an `ID` we don't recognise. Treated as
+    /// Arch.
+    Unknown,
+}
+
+impl Distro {
+    /// Human-readable name for the banner `install()` prints, so a bug report
+    /// says which branch the run took.
+    fn label(self) -> &'static str {
+        match self {
+            Distro::CachyOs => "CachyOS",
+            Distro::Arch => "Arch Linux",
+            Distro::ArchDerivative => "an Arch derivative (treated as Arch)",
+            Distro::Unknown => "an unrecognised distro (treated as Arch)",
+        }
+    }
+}
+
+/// Strip one matching pair of surrounding single or double quotes, if present.
+fn unquote(v: &str) -> &str {
+    let b = v.as_bytes();
+    if b.len() >= 2 && (b[0] == b'"' || b[0] == b'\'') && b[b.len() - 1] == b[0] {
+        return &v[1..v.len() - 1];
+    }
+    v
+}
+
+/// Value of `key` in an os-release `contents`, unquoted.
+///
+/// os-release is shell-like: `KEY=value`, `KEY="value"`, `KEY='value'`, `#`
+/// comments, blank lines, and — on a file that has travelled through Windows —
+/// CRLF endings, which the leading `trim()` absorbs since `\r` is whitespace.
+/// Later assignments win, matching a shell sourcing the file. Matching is on
+/// the whole key, so `ID_LIKE=arch` alone never answers a query for `ID`.
+fn os_release_value(contents: &str, key: &str) -> Option<String> {
+    let mut found = None;
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        if k.trim() == key {
+            found = Some(unquote(v.trim()).to_string());
+        }
+    }
+    found
+}
+
+/// Classify an os-release file's *contents*. Pure, so every shape it must
+/// survive is testable from a fixture string with no filesystem involved —
+/// which is what keeps these tests green in CI (Ubuntu) and on stock Arch.
+///
+/// Only an exact `ID=cachyos` yields [`Distro::CachyOs`]. A hypothetical
+/// derivative-of-CachyOS (`ID_LIKE="cachyos arch"`) deliberately falls through
+/// to [`Distro::ArchDerivative`]: guessing wrong towards CachyOS skips the
+/// chaotic-aur setup on a box that may need it, whereas guessing wrong towards
+/// Arch is just today's behaviour.
+fn parse_distro(os_release: &str) -> Distro {
+    match os_release_value(os_release, "ID")
+        .unwrap_or_default()
+        .as_str()
+    {
+        "cachyos" => Distro::CachyOs,
+        "arch" => Distro::Arch,
+        _ => {
+            let like = os_release_value(os_release, "ID_LIKE").unwrap_or_default();
+            if like.split_whitespace().any(|w| w == "arch") {
+                Distro::ArchDerivative
+            } else {
+                Distro::Unknown
+            }
+        }
+    }
+}
+
+/// [`parse_distro`] over the real file. `/etc/os-release` is the
+/// admin-overridable copy and wins; `/usr/lib/os-release` is the vendor
+/// default and is the fallback — systemd's own lookup order. Neither readable
+/// ⇒ [`Distro::Unknown`], which every match arm treats as Arch.
+fn detect_distro() -> Distro {
+    fs::read_to_string("/etc/os-release")
+        .or_else(|_| fs::read_to_string("/usr/lib/os-release"))
+        .map(|c| parse_distro(&c))
+        .unwrap_or(Distro::Unknown)
+}
+
+/// Whether `install()` should wire up the Chaotic-AUR repository.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChaoticAur {
+    /// Add it. On stock Arch it is dotctl's only source for an AUR helper —
+    /// neither yay nor paru is in any Arch official repo.
+    Add,
+    /// Skip it. `[cachyos]` already carries yay and paru, and chaotic-aur
+    /// carries neither noctalia-shell nor noctalia-qs (it never did).
+    SkipRedundant,
+}
+
+fn chaotic_aur_policy(distro: Distro) -> ChaoticAur {
+    match distro {
+        Distro::CachyOs => ChaoticAur::SkipRedundant,
+        Distro::Arch | Distro::ArchDerivative | Distro::Unknown => ChaoticAur::Add,
+    }
+}
+
+/// The fix-it hint printed when no AUR helper is available and none can be
+/// installed from a configured repository. Distro-specific because the fix
+/// genuinely differs: on CachyOS a helper is a plain `pacman -S` away; on
+/// stock Arch it is a git clone + makepkg. Telling an Arch user to run
+/// `sudo pacman -S yay` sends them to `error: target not found`.
+fn aur_helper_hint(distro: Distro) -> &'static str {
+    match distro {
+        Distro::CachyOs => "run `sudo pacman -S yay` — the [cachyos] repo carries both yay and paru",
+        Distro::Arch | Distro::ArchDerivative | Distro::Unknown => {
+            "install one by hand (`git clone https://aur.archlinux.org/yay.git && cd yay && makepkg -si`), \
+             or rerun `dotctl install` now that the chaotic-aur repo is configured"
+        }
+    }
+}
+
+/// Noctalia's v4 quickshell package. Exists ONLY in CachyOS's `[cachyos]` repo
+/// — not Arch `extra`, not chaotic-aur, and not the AUR under this name.
+const NOCTALIA_SHELL_PKG: &str = "noctalia-shell";
+
+/// What to do about the Noctalia shell, given whether pacman can resolve it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NoctaliaPlan {
+    /// A configured repository carries it — install it.
+    Install,
+    /// It doesn't resolve; carry the distro-appropriate way to fix that.
+    Unavailable(&'static str),
+}
+
+/// Deliberately never substitutes `extra/noctalia` (the upstream v5 rename):
+/// v5 is a different shell with a different config schema, and this repo's
+/// tracked ~/.config/noctalia plus the `qs -c noctalia-shell` spawns in
+/// .config/niri/config.kdl target the v4 quickshell shell. Silently swapping
+/// it would break the deployed configs on *both* distros.
+fn noctalia_plan(distro: Distro, in_repos: bool) -> NoctaliaPlan {
+    if in_repos {
+        return NoctaliaPlan::Install;
+    }
+    match distro {
+        Distro::CachyOs => NoctaliaPlan::Unavailable(
+            "the [cachyos] repo looks to be missing from /etc/pacman.conf — restore it with \
+             the official cachyos-repo.sh, then rerun `dotctl install`",
+        ),
+        Distro::Arch | Distro::ArchDerivative | Distro::Unknown => NoctaliaPlan::Unavailable(
+            "it is packaged only by CachyOS — add the [cachyos] repo \
+             (https://mirror.cachyos.org/cachyos-repo.tar.xz) and rerun `dotctl install`. \
+             `extra/noctalia` is the upstream v5 rename, NOT a drop-in for the v4 shell \
+             this repo's ~/.config/noctalia targets",
+        ),
+    }
+}
+
+/// True if `contents` (an /etc/pacman.conf) declares a `[name]` section.
+///
+/// Pure so the parse's two quirks are pinned by tests. The `trim()` is
+/// load-bearing: CachyOS's shipped pacman.conf writes its section headers with
+/// a trailing space (`[cachyos-znver4] `). And a commented-out `#[blackarch]`
+/// must NOT count as present, or dotctl would skip a setup step the box needs.
+fn pacman_conf_has_repo(contents: &str, name: &str) -> bool {
     let header = format!("[{name}]");
+    contents.lines().any(|l| l.trim() == header)
+}
+
+fn has_pacman_repo(name: &str) -> bool {
     fs::read_to_string("/etc/pacman.conf")
-        .map(|c| c.lines().any(|l| l.trim() == header))
+        .map(|c| pacman_conf_has_repo(&c, name))
         .unwrap_or(false)
 }
 
@@ -249,6 +475,25 @@ fn pacman_pkg_installed(pkg: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// True if `pkg` can be resolved from a currently-configured binary
+/// repository. Sibling of [`pacman_pkg_installed`]: that one asks "is it
+/// installed?", this one asks "could it be?".
+///
+/// `pacman -Si` exits 0 for a package some enabled repo carries and non-zero
+/// for one that lives only in the AUR or nowhere at all. A missing pacman, or
+/// a sync database that has never been refreshed, also answers false — which
+/// routes every caller to its conservative fallback rather than to a hard
+/// error.
+fn repo_has_pkg(pkg: &str) -> bool {
+    Command::new("pacman")
+        .args(["-Si", pkg])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Same shape as [`ensure_pacman`] but detects already-installed state
 /// via `pacman -Q PKG` instead of `command -v BINARY`. Required for
 /// noctalia-shell, whose pacman package places QML config under
@@ -265,30 +510,88 @@ fn ensure_pacman_pkg(label: &str, pkg: &str, packages: &[&str]) -> Result<()> {
     }
 }
 
-/// AUR-only counterpart to [`pacman_install`]. Requires `yay` on PATH
-/// (the chaotic-aur setup that runs earlier in `install()` covers
-/// noctalia-shell + noctalia-qs without yay; this is for the AUR-only
-/// ecosystem add-ons like `sddm-theme-noctalia-git` and
-/// `noctalia-unofficial-auth-agent-git`).
+/// AUR helpers dotctl knows how to drive, most preferred first. Both accept
+/// the identical `-S --needed --noconfirm` argument vector, so the choice is
+/// only about which binary to spawn. `yay` stays first because it is the one
+/// every pre-CachyOS dotctl used: any box that has it keeps behaving exactly
+/// as it did, and it is the helper the deployed `.zshrc` aliases
+/// (`yays`/`yayi`/`yayu`) target. `paru` — the CachyOS-idiomatic helper — is a
+/// pure addition for hosts that have only it.
+const AUR_HELPERS: [&str; 2] = ["yay", "paru"];
+
+/// First entry of [`AUR_HELPERS`] for which `exists` reports true. The probe
+/// is a parameter so the preference order is unit-testable without installing
+/// anything.
+fn preferred_aur_helper<F: Fn(&str) -> bool>(exists: F) -> Option<&'static str> {
+    AUR_HELPERS.into_iter().find(|h| exists(h))
+}
+
+fn aur_helper() -> Option<&'static str> {
+    preferred_aur_helper(command_exists)
+}
+
+/// Resolve an AUR helper, installing one from a configured binary repository
+/// when none is on PATH and one is available there.
 ///
-/// Best-effort: `yay` is missing OR the AUR build fails (e.g. upstream
-/// PKGBUILD broken against the current toolchain) → warn and return
-/// Ok(()). AUR packages are optional add-ons; a single broken one
-/// shouldn't take down the rest of `dotctl install` (HexStrike clone,
-/// venv, pip install) or the downstream `deploy` step when running
-/// `dotctl all`.
-fn aur_install(label: &str, packages: &[&str]) -> Result<()> {
-    if !command_exists("yay") {
-        warn(&format!(
-            "{label} not installed and `yay` not found — install yay (or another AUR helper) then rerun `dotctl install`; packages: {}",
-            packages.join(" ")
-        ));
-        return Ok(());
+/// This is what makes the genuinely AUR-only packages
+/// (`sddm-theme-noctalia-git`, `wvkbd`, `iio-niri`,
+/// `noctalia-unofficial-auth-agent-git`) reachable on a fresh box. A fresh
+/// CachyOS install ships neither yay nor paru, so before this every one of
+/// them warn-and-skipped, leaving no SDDM theme, no on-screen keyboard and no
+/// auto-rotation; the `[cachyos]` repo carries both helpers, so one
+/// `pacman -S` fixes it there. On stock Arch neither is in an official repo,
+/// so the bootstrap can only succeed once dotctl's own `setup_chaotic_aur`
+/// has run — which is why `install()` asks twice, before and after that step,
+/// rather than reordering the existing `pacman` calls.
+///
+/// Never hard-fails: `pacman -S` is attempted only when [`repo_has_pkg`] says
+/// it will resolve, so a host with no source for a helper lands on the same
+/// warn-and-continue dotctl has always done.
+fn ensure_aur_helper(distro: Distro) -> Option<&'static str> {
+    if let Some(helper) = aur_helper() {
+        ok(&format!("AUR helper: {helper}"));
+        return Some(helper);
     }
-    info(&format!("Installing {label} (AUR) ..."));
+    if let Some(pkg) = AUR_HELPERS.into_iter().find(|p| repo_has_pkg(p)) {
+        info(&format!(
+            "No AUR helper on PATH — installing {pkg} from a configured repo ..."
+        ));
+        if pacman_install(&format!("{pkg} (AUR helper)"), &[pkg]).is_ok() {
+            if let Some(helper) = aur_helper() {
+                ok(&format!("AUR helper ready: {helper}"));
+                return Some(helper);
+            }
+        }
+    }
+    warn(&format!(
+        "no AUR helper found (looked for {}) — AUR-only packages will be skipped; {}",
+        AUR_HELPERS.join(", "),
+        aur_helper_hint(distro)
+    ));
+    None
+}
+
+/// AUR-only counterpart to [`pacman_install`], driven by an already-resolved
+/// helper binary (see [`ensure_aur_helper`]). Used for the packages that are
+/// genuinely in no binary repo on either distro: `sddm-theme-noctalia-git`,
+/// `wvkbd`, `iio-niri`, `noctalia-unofficial-auth-agent-git`.
+///
+/// (An earlier version of this comment claimed the chaotic-aur setup covered
+/// noctalia-shell + noctalia-qs, and that it ran earlier in `install()`. Both
+/// halves were false — chaotic-aur carries neither package, neither name
+/// exists in the AUR, and `setup_chaotic_aur` ran *after* these calls. See
+/// [`noctalia_plan`].)
+///
+/// Best-effort: an AUR build failure (e.g. an upstream PKGBUILD broken against
+/// the current toolchain) warns and returns Ok(()). AUR packages are optional
+/// add-ons; a single broken one shouldn't take down the rest of
+/// `dotctl install` (HexStrike clone, venv, pip install) or the downstream
+/// `deploy` step when running `dotctl all`.
+fn aur_install(helper: &str, label: &str, packages: &[&str]) -> Result<()> {
+    info(&format!("Installing {label} (AUR, via {helper}) ..."));
     let mut args = vec!["-S", "--needed", "--noconfirm"];
     args.extend(packages.iter().copied());
-    if let Err(e) = run("yay", &args) {
+    if let Err(e) = run(helper, &args) {
         warn(&format!(
             "{label} install failed (AUR build break or sudo unavailable): {e} — continuing"
         ));
@@ -356,7 +659,7 @@ fn marker_still_valid_at(marker_mtime: Option<SystemTime>, exe_mtime: Option<Sys
 /// also ignores any marker older than the running dotctl binary — so
 /// reinstalling dotctl retries each previously-failed build once. It
 /// self-heals either way.
-fn ensure_aur_pkg(label: &str, pkg: &str) -> Result<()> {
+fn ensure_aur_pkg(helper: Option<&str>, label: &str, pkg: &str) -> Result<()> {
     let marker = aur_failure_marker(pkg);
     if pacman_pkg_installed(pkg) {
         let _ = fs::remove_file(&marker);
@@ -370,10 +673,18 @@ fn ensure_aur_pkg(label: &str, pkg: &str) -> Result<()> {
         ));
         return Ok(());
     }
-    aur_install(label, &[pkg])?;
-    // Yay was present and a build was attempted but pacman still doesn't
-    // see the package → real build failure, record it.
-    if command_exists("yay") && !pacman_pkg_installed(pkg) {
+    // No helper ⇒ no build was attempted, so record nothing: a failure marker
+    // here would wrongly claim this package is known-broken.
+    let Some(helper) = helper else {
+        warn(&format!(
+            "{label} skipped — no AUR helper available (package: {pkg})"
+        ));
+        return Ok(());
+    };
+    aur_install(helper, label, &[pkg])?;
+    // A build was attempted but pacman still doesn't see the package → real
+    // build failure, record it.
+    if !pacman_pkg_installed(pkg) {
         record_aur_failure(&marker);
     }
     Ok(())
@@ -488,12 +799,55 @@ fn ensure_noctalia_auth_agent() -> Result<()> {
 /// active display manager.
 const SDDM_THEME_CONF: &str = "/etc/sddm.conf.d/10-noctalia-theme.conf";
 
-/// greetd's whole config (we own the file; the package ships only an
-/// example). cage hosts ReGreet, which lists the niri session it discovers
-/// under /usr/share/wayland-sessions (niri.desktop → niri-session). The
-/// `greeter` system user is created by the greetd package.
+/// greetd's whole config. We do *not* exclusively own this file: the greetd
+/// package ships this exact path as a pacman backup file, whose stock body
+/// runs `agreety --cmd /bin/sh` — so a fresh box always has a real config here
+/// before dotctl ever runs (see [`greetd_is_replaceable`]). cage hosts
+/// ReGreet, which lists the niri session it discovers under
+/// /usr/share/wayland-sessions (niri.desktop → niri-session). The `greeter`
+/// system user is created by the greetd package.
 const GREETD_CONF: &str = "/etc/greetd/config.toml";
 const GREETD_CONFIG_BODY: &str = "[terminal]\nvt = 1\n\n[default_session]\ncommand = \"dbus-run-session cage -s -mlast -d -- regreet\"\nuser = \"greeter\"\n";
+
+/// greetd session commands dotctl is entitled to replace: `regreet` is the
+/// greeter we configure ourselves, and `agreety` is the stock command in the
+/// `config.toml` the greetd package itself ships (verified: `pacman -Ql
+/// greetd` lists /etc/greetd/config.toml as a Backup File whose body is
+/// `command = "agreety --cmd /bin/sh"`).
+///
+/// Anything else — CachyOS's `noctalia-greeter`, `tuigreet`, `gtkgreet` — is a
+/// greeter somebody chose on purpose, and dotctl must neither rewrite its
+/// config nor switch greetd.service off underneath it.
+const GREETD_REPLACEABLE_GREETERS: [&str; 2] = ["regreet", "agreety"];
+
+/// The `command = "…"` value from a greetd config body, if present.
+fn greetd_session_command(body: &str) -> Option<&str> {
+    body.lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with('#'))
+        .find_map(|l| l.strip_prefix("command")?.trim_start().strip_prefix('='))
+        .map(|v| v.trim().trim_matches('"').trim_matches('\''))
+}
+
+/// Whether the greetd config at [`GREETD_CONF`] is one dotctl may take over.
+/// Pure, so the "never steal a greeter somebody configured" rule is testable
+/// without root. `None` (no file) counts as replaceable.
+///
+/// Deliberately NOT "is this config byte-identical to ours?" and NOT "does it
+/// mention regreet?": both answer *false* on a fresh box, where greetd's own
+/// package has just written the stock agreety config — which would stop dotctl
+/// writing the ReGreet fallback on every clean install of both distros.
+fn greetd_is_replaceable(body: Option<&str>) -> bool {
+    let Some(body) = body else {
+        return true;
+    };
+    let Some(cmd) = greetd_session_command(body) else {
+        return true;
+    };
+    cmd.split_whitespace()
+        .map(|w| w.rsplit('/').next().unwrap_or(w))
+        .any(|w| GREETD_REPLACEABLE_GREETERS.contains(&w))
+}
 
 /// ReGreet's own config + GTK CSS, embedded at build time and written to
 /// /etc/greetd/ at install. The CSS approximates the noctalia look; sessions
@@ -520,18 +874,20 @@ fn current_display_manager() -> Option<String> {
 /// What to do about `sddm.service` given the currently-enabled display
 /// manager. Pure, so the "never steal the login screen from a third-party
 /// DM" rule is unit-testable without touching systemd. `greetd.service` is
-/// treated as ours to replace (it's the fallback greeter we also configure);
-/// gdm/lightdm/ly are left alone.
+/// ours to replace only when `greetd_replaceable` — i.e. its config runs
+/// regreet (ours) or the stock agreety (see [`greetd_is_replaceable`]); a
+/// greetd hosting somebody else's greeter is treated like gdm/lightdm/ly and
+/// left alone.
 enum LoginAction {
     AlreadySddm,
     OtherDm(String),
     Enable,
 }
 
-fn login_action(current_dm: Option<String>) -> LoginAction {
+fn login_action(current_dm: Option<String>, greetd_replaceable: bool) -> LoginAction {
     match current_dm {
         Some(dm) if dm == "sddm.service" => LoginAction::AlreadySddm,
-        Some(dm) if dm == "greetd.service" => LoginAction::Enable,
+        Some(dm) if dm == "greetd.service" && greetd_replaceable => LoginAction::Enable,
         Some(other) => LoginAction::OtherDm(other),
         None => LoginAction::Enable,
     }
@@ -547,14 +903,29 @@ fn login_action(current_dm: Option<String>) -> LoginAction {
 /// `install()`: a missing sddm or a failed `systemctl` call warns and returns
 /// Ok rather than aborting.
 fn setup_noctalia_login() -> Result<()> {
+    // Read before we would overwrite it: greetd is a shared entry point, and
+    // the answer gates both the config writes and whether greetd.service is
+    // ours to switch off.
+    let greetd_replaceable = greetd_is_replaceable(fs::read_to_string(GREETD_CONF).ok().as_deref());
+
     // Keep greetd + ReGreet configured as a disabled fallback, so a manual
     // `systemctl enable greetd` still lands on the themed graphical greeter.
     if command_exists("greetd") {
-        info("Writing greetd + ReGreet fallback config ...");
-        sudo_write(GREETD_CONF, GREETD_CONFIG_BODY)?;
-        sudo_write(REGREET_CONF, REGREET_TOML)?;
-        sudo_write(REGREET_CSS_PATH, REGREET_CSS)?;
-        ok("greetd + ReGreet fallback config written");
+        if greetd_replaceable {
+            info("Writing greetd + ReGreet fallback config ...");
+            // config.toml is a pacman backup file shipped by greetd itself, so
+            // back up whatever is there before replacing it. regreet.toml and
+            // regreet.css are paths dotctl solely owns.
+            sudo_write_owned(GREETD_CONF, GREETD_CONFIG_BODY)?;
+            sudo_write(REGREET_CONF, REGREET_TOML)?;
+            sudo_write(REGREET_CSS_PATH, REGREET_CSS)?;
+            ok("greetd + ReGreet fallback config written");
+        } else {
+            warn(&format!(
+                "{GREETD_CONF} configures another greeter (on CachyOS, `noctalia-greeter` \
+                 owns this file) — leaving it and greetd.service alone"
+            ));
+        }
     }
 
     if !command_exists("sddm") {
@@ -574,7 +945,7 @@ fn setup_noctalia_login() -> Result<()> {
     )?;
     ok("SDDM theme set to noctalia");
 
-    match login_action(current_display_manager()) {
+    match login_action(current_display_manager(), greetd_replaceable) {
         LoginAction::AlreadySddm => ok("sddm is already the active display manager"),
         LoginAction::OtherDm(other) => warn(&format!(
             "{other} is already the enabled display manager — leaving it in place; \
@@ -646,31 +1017,48 @@ fn venv_ready(venv: &Path) -> bool {
     venv.join("bin/pip").exists()
 }
 
-fn install() -> Result<()> {
+fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     if !command_exists("cargo") {
         return Err(anyhow!(
             "cargo not found — install rust first (https://rustup.rs)"
         ));
     }
+    info(&format!("Distro: {}", distro.label()));
 
     // Prerequisites assumed by later steps. Idempotent — `ensure_pacman`
     // is a no-op when the binary is already on PATH. Without these, a
     // fresh-box install would fail later with cryptic errors:
     //   git    → ensure_repo, cargo install --git for grogu
     //   curl   → setup_blackarch fetches strap.sh
-    //   python → HexStrike AI venv (Arch's package is `python`, the
+    //   python → HexStrike AI venv (the Arch-family package is `python`, the
     //            binary is `python3`)
     ensure_pacman("git", "git", &["git"])?;
     ensure_pacman("curl", "curl", &["curl"])?;
     ensure_pacman("Python 3", "python3", &["python"])?;
 
     // Niri base desktop — compositor, terminal, launcher, clipboard persistence.
-    // niri/fuzzel/kitty are in Arch `extra`; wl-clip-persist is AUR (keeps
-    // clipboard contents alive after the source window closes).
+    // All four are in Arch `extra` (and rebuilt in cachyos-extra-znver4 on
+    // CachyOS). wl-clip-persist keeps clipboard contents alive after the
+    // source window closes; it was routed through the AUR helper here for a
+    // long time, but it has been a plain repo package on both distros all
+    // along (extra 0.5.0-2, ships /usr/bin/wl-clip-persist, and is in no AUR
+    // at all) — so on a helper-less box, which is every fresh CachyOS install,
+    // it silently never installed.
     ensure_pacman("niri", "niri", &["niri"])?;
     ensure_pacman("fuzzel", "fuzzel", &["fuzzel"])?;
     ensure_pacman("kitty", "kitty", &["kitty"])?;
-    ensure_aur_pkg("wl-clip-persist", "wl-clip-persist")?;
+    ensure_pacman("wl-clip-persist", "wl-clip-persist", &["wl-clip-persist"])?;
+
+    // Resolve (or bootstrap) an AUR helper before the first AUR package. On
+    // CachyOS this installs one straight from [cachyos]; on stock Arch it can
+    // only succeed once setup_chaotic_aur further down has run, so we ask
+    // again there rather than reorder the existing pacman calls.
+    let mut helper = if no_aur_helper {
+        info("--no-aur-helper: leaving AUR helper availability as-is");
+        aur_helper()
+    } else {
+        ensure_aur_helper(distro)
+    };
 
     // ROG Flow Z13 GZ302EA hardware extras (see `gz302ea-pack bringup`). Detected
     // by package name, not binary: XRT installs to /opt/xilinx (not on PATH).
@@ -679,6 +1067,8 @@ fn install() -> Result<()> {
     //   Tablet auto-rotation — iio-sensor-proxy (D-Bus activated) + the iio-niri
     //     bridge (AUR) that feeds orientation to niri.
     //   On-screen keyboard — wvkbd (AUR); the Mod+O keybind is already in niri.
+    // All three pacman packages here are in Arch `extra` with cachyos-extra-znver4
+    // rebuilds — correct on both distros, no distro branch wanted.
     ensure_pacman_pkg("XRT (NPU)", "xrt", &["xrt", "xrt-plugin-amdxdna"])?;
     ensure_pacman_pkg("FastFlowLM", "fastflowlm", &["fastflowlm"])?;
     ensure_pacman_pkg(
@@ -686,15 +1076,32 @@ fn install() -> Result<()> {
         "iio-sensor-proxy",
         &["iio-sensor-proxy"],
     )?;
-    ensure_aur_pkg("iio-niri", "iio-niri")?;
-    ensure_aur_pkg("wvkbd", "wvkbd")?;
+    ensure_aur_pkg(helper, "iio-niri", "iio-niri")?;
+    ensure_aur_pkg(helper, "wvkbd", "wvkbd")?;
     sudo_write(
         "/etc/security/limits.d/99-amdxdna.conf",
         "*  soft  memlock  unlimited\n*  hard  memlock  unlimited\n",
     )?;
 
-    // Chaotic AUR (prereq for noctalia-shell, noctalia-qs on Arch)
-    setup_chaotic_aur()?;
+    // Chaotic AUR. On stock Arch this is dotctl's only source for an AUR
+    // helper — neither yay nor paru is in any Arch official repo. It is NOT a
+    // source for noctalia-shell/noctalia-qs; the comment that used to claim so
+    // was wrong (chaotic-aur carries neither, and neither name exists in the
+    // AUR). Skipped on CachyOS, where [cachyos] already carries yay and paru
+    // and where adding a lower-priority third-party repo only widens the
+    // versioned-dependency fallthrough surface for nothing.
+    match chaotic_aur_policy(distro) {
+        ChaoticAur::Add => setup_chaotic_aur()?,
+        ChaoticAur::SkipRedundant => {
+            ok("Chaotic AUR not needed on CachyOS — [cachyos] already provides yay/paru")
+        }
+    }
+
+    // Second chance for the helper: on stock Arch the repo that can supply one
+    // only came into existence a few lines ago.
+    if helper.is_none() && !no_aur_helper {
+        helper = ensure_aur_helper(distro);
+    }
 
     // BlackArch (2800+ offensive-security tools, paired with HexStrike AI)
     setup_blackarch()?;
@@ -721,23 +1128,47 @@ fn install() -> Result<()> {
     ensure_pacman("tmux", "tmux", &["tmux"])?;
     ensure_pacman("fastfetch", "fastfetch", &["fastfetch"])?;
     ensure_pacman("Neovim", "nvim", &["neovim"])?;
-    ensure_pacman_pkg(
-        "Noctalia",
-        "noctalia-shell",
-        &["noctalia-shell", "noctalia-qs"],
-    )?;
+    // Noctalia: the v4 quickshell shell plus its quickshell fork. Both
+    // packages exist ONLY in CachyOS's [cachyos] repo — not Arch `extra`, not
+    // chaotic-aur, not the AUR — so `pacman -Si` is the honest gate. On
+    // CachyOS it resolves and nothing changes; elsewhere we warn with a fix
+    // instead of taking down the rest of install() (and, under `dotctl all`,
+    // the whole deploy) with a hard `?`.
+    //
+    // Do NOT substitute `extra/noctalia` (the v5 rename): different shell,
+    // different config schema, and the tracked ~/.config/noctalia plus the
+    // `qs -c noctalia-shell` spawns in .config/niri/config.kdl target v4. Do
+    // NOT add `quickshell` either — noctalia-qs both provides *and* conflicts
+    // with it, so naming it is a hard conflict on CachyOS.
+    if pacman_pkg_installed(NOCTALIA_SHELL_PKG) {
+        ok("Noctalia already installed");
+    } else {
+        match noctalia_plan(distro, repo_has_pkg(NOCTALIA_SHELL_PKG)) {
+            NoctaliaPlan::Install => ensure_pacman_pkg(
+                "Noctalia",
+                NOCTALIA_SHELL_PKG,
+                &[NOCTALIA_SHELL_PKG, "noctalia-qs"],
+            )?,
+            NoctaliaPlan::Unavailable(hint) => warn(&format!(
+                "Noctalia ({NOCTALIA_SHELL_PKG}) is in no configured repository — {hint}"
+            )),
+        }
+    }
     // AUR add-ons for the full Noctalia ecosystem.
-    // sddm-theme-noctalia-git (yay): login-screen theme matched to the shell;
+    // sddm-theme-noctalia-git (AUR): login-screen theme matched to the shell;
     //   depends on sddm, so this also pulls in the display manager itself.
     //   setup_noctalia_login then selects the theme + enables sddm.service.
     // noctalia-unofficial-auth-agent-git: ships /usr/libexec/bb-auth (polkit
     //   agent + GNOME-keyring prompter) and its own bb-auth.service user unit,
     //   which `dotctl deploy` enables. Built from a locally patched PKGBUILD —
     //   see ensure_noctalia_auth_agent for the GCC 16 fix.
-    ensure_aur_pkg("Noctalia SDDM theme", "sddm-theme-noctalia-git")?;
+    // Genuinely AUR-only on both distros — do NOT swap in CachyOS's
+    //   `noctalia-greeter`, which is a greetd greeter with a bundled wlroots
+    //   compositor, not an SDDM theme.
+    ensure_aur_pkg(helper, "Noctalia SDDM theme", "sddm-theme-noctalia-git")?;
     // The noctalia SDDM theme above is the active login screen; greetd +
     // ReGreet (graphical, hosted by cage) is configured as a disabled
-    // fallback. All in `extra`.
+    // fallback. All in Arch `extra` (rebuilt in cachyos-extra-znver4).
     ensure_pacman("greetd", "greetd", &["greetd"])?;
     ensure_pacman("regreet", "regreet", &["greetd-regreet"])?;
     ensure_pacman("cage", "cage", &["cage"])?;
@@ -1114,10 +1545,12 @@ fn copy_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        aur_failure_marker_in, command_exists, copy_item, git_pull, link_item, login_action,
-        marker_still_valid_at, pacman_pkg_installed, patch_pkgbuild_unistd, venv_ready,
-        LoginAction, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY,
-        REGREET_CSS, REGREET_TOML,
+        aur_failure_marker_in, aur_helper_hint, chaotic_aur_policy, command_exists, copy_item,
+        git_pull, greetd_is_replaceable, greetd_session_command, link_item, login_action,
+        marker_still_valid_at, noctalia_plan, os_release_value, pacman_conf_has_repo,
+        pacman_pkg_installed, parse_distro, patch_pkgbuild_unistd, preferred_aur_helper,
+        venv_ready, ChaoticAur, Distro, LoginAction, NoctaliaPlan, AUR_HELPERS, BASE_DESKTOP_HINT,
+        BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, REGREET_CSS, REGREET_TOML,
     };
     use std::fs;
     use std::os::unix::fs::symlink;
@@ -1167,7 +1600,8 @@ mod tests {
 
     #[test]
     fn pacman_pkg_installed_returns_false_for_missing_pkg() {
-        // `pacman -Q __dotctl_missing_xyz` exits non-zero on Arch and
+        // `pacman -Q __dotctl_missing_xyz` exits non-zero on any pacman
+        // host (Arch, CachyOS, EndeavourOS, …) and
         // also returns false on hosts without pacman at all (spawn
         // failure caught by unwrap_or(false)) — covers both CI shapes.
         assert!(!pacman_pkg_installed("__dotctl_missing_pkg_xyz"));
@@ -1184,10 +1618,10 @@ mod tests {
     }
 
     #[test]
-    fn pacman_pkg_installed_finds_base_filesystem_pkg_on_arch() {
-        // The `filesystem` package is part of `base` and is installed
-        // on every Arch host, but it ships /usr/bin contents owned by
-        // other packages and has no command of the same name — so
+    fn pacman_pkg_installed_finds_base_filesystem_pkg_on_pacman_hosts() {
+        // The `filesystem` package is in `[core]`, is required by `base`, and
+        // is present on every Arch-family host including CachyOS. It owns
+        // /usr/bin itself and has no command of the same name — so
         // command_exists("filesystem") always misses. This is exactly
         // the shape that motivated the helper.
         if command_exists("pacman") {
@@ -1530,13 +1964,13 @@ mod tests {
 
     #[test]
     fn login_action_enables_sddm_when_no_dm_is_set() {
-        assert!(matches!(login_action(None), LoginAction::Enable));
+        assert!(matches!(login_action(None, true), LoginAction::Enable));
     }
 
     #[test]
     fn login_action_switches_to_sddm_from_our_own_greetd() {
         assert!(matches!(
-            login_action(Some("greetd.service".into())),
+            login_action(Some("greetd.service".into()), true),
             LoginAction::Enable
         ));
     }
@@ -1544,14 +1978,14 @@ mod tests {
     #[test]
     fn login_action_is_noop_when_sddm_already_active() {
         assert!(matches!(
-            login_action(Some("sddm.service".into())),
+            login_action(Some("sddm.service".into()), true),
             LoginAction::AlreadySddm
         ));
     }
 
     #[test]
     fn login_action_leaves_another_dm_alone() {
-        match login_action(Some("gdm.service".into())) {
+        match login_action(Some("gdm.service".into()), true) {
             LoginAction::OtherDm(dm) => assert_eq!(dm, "gdm.service"),
             _ => panic!("a third-party DM must be left in place, never overridden"),
         }
@@ -1660,5 +2094,326 @@ mod tests {
             repaint,
             "the local grogu repaint must survive the pull (autostash restores it)"
         );
+    }
+
+    // ── Distro detection ─────────────────────────────────────────────────
+    //
+    // Every one of these is a pure string→enum assertion, so they run
+    // identically on CI (Ubuntu, no pacman), on stock Arch, and on CachyOS.
+
+    /// The live /etc/os-release from the CachyOS box this port was developed
+    /// on, verbatim: quoted and unquoted values mixed, and a value containing
+    /// semicolons.
+    const CACHYOS_OS_RELEASE: &str = r#"NAME="CachyOS Linux"
+PRETTY_NAME="CachyOS"
+ID=cachyos
+ID_LIKE=arch
+BUILD_ID=rolling
+ANSI_COLOR="38;2;23;147;209"
+HOME_URL="https://cachyos.org/"
+DOCUMENTATION_URL="https://wiki.cachyos.org/"
+SUPPORT_URL="https://discuss.cachyos.org/"
+BUG_REPORT_URL="https://github.com/cachyos"
+PRIVACY_POLICY_URL="https://terms.archlinux.org/docs/privacy-policy/"
+LOGO=cachyos
+"#;
+
+    #[test]
+    fn parse_distro_identifies_cachyos_from_the_live_os_release() {
+        assert_eq!(parse_distro(CACHYOS_OS_RELEASE), Distro::CachyOs);
+    }
+
+    #[test]
+    fn parse_distro_identifies_stock_arch() {
+        // No ID_LIKE at all — pins that the ID_LIKE lookup is never *required*
+        // to succeed for a host to be classified.
+        assert_eq!(
+            parse_distro("NAME=\"Arch Linux\"\nID=arch\nBUILD_ID=rolling\n"),
+            Distro::Arch
+        );
+    }
+
+    #[test]
+    fn parse_distro_strips_double_and_single_quotes() {
+        // An unstripped quote silently disables the whole CachyOS path:
+        // invisible on the author's box, visible on someone else's.
+        assert_eq!(parse_distro("ID=\"cachyos\"\n"), Distro::CachyOs);
+        assert_eq!(parse_distro("ID='arch'\n"), Distro::Arch);
+        assert_eq!(
+            parse_distro("ID=\"\"\nID_LIKE=\"arch\"\n"),
+            Distro::ArchDerivative
+        );
+        assert_eq!(
+            os_release_value("ID=\"\"", "ID").as_deref(),
+            Some(""),
+            "an empty quoted value unquotes to empty, not to a stray quote"
+        );
+    }
+
+    #[test]
+    fn parse_distro_survives_crlf_line_endings() {
+        // `str::lines()` strips \n but leaves \r, so without the trim the
+        // comparison would be against "cachyos\r". Pins the trim as
+        // load-bearing.
+        assert_eq!(
+            parse_distro("ID=cachyos\r\nID_LIKE=arch\r\n"),
+            Distro::CachyOs
+        );
+        assert_eq!(parse_distro("ID=\"cachyos\"\r\n"), Distro::CachyOs);
+    }
+
+    #[test]
+    fn parse_distro_reads_arch_out_of_a_multi_valued_id_like() {
+        // Two rules at once: ID_LIKE is tokenised rather than substring
+        // matched (so `archlinux` alone must not count), and `cachyos`
+        // appearing in ID_LIKE does not make a host CachyOS.
+        assert_eq!(
+            parse_distro("ID=garuda\nID_LIKE=\"cachyos arch\"\n"),
+            Distro::ArchDerivative
+        );
+        assert_eq!(
+            parse_distro("ID=endeavouros\nID_LIKE=arch\n"),
+            Distro::ArchDerivative
+        );
+        assert_eq!(
+            parse_distro("ID=manjaro\nID_LIKE=\"archlinux arch\"\n"),
+            Distro::ArchDerivative
+        );
+    }
+
+    #[test]
+    fn parse_distro_treats_unknown_missing_and_empty_as_unknown() {
+        // The fallback the entire no-regression argument rests on.
+        assert_eq!(parse_distro("ID=fedora\nID_LIKE=rhel\n"), Distro::Unknown);
+        assert_eq!(parse_distro(""), Distro::Unknown);
+        assert_eq!(parse_distro("# nothing\n\n   \n"), Distro::Unknown);
+        assert_eq!(parse_distro("NAME=\"Some Linux\"\n"), Distro::Unknown);
+    }
+
+    #[test]
+    fn os_release_value_matches_whole_keys_and_takes_the_last_assignment() {
+        // A `starts_with("ID=")`-shaped parse would answer `ID` with
+        // ID_LIKE's value and mislabel every derivative.
+        assert_eq!(os_release_value("ID_LIKE=arch\n", "ID"), None);
+        assert_eq!(
+            os_release_value("ID=arch\nID=cachyos\n", "ID").as_deref(),
+            Some("cachyos")
+        );
+        assert_eq!(os_release_value("#ID=fedora\n", "ID"), None);
+        assert_eq!(os_release_value("no-equals-here\n", "ID"), None);
+    }
+
+    #[test]
+    fn only_cachyos_diverges_from_todays_behaviour() {
+        // The port's central safety invariant, as an executable assertion:
+        // adding a fifth Distro variant forces a reviewer through here, and
+        // any refactor that flips an Arch-family arm fails CI rather than
+        // silently disabling the yay bootstrap on stock Arch.
+        for d in [Distro::Arch, Distro::ArchDerivative, Distro::Unknown] {
+            assert_eq!(
+                chaotic_aur_policy(d),
+                ChaoticAur::Add,
+                "{d:?} must keep dotctl's pre-CachyOS behaviour"
+            );
+        }
+        assert_eq!(
+            chaotic_aur_policy(Distro::CachyOs),
+            ChaoticAur::SkipRedundant
+        );
+    }
+
+    #[test]
+    fn aur_helper_hint_offers_pacman_only_on_cachyos() {
+        // A hint that sends an Arch user to `error: target not found` is
+        // worse than no hint at all.
+        assert!(aur_helper_hint(Distro::CachyOs).contains("pacman -S"));
+        for d in [Distro::Arch, Distro::ArchDerivative, Distro::Unknown] {
+            let h = aur_helper_hint(d);
+            assert!(h.contains("makepkg"), "{d:?} hint should point at makepkg");
+            assert!(
+                !h.contains("pacman -S"),
+                "{d:?} has no official-repo yay/paru to pacman -S"
+            );
+        }
+    }
+
+    #[test]
+    fn preferred_aur_helper_keeps_yay_first_then_falls_back_to_paru() {
+        // The ordering *is* the Arch no-regression guarantee: every pre-port
+        // dotctl ran `yay` unconditionally, so yay-first means no host that
+        // has yay changes which binary gets spawned.
+        assert_eq!(AUR_HELPERS, ["yay", "paru"]);
+        assert_eq!(preferred_aur_helper(|_| true), Some("yay"));
+        assert_eq!(preferred_aur_helper(|h| h == "paru"), Some("paru"));
+        assert_eq!(preferred_aur_helper(|h| h == "yay"), Some("yay"));
+        assert_eq!(preferred_aur_helper(|_| false), None);
+    }
+
+    #[test]
+    fn noctalia_plan_installs_whenever_the_package_resolves() {
+        // Availability-driven, not distro-driven: CachyOS is bit-for-bit
+        // unchanged, and an Arch box that added [cachyos] works identically.
+        for d in [
+            Distro::CachyOs,
+            Distro::Arch,
+            Distro::ArchDerivative,
+            Distro::Unknown,
+        ] {
+            assert_eq!(noctalia_plan(d, true), NoctaliaPlan::Install, "{d:?}");
+        }
+    }
+
+    #[test]
+    fn noctalia_plan_hints_at_the_cachyos_repo_and_warns_off_the_v5_substitution() {
+        // Keeps the anti-substitution warning in the binary, guarding the
+        // single most damaging "fix" available at that call site.
+        for d in [Distro::Arch, Distro::ArchDerivative, Distro::Unknown] {
+            match noctalia_plan(d, false) {
+                NoctaliaPlan::Unavailable(h) => {
+                    assert!(h.contains("[cachyos]"), "{d:?} should name the repo");
+                    assert!(h.contains("v5"), "{d:?} should warn off extra/noctalia");
+                }
+                other => panic!("{d:?} expected Unavailable, got {other:?}"),
+            }
+        }
+        match noctalia_plan(Distro::CachyOs, false) {
+            NoctaliaPlan::Unavailable(h) => assert!(h.contains("/etc/pacman.conf")),
+            other => panic!("expected Unavailable, got {other:?}"),
+        }
+    }
+
+    // ── pacman.conf parsing ──────────────────────────────────────────────
+
+    #[test]
+    fn pacman_conf_has_repo_tolerates_cachyos_trailing_space_headers() {
+        // CachyOS really does ship `[cachyos-znver4] ` with a trailing space.
+        // Nothing pinned that before, so a "simplify the trim away" cleanup
+        // would make dotctl re-add repos and re-run strap.sh as root on every
+        // single run.
+        assert!(pacman_conf_has_repo(
+            "[cachyos-znver4] \nInclude = /etc/pacman.d/cachyos-v4-mirrorlist\n",
+            "cachyos-znver4"
+        ));
+        assert!(pacman_conf_has_repo("  [extra]\n", "extra"));
+        assert!(!pacman_conf_has_repo("[core]\n[extra]\n", "blackarch"));
+    }
+
+    #[test]
+    fn pacman_conf_has_repo_ignores_commented_out_sections() {
+        // The inverse hazard: a `contains()`-shaped parse would see a
+        // commented-out section and no-op both repo setups forever.
+        assert!(!pacman_conf_has_repo(
+            "#[blackarch]\n# Include = /etc/pacman.d/blackarch-mirrorlist\n",
+            "blackarch"
+        ));
+        assert!(!pacman_conf_has_repo("  # [blackarch]\n", "blackarch"));
+    }
+
+    // ── greetd ownership ─────────────────────────────────────────────────
+
+    /// The verbatim `/etc/greetd/config.toml` shipped by the greetd package
+    /// (`pacman -Ql greetd` lists it as a Backup File). This is the state of a
+    /// fresh box the moment `install()` installs greetd.
+    const STOCK_GREETD_CONFIG: &str = r#"[terminal]
+# The VT to run the greeter on. Can be "next", "current" or a number
+# designating the VT.
+vt = 1
+
+# The default session, also known as the greeter.
+[default_session]
+
+# `agreety` is the bundled agetty/login-lookalike. You can replace `/bin/sh`
+# with whatever you want started, such as `sway`.
+command = "agreety --cmd /bin/sh"
+
+# The user to run the command as. The privileges this user must have depends
+# on the greeter. A graphical greeter may for example require the user to be
+# in the `video` group.
+user = "greeter"
+"#;
+
+    #[test]
+    fn greetd_session_command_extracts_the_default_session_command() {
+        assert_eq!(
+            greetd_session_command(GREETD_CONFIG_BODY),
+            Some("dbus-run-session cage -s -mlast -d -- regreet")
+        );
+        assert_eq!(
+            greetd_session_command(STOCK_GREETD_CONFIG),
+            Some("agreety --cmd /bin/sh")
+        );
+        assert_eq!(greetd_session_command("[terminal]\nvt = 1\n"), None);
+        assert_eq!(
+            greetd_session_command("commandx = \"y\"\n"),
+            None,
+            "`commandx` must not be matched as `command`"
+        );
+    }
+
+    #[test]
+    fn greetd_is_replaceable_accepts_the_stock_agreety_config() {
+        // The most important test in the port. This is the fresh-install
+        // state on both distros; a rule that answers false here stops the
+        // ReGreet fallback ever being written on a clean box.
+        assert!(greetd_is_replaceable(Some(STOCK_GREETD_CONFIG)));
+    }
+
+    #[test]
+    fn greetd_is_replaceable_accepts_our_own_config_and_a_missing_file() {
+        // Self-consistency: the predicate must accept the exact bytes the
+        // constant beside it writes, or dotctl classifies its own output as
+        // foreign on the second run. Also catches an edit to
+        // GREETD_CONFIG_BODY that drops `regreet`.
+        assert!(greetd_is_replaceable(Some(GREETD_CONFIG_BODY)));
+        assert!(greetd_is_replaceable(None));
+    }
+
+    #[test]
+    fn greetd_is_replaceable_rejects_a_third_party_greeter() {
+        // CachyOS publishes `noctalia-greeter` in [cachyos] — a greeter that
+        // lives in exactly this file. Without this, the port's most
+        // user-hostile failure mode is live.
+        assert!(!greetd_is_replaceable(Some(
+            "[default_session]\ncommand = \"noctalia-greeter\"\n"
+        )));
+        assert!(!greetd_is_replaceable(Some(
+            "[default_session]\ncommand = \"tuigreet --cmd niri-session\"\n"
+        )));
+        assert!(
+            greetd_is_replaceable(Some("[default_session]\ncommand = \"/usr/bin/regreet\"\n")),
+            "an absolute path to our own greeter still matches on basename"
+        );
+        // Whole-token, not substring: a `contains()`-shaped rewrite would keep
+        // every other assertion here green while making dotctl clobber the
+        // config of a greeter that merely has one of our names inside its own.
+        assert!(
+            !greetd_is_replaceable(Some(
+                "[default_session]\ncommand = \"cage -s -- regreet-ng\"\n"
+            )),
+            "a greeter whose name merely *contains* regreet is not ours"
+        );
+        assert!(
+            !greetd_is_replaceable(Some(
+                "[default_session]\ncommand = \"my-agreety-wrapper\"\n"
+            )),
+            "…and the same for agreety"
+        );
+    }
+
+    #[test]
+    fn login_action_leaves_a_third_party_greetd_alone() {
+        // Counterpart to login_action_switches_to_sddm_from_our_own_greetd;
+        // together they state the whole rule.
+        match login_action(Some("greetd.service".into()), false) {
+            LoginAction::OtherDm(dm) => assert_eq!(dm, "greetd.service"),
+            _ => panic!("a greetd hosting someone else's greeter must be left alone"),
+        }
+    }
+
+    #[test]
+    fn login_action_still_enables_sddm_when_a_foreign_greetd_is_not_the_dm() {
+        // Guards against over-correcting: a stray third-party greetd config on
+        // disk must not block enabling sddm when greetd is not the enabled DM.
+        assert!(matches!(login_action(None, false), LoginAction::Enable));
     }
 }

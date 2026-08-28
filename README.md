@@ -33,7 +33,7 @@ Manual:
 git clone https://github.com/foolish-dev/niri-dotfiles.git ~/niri-dotfiles
 cd ~/niri-dotfiles
 cargo build --release
-./target/release/dotctl install   # tools + Chaotic AUR + BlackArch, idempotent
+./target/release/dotctl install   # tools + BlackArch (+ Chaotic AUR on Arch), idempotent
 ./target/release/dotctl deploy    # symlink .config/* + .local/bin/*, enable hexstrike-server
 # or: dotctl all
 ```
@@ -42,9 +42,29 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
 
 | Subcommand | What it does |
 |---|---|
-| `dotctl install` | Wire Chaotic AUR + BlackArch (both idempotent), `cargo install` grogu, clone+venv HexStrike AI, `pacman -S` tmux/fastfetch/neovim/noctalia-shell, `yay -S` `sddm-theme-noctalia-git` (a themed SDDM fallback), `pacman -S` `greetd`/`greetd-regreet`/`cage` (then select the noctalia **SDDM** theme via `/etc/sddm.conf.d/` and enable `sddm.service` as the graphical login screen — disabling `greetd`, but never overriding a third-party display manager; greetd + a noctalia-themed ReGreet config under `/etc/greetd/` are kept as a disabled fallback), and build `noctalia-unofficial-auth-agent-git` from a locally patched PKGBUILD (GCC 16 fix). |
+| `dotctl install` | Wire BlackArch, plus Chaotic AUR on non-CachyOS hosts (both idempotent); ensure an AUR helper (`yay` from `[cachyos]` on CachyOS, from Chaotic-AUR on Arch, or whichever of `yay`/`paru` is already present), `cargo install` grogu, clone+venv HexStrike AI, `pacman -S` tmux/fastfetch/neovim/wl-clip-persist and `noctalia-shell`+`noctalia-qs` (CachyOS `[cachyos]` repo only — warns and continues elsewhere), AUR-install `sddm-theme-noctalia-git` (via yay or paru, a themed SDDM fallback), `pacman -S` `greetd`/`greetd-regreet`/`cage` (then select the noctalia **SDDM** theme via `/etc/sddm.conf.d/` and enable `sddm.service` as the graphical login screen — disabling `greetd`, but never overriding a third-party display manager; greetd + a noctalia-themed ReGreet config under `/etc/greetd/` are kept as a disabled fallback), and build `noctalia-unofficial-auth-agent-git` from a locally patched PKGBUILD (GCC 16 fix). |
 | `dotctl deploy` | Symlink the full `.config` set (`teleia, nvim, noctalia, fastfetch, tmux, fuzzel, gtk-3.0/4.0, kitty, lazygit, neofetch, niri, opencode, qt5ct/6ct, wal, starship.toml`), home dotfiles (`.zshrc, .editorconfig, .gitignore_global`), and every `.local/bin/*`. Copy the curated `wallpapers/*` into `~/Pictures/Wallpapers` as real files (applied on all monitors; copies, not symlinks, so a stray wallpaper `cp` — e.g. the greeter background-sync — can't write back into the repo). Deploy the tracked `.gitconfig` via an untracked `~/.gitconfig` include-stub + seed `~/.gitconfig.local` identity. Symlink the user systemd units (real dir), `daemon-reload`, then `enable --now` hexstrike-server + `bb-auth.service`. Back up displaced files. |
 | `dotctl all` | `install` then `deploy`. |
+
+## Supported distros
+
+Arch Linux and CachyOS. `dotctl` reads `/etc/os-release` and branches on `ID`:
+
+| | Arch (and `ID_LIKE=arch` derivatives) | CachyOS |
+|---|---|---|
+| AUR helper | bootstrapped from Chaotic-AUR (`yay`/`paru` are in no Arch official repo) | `pacman -S yay` straight from `[cachyos]` |
+| Chaotic-AUR | added — it is the only helper source | skipped; `[cachyos]` already provides yay/paru |
+| BlackArch | added (appended last, below every distro repo) | same |
+| Noctalia | `noctalia-shell`/`noctalia-qs` are packaged **only** by CachyOS — add the `[cachyos]` repo, or this step warns and is skipped | installs from `[cachyos]` |
+| Display manager | dotctl enables `sddm.service` | same, unless another greeter already owns `/etc/greetd/config.toml` |
+
+An unrecognised distro is treated as Arch. On any host without `pacman`, package
+steps warn and continue. Pass `--no-aur-helper` to `install`/`all` to stop
+dotctl installing an AUR helper for you; AUR-only add-ons are then skipped.
+
+`dotctl` never takes over a login screen somebody else configured: a `greetd`
+whose session command is neither `regreet` (ours) nor the stock `agreety` — for
+instance CachyOS's `noctalia-greeter` — is left alone, config and unit both.
 
 ## Architecture
 
@@ -124,4 +144,4 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 
 ## See also
 
-For the full Arch + Niri + BlackArch desktop bundle (kitty, ghostty, lazygit, opencode, 147 BlackArch launcher entries, SDDM themes, 300+ tools), see **[foolish-dev/distro-work](https://github.com/foolish-dev/distro-work)** (formerly `niri-dotfiles`).
+For the full Arch / CachyOS + Niri + BlackArch desktop bundle (kitty, ghostty, lazygit, opencode, 147 BlackArch launcher entries, SDDM themes, 300+ tools), see **[foolish-dev/distro-work](https://github.com/foolish-dev/distro-work)** (formerly `niri-dotfiles`).
