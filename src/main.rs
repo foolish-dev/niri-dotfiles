@@ -50,11 +50,11 @@ fn main() -> Result<()> {
     let distro = detect_distro();
     match cli.cmd {
         Cmd::Install { no_aur_helper } => install(distro, no_aur_helper),
-        Cmd::Deploy => deploy(&repo),
+        Cmd::Deploy => deploy(&repo, &home()),
         Cmd::All { no_aur_helper } => {
             ensure_repo(&repo)?;
             install(distro, no_aur_helper)?;
-            deploy(&repo)
+            deploy(&repo, &home())
         }
     }
 }
@@ -1498,7 +1498,14 @@ fn refuse_conflicted_tree(repo: &Path) -> Result<()> {
     Ok(())
 }
 
-fn deploy(repo: &Path) -> Result<()> {
+/// The filesystem half of a deploy: symlink the tracked configs into
+/// `home`, copy the wallpapers, and clear out stale links older deploys left.
+///
+/// Split out of [`deploy`] so it is testable. `deploy` also talks to systemd
+/// — `daemon-reload` and `enable --now` — which reach the real user session
+/// no matter what `home` says, so a test may exercise this half against a
+/// temp directory but must never call [`deploy`] itself.
+fn link_dotfiles(repo: &Path, home: &Path) -> Result<()> {
     if !repo.exists() {
         return Err(anyhow!("repo path not found: {}", repo.display()));
     }
@@ -1507,7 +1514,7 @@ fn deploy(repo: &Path) -> Result<()> {
     // by a hand-run `git pull` or an abandoned merge would otherwise be
     // symlinked into the live configs verbatim. Same check, same reason.
     refuse_conflicted_tree(repo)?;
-    let h = home();
+    let h = home.to_path_buf();
 
     let ts = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -1631,6 +1638,16 @@ fn deploy(repo: &Path) -> Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+/// `home` is a parameter rather than a `home()` call so the deploy path is
+/// testable: a test can point it at a temp dir instead of scribbling symlinks
+/// over the developer's real `~/.config`. [`link_item`] already took its home
+/// this way; this brings `deploy` in line with it.
+fn deploy(repo: &Path, home: &Path) -> Result<()> {
+    link_dotfiles(repo, home)?;
+    let h = home.to_path_buf();
 
     if let Err(e) = run("systemctl", &["--user", "daemon-reload"]) {
         warn(&format!("systemctl --user daemon-reload failed: {e}"));
@@ -1778,13 +1795,13 @@ fn copy_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 mod tests {
     use super::{
         aur_failure_marker_in, aur_helper_hint, chaotic_aur_policy, command_exists, copy_item,
-        git_has_conflicts, git_pull, greetd_is_replaceable, greetd_session_command, link_item,
-        login_action, marker_still_valid_at, noctalia_plan, os_release_value, pacman_conf_has_repo,
-        pacman_pkg_installed, parse_distro, patch_hexstrike_bind, patch_pkgbuild_unistd,
-        preferred_aur_helper, refuse_conflicted_tree, venv_ready, BindState, ChaoticAur, Distro,
-        LoginAction, NoctaliaPlan, ALL_INTERFACE_BINDS, AUR_HELPERS, BASE_DESKTOP_HINT,
-        BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS,
-        REGREET_TOML,
+        git_has_conflicts, git_pull, greetd_is_replaceable, greetd_session_command, link_dotfiles,
+        link_item, login_action, marker_still_valid_at, noctalia_plan, os_release_value,
+        pacman_conf_has_repo, pacman_pkg_installed, parse_distro, patch_hexstrike_bind,
+        patch_pkgbuild_unistd, preferred_aur_helper, refuse_conflicted_tree, venv_ready, BindState,
+        ChaoticAur, Distro, LoginAction, NoctaliaPlan, ALL_INTERFACE_BINDS, AUR_HELPERS,
+        BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS,
+        REGREET_CSS, REGREET_TOML,
     };
     use std::fs;
     use std::os::unix::fs::symlink;
@@ -2255,6 +2272,54 @@ mod tests {
                 "{needle} is a loopback bind and must be left alone"
             );
         }
+    }
+
+    #[test]
+    fn link_dotfiles_symlinks_configs_into_the_given_home() {
+        // The point of taking `home` as a parameter: this exercises the real
+        // deploy filesystem path against a temp dir. deploy() itself must never
+        // be called here — it runs `systemctl --user`, which reaches the real
+        // session regardless of what `home` says.
+        let tmp = TempDir::new().expect("tempdir");
+        let repo = tmp.path().join("repo");
+        let home = tmp.path().join("home");
+        fs::create_dir_all(repo.join(".config/kitty")).expect("mkdir kitty");
+        fs::create_dir_all(&home).expect("mkdir home");
+        fs::write(repo.join(".config/kitty/kitty.conf"), "font_size 12\n").expect("seed conf");
+        fs::write(repo.join(".zshrc"), "export EDITOR=nvim\n").expect("seed zshrc");
+
+        link_dotfiles(&repo, &home).expect("link_dotfiles");
+
+        let linked = home.join(".config/kitty");
+        assert!(
+            linked.is_symlink(),
+            "a tracked .config tree must be symlinked"
+        );
+        assert_eq!(
+            fs::read_link(&linked).expect("readlink"),
+            repo.join(".config/kitty"),
+            "the symlink must point back into the repo"
+        );
+        assert_eq!(
+            fs::read_to_string(linked.join("kitty.conf")).expect("read through link"),
+            "font_size 12\n"
+        );
+
+        let zshrc = home.join(".zshrc");
+        assert!(
+            zshrc.is_symlink(),
+            "home-level dotfiles must be symlinked too"
+        );
+        assert_eq!(
+            fs::read_link(&zshrc).expect("readlink"),
+            repo.join(".zshrc")
+        );
+
+        // Nothing may have been written outside the home we were handed.
+        assert!(
+            !home.join("niri-dotfiles").exists(),
+            "link_dotfiles must not invent paths outside what it was given"
+        );
     }
 
     #[test]
