@@ -8,6 +8,13 @@ updates:
       interval: weekly
     commit-message:
       prefix: deps
+    # One PR per week for all crate bumps, not one per crate. These get taken
+    # by hand often enough (cf. 7670625 "take the pending dep bumps") that a
+    # per-crate queue just accumulates PRs that are already applied and have to
+    # be closed as no-op diffs.
+    groups:
+      cargo:
+        patterns: ["*"]
 
   # GitHub Actions in ci.yml (checkout, rust-cache, rust-toolchain) — keeps them
   # on supported runtimes so a Node-version deprecation can't break CI silently
@@ -18,3 +25,6 @@ updates:
       interval: weekly
     commit-message:
       prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]

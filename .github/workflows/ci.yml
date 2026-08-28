@@ -2,7 +2,6 @@ name: ci
 
 on:
   push:
-    branches: [main]
   pull_request:
 
 concurrency:
@@ -18,6 +17,14 @@ permissions:
 
 jobs:
   rust:
+    # Every push is built, not just main: a branch pushed without a PR used to
+    # get no CI at all, so `main` was the first place its code was ever
+    # compiled. The condition keeps that from double-running — a same-repo PR
+    # is already covered by its branch's push event, so only fork PRs (which
+    # have no push event here) need the pull_request trigger.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     env:
       RUSTFLAGS: -D warnings
@@ -30,7 +37,7 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo build --all-targets --locked
-      # 58 pure-Rust tests (only dev-dep is tempfile). Deliberately NOT
+      # 59 pure-Rust tests (only dev-dep is tempfile). Deliberately NOT
       # gated on `command -v pacman`: ubuntu-latest has none, and gating
       # would mean the distro-detection logic is never exercised anywhere
       # but the author's own box.
