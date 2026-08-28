@@ -1,11 +1,20 @@
 [Unit]
 Description=HexStrike AI - Security Tools API Server
 After=network.target
+# ExecStartPost below refuses a non-loopback bind. Without a start limit,
+# Restart=on-failure would retry that refusal every 5s forever; three strikes
+# leaves the unit failed and visible instead of looping in the journal.
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=simple
 WorkingDirectory=%h/tools/hexstrike-ai
 ExecStart=%h/tools/hexstrike-ai/hexstrike-env/bin/python3 %h/tools/hexstrike-ai/hexstrike_server.py --port 8888
+# Verify what the socket actually bound to, and stop the service if it is not
+# loopback. See the NOTE at the bottom for why this exists alongside the
+# install-time source rewrite.
+ExecStartPost=%h/.local/bin/hexstrike-assert-loopback
 Restart=on-failure
 RestartSec=5
 Environment=HEXSTRIKE_HOST=127.0.0.1
@@ -31,10 +40,15 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 # anything. systemd's IP firewall is a cgroup BPF feature the *user* manager
 # cannot install, and it logs exactly that on every start:
 #   "unit configures an IP firewall, but not running as root"
-# Confinement to loopback is enforced where it actually works: `dotctl install`
-# rewrites hexstrike_server.py's hardcoded `app.run(host="0.0.0.0")` to honour
-# API_HOST, which the HEXSTRIKE_HOST above sets. This API is UNAUTHENTICATED and
-# /api/command executes arbitrary shell — never expose it off loopback.
+# Confinement to loopback is enforced where it actually works, in two places.
+# `dotctl install` rewrites hexstrike_server.py's hardcoded
+# `app.run(host="0.0.0.0")` to honour API_HOST, which the HEXSTRIKE_HOST above
+# sets — but that is a Rust program pattern-matching one line in a 17k-line
+# upstream file, so it can only fail closed on drift it recognises.
+# ExecStartPost= then checks the socket itself, which is the property actually
+# worth guaranteeing rather than a proxy for it, and takes the service down if
+# it bound anywhere else. This API is UNAUTHENTICATED and /api/command executes
+# arbitrary shell — never expose it off loopback.
 
 [Install]
 WantedBy=default.target

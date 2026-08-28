@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# =============================================================================
+# hexstrike-assert-loopback -- fail the unit if the API bound off loopback
+#
+# The bind is *meant* to be pinned by `dotctl install` rewriting
+# hexstrike_server.py's `app.run(host=...)`. But that is a Rust program
+# pattern-matching one line inside a 17k-line upstream file it does not own:
+# it fails closed on drift it recognises, and cannot see drift it does not.
+#
+# This checks the thing that actually matters rather than a proxy for it --
+# what the socket is bound to. Wired as ExecStartPost=, so a non-zero exit
+# takes the service back down. The API is UNAUTHENTICATED and /api/command
+# runs arbitrary shell, so "up but exposed" is strictly worse than "down".
+# =============================================================================
+set -euo pipefail
+
+PORT="${HEXSTRIKE_PORT:-8888}"
+
+# Flask binds a moment after the process starts; poll rather than race it.
+addrs=""
+for _ in $(seq 1 50); do
+  addrs="$(ss -ltnH "sport = :$PORT" 2>/dev/null | awk '{print $4}')" || true
+  [[ -n "$addrs" ]] && break
+  sleep 0.1
+done
+
+# Never bound in 5s. Not this script's call -- if the server could not listen,
+# the service itself fails. Silence here is the correct answer.
+[[ -z "$addrs" ]] && exit 0
+
+while read -r addr; do
+  [[ -z "$addr" ]] && continue
+  case "$addr" in
+    127.0.0.1:* | '[::1]':*) ;;
+    *)
+      echo "hexstrike-server is listening on $addr, not loopback." >&2
+      echo "This API is unauthenticated and /api/command runs arbitrary shell," >&2
+      echo "so it is being stopped rather than left reachable." >&2
+      echo "Run \`dotctl install\` to re-pin the bind, then start it again." >&2
+      exit 1
+      ;;
+  esac
+done <<<"$addrs"
