@@ -42,7 +42,7 @@ local servers = {
 -- listing them in both installers races and crashes mason.
 local mason_tools = {
   -- Formatters
-  "stylua", "prettierd", "prettier", "shfmt", "black", "isort",
+  "stylua", "prettierd", "prettier", "shfmt",
   "yamlfmt", "alejandra", "buf", "gofumpt", "goimports", "clang-format",
   -- Linters
   "shellcheck", "hadolint", "yamllint", "markdownlint", "ansible-lint",
@@ -311,7 +311,7 @@ return {
         dockerfile      = { "hadolint" },
         yaml            = { "yamllint" },
         markdown        = { "markdownlint" },
-        ansible         = { "ansible-lint" },
+        ansible         = { "ansible_lint" },
         make            = { "checkmake" },
         gitcommit       = { "gitlint" },
         lua             = { "luacheck" },

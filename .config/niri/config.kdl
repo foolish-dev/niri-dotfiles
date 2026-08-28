@@ -284,7 +284,6 @@ spawn-at-startup "wl-clip-persist" "--clipboard" "regular"
 // (Control Center → Idle).
 
 // Polkit agent
-spawn-at-startup "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
 
 // ---------------------------------------------------------------------------
 // Animations
@@ -531,4 +530,8 @@ binds {
 }
 
 // grogu — wallpaper-driven focus-ring colours, regenerated on every Meta+W pick.
-include "grogu.kdl"
+// Optional: the file is gitignored and only exists after the first pick. A
+// mandatory include would make the whole config unparseable on a fresh
+// install, so niri would fall back to its built-in defaults — which have no
+// Meta+W bind to generate it with.
+include "grogu.kdl" optional=true

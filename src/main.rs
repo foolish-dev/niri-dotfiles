@@ -704,6 +704,33 @@ fn record_aur_failure(marker: &Path) {
     ));
 }
 
+/// Rewrite HexStrike's hardcoded all-interfaces bind to honour the `API_HOST`
+/// the module already computes.
+///
+/// Upstream reads `API_HOST = os.environ.get('HEXSTRIKE_HOST', '127.0.0.1')`,
+/// logs it, and then ignores it: the final line is
+/// `app.run(host="0.0.0.0", port=API_PORT, ...)`. The service is an
+/// unauthenticated remote-shell API — `/api/command` passes its `command`
+/// field straight to `execute_command` — so a 0.0.0.0 bind puts arbitrary
+/// code execution on every interface the box has.
+///
+/// The unit's `Environment=HEXSTRIKE_HOST=127.0.0.1` cannot fix that on its
+/// own, and neither can its `IPAddressDeny=any`: systemd's IP firewall is a
+/// cgroup BPF feature the *user* manager cannot install, and it says so —
+/// "unit configures an IP firewall, but not running as root". Both were
+/// load-bearing in name only.
+///
+/// Idempotent, and a no-op on a file that has already been patched or that
+/// upstream has fixed. Returns `None` when there was nothing to change, so
+/// the caller can tell "already correct" from "rewritten".
+fn patch_hexstrike_bind(src: &str) -> Option<String> {
+    const NEEDLE: &str = r#"app.run(host="0.0.0.0""#;
+    if !src.contains(NEEDLE) {
+        return None;
+    }
+    Some(src.replace(NEEDLE, "app.run(host=API_HOST"))
+}
+
 /// Force-include `<unistd.h>` into a PKGBUILD's `build()` step. GCC 16
 /// stopped leaking `<unistd.h>` through unrelated headers, so sources that
 /// call `getpid()`/`read()`/etc. without including it no longer compile;
@@ -1205,6 +1232,33 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         )?;
     }
 
+    // Re-applied on EVERY run, not just after the clone: the checkout above is
+    // never `git pull`ed, but a user who updates it by hand would otherwise
+    // silently restore the 0.0.0.0 bind. Cheap, and idempotent.
+    let server_py = hex_dir.join("hexstrike_server.py");
+    match fs::read_to_string(&server_py) {
+        Ok(src) => match patch_hexstrike_bind(&src) {
+            Some(patched) => {
+                fs::write(&server_py, &patched).with_context(|| {
+                    format!("rewriting the bind address in {}", server_py.display())
+                })?;
+                if patch_hexstrike_bind(&patched).is_some() {
+                    return Err(anyhow!(
+                        "failed to pin {} to a loopback bind — refusing to continue, \
+                         as the API would be reachable from the network",
+                        server_py.display()
+                    ));
+                }
+                ok("HexStrike bind pinned to $HEXSTRIKE_HOST (default 127.0.0.1)");
+            }
+            None => ok("HexStrike bind already loopback-only"),
+        },
+        Err(e) => warn(&format!(
+            "could not read {} to check its bind address: {e}",
+            server_py.display()
+        )),
+    }
+
     info("Installing HexStrike Python dependencies ...");
     let pip = hex_env.join("bin/pip");
     let pip_str = pip.to_str().unwrap();
@@ -1548,9 +1602,10 @@ mod tests {
         aur_failure_marker_in, aur_helper_hint, chaotic_aur_policy, command_exists, copy_item,
         git_pull, greetd_is_replaceable, greetd_session_command, link_item, login_action,
         marker_still_valid_at, noctalia_plan, os_release_value, pacman_conf_has_repo,
-        pacman_pkg_installed, parse_distro, patch_pkgbuild_unistd, preferred_aur_helper,
-        venv_ready, ChaoticAur, Distro, LoginAction, NoctaliaPlan, AUR_HELPERS, BASE_DESKTOP_HINT,
-        BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, REGREET_CSS, REGREET_TOML,
+        pacman_pkg_installed, parse_distro, patch_hexstrike_bind, patch_pkgbuild_unistd,
+        preferred_aur_helper, venv_ready, ChaoticAur, Distro, LoginAction, NoctaliaPlan,
+        AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY,
+        REGREET_CSS, REGREET_TOML,
     };
     use std::fs;
     use std::os::unix::fs::symlink;
@@ -1881,6 +1936,34 @@ mod tests {
     // It's pure string surgery on a fetched PKGBUILD, so pin the contract:
     // inject the force-include at the top of build(), do it exactly once,
     // and never corrupt a PKGBUILD it can't anchor on.
+
+    #[test]
+    fn patch_hexstrike_bind_rewrites_the_all_interfaces_bind() {
+        // The upstream line, verbatim.
+        let src = "    app.run(host=\"0.0.0.0\", port=API_PORT, debug=DEBUG_MODE)\n";
+        let out = patch_hexstrike_bind(src).expect("the 0.0.0.0 bind must be rewritten");
+        assert!(out.contains("app.run(host=API_HOST, port=API_PORT"));
+        assert!(
+            !out.contains("0.0.0.0"),
+            "no all-interfaces bind may survive: {out}"
+        );
+    }
+
+    #[test]
+    fn patch_hexstrike_bind_is_idempotent_and_leaves_a_fixed_file_alone() {
+        // None means "nothing to do" — the caller reports "already loopback"
+        // rather than rewriting the file on every single run.
+        assert_eq!(
+            patch_hexstrike_bind("app.run(host=API_HOST, port=API_PORT)\n"),
+            None
+        );
+        assert_eq!(
+            patch_hexstrike_bind("app.run(host=\"127.0.0.1\", port=API_PORT)\n"),
+            None
+        );
+        let once = patch_hexstrike_bind("app.run(host=\"0.0.0.0\", port=1)\n").unwrap();
+        assert_eq!(patch_hexstrike_bind(&once), None, "second pass is a no-op");
+    }
 
     #[test]
     fn patch_pkgbuild_unistd_injects_force_include_at_top_of_build() {

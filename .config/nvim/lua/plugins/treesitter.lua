@@ -66,7 +66,7 @@ return {
             ["al"] = "@loop.outer",
             ["il"] = "@loop.inner",
             ["aC"] = "@comment.outer",
-            ["iC"] = "@comment.outer",
+            ["iC"] = "@comment.inner",
           },
         },
         move = {

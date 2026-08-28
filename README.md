@@ -11,10 +11,10 @@ An AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP
 | | |
 | --- | --- |
 | **Binary** | `dotctl` — one Rust crate, three subcommands |
-| **Editor** | Neovim with **110 plugins**, **35 LSPs**, 23 formatters/linters, 4 DAP adapters |
+| **Editor** | Neovim with **110 plugins**, **35 LSPs**, 21 formatters/linters, 4 DAP adapters |
 | **Agent** | `teleia` wired to **10 MCP servers** (context7 · filesystem · github · fetch · hexstrike-ai · playwright · sequential-thinking · memory · git · weather) |
-| **Offsec** | HexStrike AI on hardened systemd unit + BlackArch repo (~2800 packages, `pacman -S` away) |
-| **Theming** | `grogu` repaints **7 targets** from the current wallpaper, in one shot |
+| **Offsec** | HexStrike AI on a sandboxed systemd unit + BlackArch repo (5,000+ packages, `pacman -S` away) |
+| **Theming** | `grogu` repaints **9 targets** from the current wallpaper, in one shot |
 | **Palette** | Grogu (`#0e112b` surface · `#6ecfdc` on-surface · `#61c3cf` primary) across every themed target |
 
 ## Install
@@ -98,15 +98,15 @@ instance CachyOS's `noctalia-greeter` — is left alone, config and unit both.
 
 [**teleia**](https://github.com/foolish-dev/teleia) (τέλεια — "perfect") is a single-binary TUI coding agent. `.config/teleia/config.toml` wires `context7`, `filesystem`, `github`, `fetch`, `hexstrike-ai`, `playwright`, `sequential-thinking`, `memory`, `git`, and `weather` — drop-in compatible with any other MCP client.
 
-[**grogu**](https://github.com/foolish-dev/grogu) extracts a palette from the current wallpaper and writes themed fragments for niri, kitty, ghostty, tmux, Neovim, teleia, and Noctalia in one shot. `dotctl install` cargo-installs it from upstream.
+[**grogu**](https://github.com/foolish-dev/grogu) extracts a palette from the current wallpaper and writes themed fragments for niri, kitty, ghostty, tmux, Neovim, teleia, Noctalia, the SDDM greeter background, and the keyboard backlight in one shot. `dotctl install` cargo-installs it from upstream.
 
-[**HexStrike AI**](https://github.com/0x4m4/hexstrike-ai) is a Flask MCP backend exposing 150+ offensive-security tools. Shipped here as a hardened systemd user unit (loopback `:8888`, `IPAddressDeny=any` except `127.0.0.0/8`, `ProtectSystem=strict`, `ProtectHome=read-only`) plus the `hexstrike-mcp` stdio bridge MCP clients call. The underlying CLI tools live in [BlackArch](https://blackarch.org) — `dotctl install` wires its repo via the upstream `strap.sh` so `pacman -S <tool>` reaches ~2800 packages.
+[**HexStrike AI**](https://github.com/0x4m4/hexstrike-ai) is a Flask MCP backend exposing 150+ offensive-security tools. Shipped here as a systemd user unit (`ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp`, `NoNewPrivileges`) plus the `hexstrike-mcp` stdio bridge MCP clients call. **The API is unauthenticated — `/api/command` executes arbitrary shell as your user — so it must never be reachable off loopback.** Upstream hardcodes `app.run(host="0.0.0.0")`, ignoring its own `HEXSTRIKE_HOST`; `dotctl install` rewrites that to honour it, on every run. Do not rely on systemd's `IPAddress*` directives here: a *user* manager cannot install a cgroup BPF firewall, and silently doesn't. The underlying CLI tools live in [BlackArch](https://blackarch.org) — `dotctl install` wires its repo via the upstream `strap.sh` so `pacman -S <tool>` reaches over 5,000 packages.
 
 **Neovim** — lazy.nvim + Mason, kitchen-sink config:
 
 - **110 plugins** lazy-loaded by event, ft, or key.
 - **35 LSPs** auto-installed via `mason-lspconfig` — lua, rust, go, python (pyright + ruff), C/C++, zig, every JS/TS framework (ts, vue, svelte, astro, prisma, tailwind, graphql), the IaC set (yaml, terraform, helm, ansible, docker), and the long tail (elixir, kotlin, jdtls, intelephense, solargraph, texlab, marksman). `ocamllsp`, `hls`, `nil_ls`, `cmake` are omitted by default — install opam / ghcup / etc. and append to `lsp.lua` to re-enable.
-- **23 formatters + linters** auto-installed via `mason-tool-installer` (stylua, prettierd, ruff, black, shellcheck, hadolint, eslint_d, gofumpt, alejandra, buf, …) and **4 DAP adapters** via `mason-nvim-dap` (codelldb, debugpy, delve, js-debug-adapter). `nvim-lint` silently skips any binary that hasn't landed yet.
+- **21 formatters + linters** auto-installed via `mason-tool-installer` (stylua, prettierd, ruff, black, shellcheck, hadolint, eslint_d, gofumpt, alejandra, buf, …) and **4 DAP adapters** via `mason-nvim-dap` (codelldb, debugpy, delve, js-debug-adapter). `nvim-lint` silently skips any binary that hasn't landed yet.
 - **AI**: `opencode` (built-in teleia popup), `copilot.lua` + `copilot-cmp`, `avante`, `codecompanion`.
 - **Testing & debug**: `neotest` (python · go · rust · jest · vitest · plenary), `nvim-dap` + `dap-ui` + `dap-virtual-text`, `rustaceanvim`, `crates.nvim`, `go.nvim`, `typescript-tools`, `venv-selector`.
 - **Editor**: `flash`, `vim-illuminate`, `nvim-spectre`, `nvim-ufo`, `harpoon` v2, `oil`, `mini.{ai,bracketed,indentscope}`, `yanky`, `undotree`.
@@ -133,7 +133,7 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── noctalia/                            # settings.json, plugins.json, colorschemes/Grogu/
 │   ├── fastfetch/config.jsonc               # terminal banner
 │   └── systemd/user/
-│       ├── hexstrike-server.service         # loopback :8888, hardened
+│       ├── hexstrike-server.service         # :8888, loopback-pinned at install
 │       └── default.target.wants/...         # auto-enable on login
 ├── .local/bin/
 │   └── hexstrike-mcp                        # stdio bridge for MCP clients

@@ -26,8 +26,15 @@ InaccessiblePaths=-%h/.ssh -%h/.gnupg
 PrivateTmp=true
 NoNewPrivileges=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-IPAddressAllow=127.0.0.0/8 ::1
-IPAddressDeny=any
+
+# NOTE: IPAddressAllow=/IPAddressDeny= used to live here. They never did
+# anything. systemd's IP firewall is a cgroup BPF feature the *user* manager
+# cannot install, and it logs exactly that on every start:
+#   "unit configures an IP firewall, but not running as root"
+# Confinement to loopback is enforced where it actually works: `dotctl install`
+# rewrites hexstrike_server.py's hardcoded `app.run(host="0.0.0.0")` to honour
+# API_HOST, which HEXSTRIKE_HOST below sets. This API is UNAUTHENTICATED and
+# /api/command executes arbitrary shell — never expose it off loopback.
 
 [Install]
 WantedBy=default.target

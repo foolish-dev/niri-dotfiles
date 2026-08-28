@@ -30,7 +30,12 @@ return {
     },
     config = function(_, opts)
       require("tokyonight").setup(opts)
-      vim.cmd.colorscheme("grogu")
+      -- colors/grogu.vim is gitignored and written by grogu on the first
+      -- wallpaper pick, so it is absent on a fresh install. Fall back to the
+      -- upstream scheme rather than throwing on startup.
+      if not pcall(vim.cmd.colorscheme, "grogu") then
+        vim.cmd.colorscheme("tokyonight-night")
+      end
     end,
   },
 }
