@@ -11,7 +11,7 @@ An AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP
 | | |
 | --- | --- |
 | **Binary** | `dotctl` — one Rust crate, three subcommands |
-| **Editor** | Neovim with **110 plugins**, **35 LSPs**, 21 formatters/linters, 4 DAP adapters |
+| **Editor** | Neovim with **109 plugins**, **35 LSPs**, 21 formatters/linters, 4 DAP adapters |
 | **Agent** | `teleia` wired to **10 MCP servers** (context7 · filesystem · github · fetch · hexstrike-ai · playwright · sequential-thinking · memory · git · weather) |
 | **Offsec** | HexStrike AI on a sandboxed systemd unit + BlackArch repo (5,000+ packages, `pacman -S` away) |
 | **Theming** | `grogu` repaints **9 targets** from the current wallpaper, in one shot |
@@ -104,10 +104,10 @@ instance CachyOS's `noctalia-greeter` — is left alone, config and unit both.
 
 **Neovim** — lazy.nvim + Mason, kitchen-sink config:
 
-- **110 plugins** lazy-loaded by event, ft, or key.
+- **109 plugins** lazy-loaded by event, ft, or key.
 - **35 LSPs** auto-installed via `mason-lspconfig` — lua, rust, go, python (pyright + ruff), C/C++, zig, every JS/TS framework (ts, vue, svelte, astro, prisma, tailwind, graphql), the IaC set (yaml, terraform, helm, ansible, docker), and the long tail (elixir, kotlin, jdtls, intelephense, solargraph, texlab, marksman). `ocamllsp`, `hls`, `nil_ls`, `cmake` are omitted by default — install opam / ghcup / etc. and append to `lsp.lua` to re-enable.
 - **21 formatters + linters** auto-installed via `mason-tool-installer` (stylua, prettierd, ruff, black, shellcheck, hadolint, eslint_d, gofumpt, alejandra, buf, …) and **4 DAP adapters** via `mason-nvim-dap` (codelldb, debugpy, delve, js-debug-adapter). `nvim-lint` silently skips any binary that hasn't landed yet.
-- **AI**: `opencode` (built-in teleia popup), `copilot.lua` + `copilot-cmp`, `avante`, `codecompanion`.
+- **AI**: `opencode` (built-in teleia popup), `copilot.lua` (inline ghost text, `<M-l>` to accept), `avante`, `codecompanion`.
 - **Testing & debug**: `neotest` (python · go · rust · jest · vitest · plenary), `nvim-dap` + `dap-ui` + `dap-virtual-text`, `rustaceanvim`, `crates.nvim`, `go.nvim`, `typescript-tools`, `venv-selector`.
 - **Editor**: `flash`, `vim-illuminate`, `nvim-spectre`, `nvim-ufo`, `harpoon` v2, `oil`, `mini.{ai,bracketed,indentscope}`, `yanky`, `undotree`.
 - **UI**: `lualine`, `bufferline`, `barbecue` winbar, `noice`, `alpha`, `fidget`, `aerial`, `zen-mode`, `twilight`, `nvim-colorizer`, `rainbow-delimiters`, `treesitter-context`.

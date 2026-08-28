@@ -47,13 +47,12 @@ return {
     },
   },
 
-  -- ── copilot-cmp: surface Copilot completions through nvim-cmp ─────────
-  {
-    "zbirenbaum/copilot-cmp",
-    dependencies = { "zbirenbaum/copilot.lua" },
-    event = "InsertEnter",
-    config = function() require("copilot_cmp").setup() end,
-  },
+  -- NOTE: copilot-cmp used to be declared here and never worked. It requires
+  -- copilot.lua's `suggestion` AND `panel` to be disabled, and it was never
+  -- added to nvim-cmp's `sources` list (lsp.lua) either, so it produced
+  -- nothing. Ghost text above is the deliberate choice; to switch to
+  -- completion-menu Copilot instead, set suggestion.enabled = false, re-add
+  -- the plugin, and add { name = "copilot", group_index = 2 } to cmp sources.
 
   -- ── Avante: Cursor-style inline AI assist ──────────────────────────────
   {
