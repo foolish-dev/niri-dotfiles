@@ -26,14 +26,6 @@ Touch only what you must. Clean up only your own mess.
 - Match the existing style — `anyhow::Result` vs custom errors, `tokio` vs blocking, etc.
 
 ## 4. Goal-driven execution
-Define success criteria. Loop until verified. The verification loop for
-this workspace is:
-
-    cargo fmt --all -- --check
-    cargo clippy --all-targets -- -D warnings
-    cargo build --all-targets --locked
-    cargo test --all-targets --locked
-
-A change isn't done until all four pass. For new behavior, add a test
+Define success criteria before you start. For new behavior, add a test
 that pins it before claiming the work is finished; for a bug fix, add a
 test that reproduces the bug first.

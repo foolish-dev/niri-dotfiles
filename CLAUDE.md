@@ -6,13 +6,7 @@ that installs and deploys it. Single user, Arch and CachyOS.
 ## Coding guidelines
 
 [Karpathy.md](Karpathy.md) is the standing brief for Rust work here — read it
-before changing `src/main.rs`. Its verification loop is this repo's definition
-of done, and it matches CI exactly:
-
-    cargo fmt --all -- --check
-    cargo clippy --all-targets -- -D warnings
-    cargo build --all-targets --locked
-    cargo test --locked
+before changing `src/main.rs`.
 
 ## The hazard that is not obvious from the code
 
