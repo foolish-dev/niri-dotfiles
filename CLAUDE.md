@@ -3,11 +3,6 @@
 Personal niri/Wayland desktop config plus `dotctl`, the Rust binary in `src/`
 that installs and deploys it. Single user, Arch and CachyOS.
 
-## Coding guidelines
-
-[Karpathy.md](Karpathy.md) is the standing brief for Rust work here — read it
-before changing `src/main.rs`.
-
 ## The hazard that is not obvious from the code
 
 `~/.config/{niri,nvim,noctalia,kitty,…}` are **symlinks into this repo**, so the
