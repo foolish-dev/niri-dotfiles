@@ -1067,10 +1067,13 @@ fn git_pull(repo_str: &str) -> Result<()> {
     // while `dotctl all` reported success. Refuse rather than deploy that.
     if git_has_conflicts(repo_str) {
         return Err(anyhow!(
-            "`git pull --autostash` fast-forwarded {repo_str}, but re-applying your local changes \
-             conflicted: the working tree has conflict markers and the autostash is still in \
-             `git stash list`. Resolve them and `git stash drop`, or run \
-             `git -C {repo_str} reset --hard && git -C {repo_str} stash pop`. \
+            "`git pull --ff-only --autostash` fast-forwarded {repo_str}, but re-applying your \
+             local changes conflicted: the working tree has conflict markers and the autostash \
+             is still in `git stash list`. To recover, edit each conflicted file, then \
+             `git -C {repo_str} add` it — this guard tests `git ls-files --unmerged`, which \
+             deleting the markers alone does not clear — and finally `git -C {repo_str} stash \
+             drop`. Do not `reset --hard` and `stash pop` again: that replays the same conflict, \
+             and until you resolve it the stash holds the only copy of your changes. \
              Refusing to deploy a conflicted config."
         ));
     }
