@@ -135,14 +135,31 @@ if [[ -z "$addrs" ]]; then
   exit 1
 fi
 
+# The accepted set is exactly what `dotctl install` and HEXSTRIKE_HOST pin,
+# not everything that happens to be unreachable off-box. 127.0.0.53 (the
+# resolved stub), a %lo scope suffix and the v4-mapped [::ffff:127.0.0.1] are
+# all loopback, and a reachability-only test would take them -- but this guard
+# is the second one precisely because the first can drift, and a bind nobody
+# pinned is drift whether or not it is routable. Refusing costs a restart.
+#
+# The message has to tell the two apart, though. Calling a loopback address
+# "not loopback" is false, and it sends whoever reads the journal looking for
+# an exposure that is not there.
 while read -r addr; do
   [[ -z "$addr" ]] && continue
   case "$addr" in
     127.0.0.1:* | '[::1]':*) ;;
     *)
-      echo "hexstrike-server is listening on $addr, not loopback." >&2
-      echo "This API is unauthenticated and /api/command runs arbitrary shell," >&2
-      echo "so it is being stopped rather than left reachable." >&2
+      if [[ "$addr" == 127.* || "$addr" == '[::1]'* || "$addr" == '[::ffff:127.'* ]]; then
+        echo "hexstrike-server is listening on $addr -- loopback, but not the" >&2
+        echo "127.0.0.1 / [::1] this guard pins, so the bind has drifted from" >&2
+        echo "what \`dotctl install\` set. Stopping rather than accepting a form" >&2
+        echo "nobody chose." >&2
+      else
+        echo "hexstrike-server is listening on $addr, not loopback." >&2
+        echo "This API is unauthenticated and /api/command runs arbitrary shell," >&2
+        echo "so it is being stopped rather than left reachable." >&2
+      fi
       echo "Run \`dotctl install\` to re-pin the bind, then start it again." >&2
       exit 1
       ;;

@@ -394,6 +394,29 @@ done
 unset _pair
 
 # =============================================================================
+# 2b. Loopback addresses that are nonetheless not the pinned one. The guard
+#     refuses these too -- `dotctl install` and HEXSTRIKE_HOST pin 127.0.0.1,
+#     so anything else is drift, and noticing drift is why this second check
+#     exists at all. What must NOT happen is the guard calling them "not
+#     loopback": that is false, and it sends whoever reads the journal looking
+#     for an exposure that is not there.
+# =============================================================================
+for _pair in "a_loopback_address_other_than_the_pinned_one_is_refused_as_drift|127.0.0.53:8888" \
+  "a_v4_mapped_loopback_bind_is_refused_as_drift|[::ffff:127.0.0.1]:8888"; do
+  start_case "${_pair%%|*}"
+  bin_fixture
+  ss_fixture "$(listen_line "${_pair#*|}" "$$")"
+  run_guard MAINPID="$$" HEXSTRIKE_PORT=8888
+  expect_refused
+  expect_err "loopback, but not the"
+  expect_err "${_pair#*|}"
+  # The exposure wording belongs to genuinely reachable binds only.
+  expect_no_err "not loopback."
+  end_case
+done
+unset _pair
+
+# =============================================================================
 # 3. One good socket does not launder a bad one, in either listing order. ss
 #    does not promise an order, so both have to be pinned.
 # =============================================================================
