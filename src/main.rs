@@ -1264,8 +1264,25 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     // AUR). Skipped on CachyOS, where [cachyos] already carries yay and paru
     // and where adding a lower-priority third-party repo only widens the
     // versioned-dependency fallthrough surface for nothing.
+    // Warn-and-continue, not `?`. Both of these reach the network for a
+    // third-party key and CDN, and neither is a dependency of anything below:
+    // chaotic-aur exists only as an AUR-helper source (and `ensure_aur_helper`
+    // already degrades gracefully without one), while nothing in `install()`
+    // pulls a single package out of blackarch. A five-second keyserver hiccup
+    // used to abort the whole run here — after niri/kitty/fuzzel but before
+    // grogu, nvim, noctalia, the greeter and HexStrike — and under
+    // `dotctl all` the `install(...)?` in `main` meant `deploy()` never ran
+    // either, so the user was left with a half-installed desktop and no
+    // configs at all. Every other optional component in this function already
+    // warns and carries on; these two were the outliers.
     match chaotic_aur_policy(distro) {
-        ChaoticAur::Add => setup_chaotic_aur()?,
+        ChaoticAur::Add => {
+            if let Err(e) = setup_chaotic_aur() {
+                warn(&format!(
+                    "Chaotic AUR setup failed: {e} — continuing; AUR-only add-ons may be skipped"
+                ));
+            }
+        }
         ChaoticAur::SkipRedundant => {
             ok("Chaotic AUR not needed on CachyOS — [cachyos] already provides yay/paru")
         }
@@ -1278,7 +1295,12 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     }
 
     // BlackArch (2800+ offensive-security tools, paired with HexStrike AI)
-    setup_blackarch()?;
+    if let Err(e) = setup_blackarch() {
+        warn(&format!(
+            "BlackArch repo setup failed: {e} — continuing; `pacman -S <tool>` will not reach \
+             BlackArch until you rerun `dotctl install`"
+        ));
+    }
 
     // grogu
     if command_exists("grogu") {
