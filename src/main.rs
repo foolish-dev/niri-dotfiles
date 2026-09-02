@@ -1658,6 +1658,24 @@ fn link_dotfiles(repo: &Path, home: &Path) -> Result<()> {
     if !repo.exists() {
         return Err(anyhow!("repo path not found: {}", repo.display()));
     }
+    // Resolve before anything is linked. `symlink()` stores the target bytes
+    // verbatim and the kernel resolves them against the *link's* directory, so
+    // a relative repo — `dotctl deploy --repo .` from inside the checkout, or
+    // `DOTFILES_REPO=.`, both of which `repo.exists()` and `git -C` accept
+    // happily — produced links like ~/.config/kitty -> ./.config/kitty, which
+    // resolve to ~/.config/./.config/kitty and dangle. And because `link_item`
+    // moves the existing file into the backup dir *before* creating the link,
+    // that failure mode ate the live config first: every tracked config,
+    // .local/bin script and unit ended up a dangling link with the real files
+    // parked in ~/.dotfiles-backup/<ts>/, while deploy printed a green
+    // "Linked:" for each one and exited 0. Canonicalising here also fixes the
+    // `git -C` and `repo.join(...)` uses below.
+    //
+    // After the `exists()` check, not in `main`: `Cmd::All` calls
+    // `ensure_repo` before the repo is on disk, where canonicalize would fail.
+    let repo = &repo
+        .canonicalize()
+        .with_context(|| format!("resolving repo path {}", repo.display()))?;
     // `ensure_repo` already refuses a conflicted tree, but only on the update
     // path — `dotctl deploy` calls straight in here, so a tree left conflicted
     // by a hand-run `git pull` or an abandoned merge would otherwise be
@@ -1953,6 +1971,7 @@ mod tests {
         BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS,
         REGREET_TOML,
     };
+    use std::env;
     use std::fs;
     use std::os::unix::fs::symlink;
     use std::path::{Path, PathBuf};
@@ -2469,6 +2488,104 @@ mod tests {
         assert!(
             !home.join("niri-dotfiles").exists(),
             "link_dotfiles must not invent paths outside what it was given"
+        );
+    }
+
+    /// `target` spelled relative to the process's current directory, so a test
+    /// can hand `link_dotfiles` the shape a user types as `--repo .`.
+    ///
+    /// Deliberately not `set_current_dir` + `"repo"`: cargo runs the tests as
+    /// threads of one process, so the cwd is shared, and a test that swings it
+    /// races every other test for as long as it holds it. Reading the cwd and
+    /// spelling the fixture against it mutates nothing and needs no lock.
+    fn relative_to_cwd(target: &Path) -> PathBuf {
+        let cwd = env::current_dir().expect("current dir");
+        let target = target.canonicalize().expect("canonicalize fixture path");
+        let mut cwd = cwd.components().peekable();
+        let mut target = target.components().peekable();
+        while cwd.peek().is_some() && cwd.peek() == target.peek() {
+            cwd.next();
+            target.next();
+        }
+        let mut rel = PathBuf::new();
+        for _ in cwd {
+            rel.push("..");
+        }
+        rel.extend(target);
+        rel
+    }
+
+    #[test]
+    fn link_dotfiles_resolves_a_relative_repo_before_it_links_anything() {
+        // `dotctl deploy --repo .` from inside the checkout — or DOTFILES_REPO=.
+        // — cleared `repo.exists()` and `git -C` happily, then handed the
+        // relative path straight to symlink(), which stores the target bytes
+        // verbatim for the kernel to resolve against the *link's* directory.
+        // Every link landed dangling (~/.config/kitty -> ./.config/kitty, i.e.
+        // ~/.config/./.config/kitty), and since link_item moves the existing
+        // file into the backup dir before creating the link, the live config
+        // was already gone: configs, .local/bin scripts and units all replaced
+        // by broken links while deploy printed a green "Linked:" and exited 0.
+        let tmp = TempDir::new().expect("tempdir");
+        let repo = tmp.path().join("repo");
+        let home = tmp.path().join("home");
+        fs::create_dir_all(repo.join(".config/kitty")).expect("mkdir kitty");
+        fs::create_dir_all(&home).expect("mkdir home");
+        fs::write(repo.join(".config/kitty/kitty.conf"), "font_size 12\n").expect("seed conf");
+        fs::write(repo.join(".zshrc"), "export EDITOR=nvim\n").expect("seed repo zshrc");
+        // A file of the user's own standing where a tracked one goes: this is
+        // the one that got moved aside behind a broken link.
+        fs::write(home.join(".zshrc"), "user-precious\n").expect("seed home zshrc");
+
+        let rel_repo = relative_to_cwd(&repo);
+        assert!(
+            rel_repo.is_relative(),
+            "the fixture must hand link_dotfiles a relative repo, or the test proves nothing"
+        );
+
+        link_dotfiles(&rel_repo, &home).expect("link_dotfiles");
+
+        let linked = home.join(".config/kitty");
+        assert!(
+            fs::read_link(&linked).expect("readlink").is_absolute(),
+            "the repo must be resolved before anything is linked — a relative target is \
+             stored verbatim and re-resolved against the link's own directory"
+        );
+        assert!(
+            linked.exists(),
+            "the deployed link must resolve; a relative repo left ~/.config/kitty dangling"
+        );
+        assert_eq!(
+            fs::read_to_string(linked.join("kitty.conf")).expect("read through link"),
+            "font_size 12\n",
+            "the repo's file must be readable through the deployed link"
+        );
+
+        let zshrc = home.join(".zshrc");
+        assert!(
+            fs::read_link(&zshrc).expect("readlink").is_absolute(),
+            "home-level dotfiles get the same resolved target"
+        );
+        assert_eq!(
+            fs::read_to_string(&zshrc).expect("read through link"),
+            "export EDITOR=nvim\n",
+            "~/.zshrc must serve the repo's file rather than dangle"
+        );
+
+        // Displacing the user's file into the backup dir is fine — that is what
+        // the backup dir is for. Displacing it and leaving a broken link in its
+        // place is the part that hurt, so pin both halves: the deployed link
+        // reads (above) and the displaced bytes are still recoverable.
+        let stamped = fs::read_dir(home.join(".dotfiles-backup"))
+            .expect("backup dir")
+            .next()
+            .expect("one timestamped backup dir")
+            .expect("backup dir entry")
+            .path();
+        assert_eq!(
+            fs::read_to_string(stamped.join(".zshrc")).expect("read backup"),
+            "user-precious\n",
+            "the displaced file must survive byte-for-byte in the backup"
         );
     }
 
