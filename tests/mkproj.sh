@@ -343,6 +343,10 @@ expect_out() {
   if [[ "$OUT" != *"$1"* ]]; then note "stdout does not contain: $1"; fi
 }
 
+expect_no_out() {
+  if [[ "$OUT" == *"$1"* ]]; then note "stdout should not contain: $1"; fi
+}
+
 expect_dir() {
   if [[ ! -d "$1" ]]; then note "expected a directory: $1"; fi
 }
@@ -632,12 +636,161 @@ done
 unset _pair
 
 # =============================================================================
+# 5. Traversal: the gap between the guard's stat and rm -rf's resolution.
+#
+#    `[[ -e "$BASE/nope/../existing-dir" ]]` is FALSE, because the stat fails
+#    on `nope` -- a component that does not exist yet. mkdir -p then creates
+#    it, and `cd "$BASE" && rm -rf "nope/../existing-dir"` resolves the `..`
+#    against a path that now exists and deletes the real target. That is
+#    precisely the pre-33246b9 behaviour, reachable through a name.
+#
+#    These cases pin the fix: such a name is refused outright, before anything
+#    is created or removed.
+# =============================================================================
+start_case "a_dotdot_hidden_behind_a_missing_component_cannot_delete_a_project_inside_the_base"
+arena_fixture
+bin_fixture with-cargo
+_before="$(snapshot "$ARENA")"
+in_base "nope/../existing-dir" rust
+expect_refused
+expect_intact "$BASE/existing-dir/CANARY"
+expect_no_path "$BASE/nope"
+expect_no_out "Created Rust project."
+expect_unchanged "$ARENA" "$_before"
+expect_cargo_not_run
+end_case
+unset _before
+
+start_case "a_dotdot_hidden_behind_a_missing_component_cannot_delete_a_tree_outside_the_base"
+arena_fixture
+bin_fixture with-cargo
+_before="$(snapshot "$ARENA")"
+in_base "nope/../../sibling" rust
+expect_refused
+expect_intact "$ARENA/sibling/CANARY"
+expect_intact "$ARENA/sibling/deep/CANARY"
+expect_file_is "$ARENA/sibling/README.md" "IMPORTANT NOTES DO NOT LOSE"
+expect_unchanged "$ARENA" "$_before"
+expect_cargo_not_run
+end_case
+unset _before
+
+start_case "a_dotdot_hidden_behind_a_missing_component_cannot_scaffold_over_an_unrelated_home_directory"
+arena_fixture
+bin_fixture with-cargo
+_before="$(snapshot "$ARENA")"
+in_base "nope/../../Documents" rust
+expect_refused
+expect_intact "$ARENA/Documents/CANARY"
+expect_no_path "$ARENA/Documents/Cargo.toml"
+expect_unchanged "$ARENA" "$_before"
+end_case
+unset _before
+
+start_case "a_traversing_name_cannot_truncate_files_outside_the_base_even_with_no_type_specific_rm"
+arena_fixture
+bin_fixture
+# No rust, no rm anywhere on this path: the front matter alone (cd, git init,
+# `echo "# $NAME" > README.md`, git add -A, git commit) is enough to destroy a
+# README and commit a repo over somebody's data.
+_before="$(snapshot "$ARENA")"
+in_base "nope/../../sibling" empty
+expect_refused
+expect_file_is "$ARENA/sibling/README.md" "IMPORTANT NOTES DO NOT LOSE"
+expect_intact "$ARENA/sibling/deep/CANARY"
+expect_no_path "$ARENA/sibling/.git"
+expect_unchanged "$ARENA" "$_before"
+end_case
+unset _before
+
+start_case "a_traversing_name_cannot_write_a_readme_into_the_parent_of_the_base"
+arena_fixture
+bin_fixture with-cargo
+# GNU rm refuses to remove a ".." directory, so this one already exits
+# non-zero -- but only after the front matter has written a README.md one
+# level above PROJ_DIR. The rc is not the guarantee; the untouched parent is.
+_before="$(snapshot "$ARENA")"
+in_base "nope/../.." rust
+expect_refused
+expect_no_path "$ARENA/README.md"
+expect_unchanged "$ARENA" "$_before"
+end_case
+unset _before
+
+start_case "a_dotdot_name_for_a_nonexistent_sibling_does_not_create_a_project_outside_the_base"
+arena_fixture
+bin_fixture
+# Nothing is destroyed here, but the project lands one level above the
+# configured base, next to whatever else lives there, while the success line
+# claims the unnormalised path. PROJ_DIR means the base, not a starting point.
+_before="$(snapshot "$ARENA")"
+in_base "../sibling-new" empty
+expect_refused
+expect_no_path "$ARENA/sibling-new"
+expect_unchanged "$ARENA" "$_before"
+end_case
+unset _before
+
+start_case "an_absolute_name_cannot_delete_the_directory_it_names"
+arena_fixture
+bin_fixture with-cargo
+# The guard tests "$BASE//abs/path", which cannot exist, so it always passes;
+# `rm -rf "$NAME"` then hits the real one.
+_before="$(snapshot "$ARENA")"
+in_base "$ARENA/abs-target" rust
+expect_refused
+expect_intact "$ARENA/abs-target/CANARY"
+expect_no_path "$ARENA/abs-target/Cargo.toml"
+expect_unchanged "$ARENA" "$_before"
+expect_cargo_not_run
+end_case
+unset _before
+
+start_case "an_absolute_name_does_not_mirror_the_whole_path_underneath_the_base"
+arena_fixture
+bin_fixture
+# The non-rust spelling of the same bug: no deletion, but mkdir -p builds
+# $BASE/tmp/.../abs-target and the run reports success.
+_before="$(snapshot "$ARENA")"
+in_base "$ARENA/abs-target" empty
+expect_refused
+expect_no_out "Created empty project."
+expect_unchanged "$ARENA" "$_before"
+end_case
+unset _before
+
+# =============================================================================
 # 6. NAME as argv. On the rust path it is handed to `rm` and to `cargo`, both
 #    of which parse leading dashes as options. Nothing destructive was found
 #    down this road, but a run that prints "Created Rust project." having
 #    created nothing of the sort is a lie the next case in a script will
 #    believe.
 # =============================================================================
+start_case "a_name_starting_with_a_dash_is_refused_before_it_reaches_rm_or_cargo"
+arena_fixture
+bin_fixture with-cargo
+_before="$(snapshot "$ARENA")"
+in_base "-rf" rust
+expect_refused
+expect_err "may not start with '-'"
+expect_no_path "$BASE/-rf"
+expect_unchanged "$ARENA" "$_before"
+expect_cargo_not_run
+end_case
+unset _before
+
+start_case "the_name_double_dash_help_is_refused_instead_of_reporting_a_project_it_did_not_create"
+arena_fixture
+bin_fixture with-cargo
+_before="$(snapshot "$ARENA")"
+in_base "--help" rust
+expect_refused
+expect_no_out "Created Rust project."
+expect_unchanged "$ARENA" "$_before"
+expect_cargo_not_run
+end_case
+unset _before
+
 start_case "shell_metacharacters_in_a_name_are_treated_as_data_and_never_executed"
 arena_fixture
 bin_fixture

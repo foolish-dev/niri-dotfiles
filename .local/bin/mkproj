@@ -16,6 +16,28 @@ if [[ -z "$BASE" ]]; then
   BASE="${BASE:-$HOME/Projects}"
 fi
 
+# NAME is interpolated into paths and, on the rust path, handed to other
+# programs as an argument. None of that can be safe until it is known to name
+# something *inside* $BASE: the guard below stats "$BASE/$NAME" before any of
+# it exists, so a ".." that sits behind a not-yet-created component is not
+# resolved until mkdir -p and rm -rf get to it -- long after the guard has
+# said yes. Reject those spellings up front rather than trying to out-stat them.
+while [[ "$NAME" == */ ]]; do NAME="${NAME%/}"; done
+case "$NAME" in
+  "")
+    echo "mkproj: empty project name" >&2; exit 1 ;;
+  -*)
+    echo "mkproj: project name may not start with '-': $NAME" >&2; exit 1 ;;
+  /*)
+    echo "mkproj: project name must be relative to $BASE, not an absolute path: $NAME" >&2; exit 1 ;;
+esac
+case "/$NAME/" in
+  */../*)
+    echo "mkproj: project name may not contain '..': $NAME" >&2; exit 1 ;;
+  */./*)
+    echo "mkproj: project name may not contain '.' as a path component: $NAME" >&2; exit 1 ;;
+esac
+
 DIR="$BASE/$NAME"
 if [[ -e "$DIR" ]]; then
   echo "mkproj: $DIR already exists -- refusing to overwrite" >&2
