@@ -100,7 +100,7 @@ instance CachyOS's `noctalia-greeter` — is left alone, config and unit both.
 
 [**grogu**](https://github.com/foolish-dev/grogu) extracts a palette from the current wallpaper and writes themed fragments for niri, kitty, ghostty, tmux, Neovim, teleia, Noctalia, the SDDM greeter background, and the keyboard backlight in one shot. `dotctl install` cargo-installs it from upstream.
 
-[**HexStrike AI**](https://github.com/0x4m4/hexstrike-ai) is a Flask MCP backend exposing 150+ offensive-security tools. Shipped here as a systemd user unit (`ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp`, `NoNewPrivileges`) plus the `hexstrike-mcp` stdio bridge MCP clients call. **The API is unauthenticated — `/api/command` executes arbitrary shell as your user — so it must never be reachable off loopback.** Upstream hardcodes `app.run(host="0.0.0.0")`, ignoring its own `HEXSTRIKE_HOST`; `dotctl install` rewrites that to honour it, on every run. Do not rely on systemd's `IPAddress*` directives here: a *user* manager cannot install a cgroup BPF firewall, and silently doesn't. The underlying CLI tools live in [BlackArch](https://blackarch.org) — `dotctl install` wires its repo via the upstream `strap.sh` so `pacman -S <tool>` reaches over 5,000 packages.
+[**HexStrike AI**](https://github.com/0x4m4/hexstrike-ai) is a Flask MCP backend exposing 150+ offensive-security tools. Shipped here as a systemd user unit (`ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp`, `NoNewPrivileges`) plus the `hexstrike-mcp` stdio bridge MCP clients call. **The API is unauthenticated — `/api/command` executes arbitrary shell as your user — so it must never be reachable off loopback.** Upstream hardcodes `app.run(host="0.0.0.0")`, ignoring its own `HEXSTRIKE_HOST`; `dotctl install` rewrites that to honour it, on every run. That rewrite is one Rust pattern match against one line of a 17k-line file it doesn't own, so a second, independent guard checks the property itself rather than a proxy for it: `ExecStartPost=` runs `hexstrike-assert-loopback`, which asks `ss` what the main process actually bound and takes the unit back down if the answer is anything but `127.0.0.1`/`[::1]` — or if it cannot be established at all. Both fail closed. Do not rely on systemd's `IPAddress*` directives here: a *user* manager cannot install a cgroup BPF firewall, and silently doesn't. The underlying CLI tools live in [BlackArch](https://blackarch.org) — `dotctl install` wires its repo via the upstream `strap.sh` so `pacman -S <tool>` reaches over 5,000 packages.
 
 **Neovim** — lazy.nvim + Mason, kitchen-sink config:
 
@@ -135,7 +135,8 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   └── systemd/user/
 │       └── hexstrike-server.service         # :8888, loopback-pinned at install
 ├── .local/bin/
-│   └── hexstrike-mcp                        # stdio bridge for MCP clients
+│   ├── hexstrike-mcp                        # stdio bridge for MCP clients
+│   └── hexstrike-assert-loopback            # ExecStartPost= bind check, fails closed
 ├── src/main.rs                              # dotctl — Rust installer/deployer
 ├── Cargo.toml                               # crate manifest (clap-derive + anyhow)
 └── Cargo.lock                               # locked

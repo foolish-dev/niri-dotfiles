@@ -15,18 +15,125 @@
 set -euo pipefail
 
 PORT="${HEXSTRIKE_PORT:-8888}"
+# How long to wait for the bind. Measured here at ~530-660ms on a warm restart
+# (fork -> "Running on http://127.0.0.1:8888"), so 15s is ~25x the observed
+# time. It has to stay under the unit's TimeoutStartSec= or the deadline
+# branch below is dead code: systemd kills the start job first and the journal
+# gets a generic "start-post operation timed out" instead of the diagnostics
+# here. The unit pins TimeoutStartSec=45 rather than trusting a default --
+# this user manager's DefaultTimeoutStartUSec is 15s, not the 90s systemd(1)
+# documents for the system manager.
+WAIT=15
+DEADLINE=$((SECONDS + WAIT))
+
+# Everything this script needs, checked once instead of discovered mid-poll.
+# Fail closed on any of them: a guard that cannot run is not a guard, and each
+# absence degrades differently and badly -- a missing `sleep` dies at 127 with
+# a bare bash error, a missing `timeout` waits out the whole deadline and then
+# blames the server for it, and a missing `awk` writes one "command not found"
+# per poll into the journal before doing the same.
+for cmd in ss timeout awk sleep; do
+  command -v "$cmd" >/dev/null 2>&1 || {
+    echo "$cmd not found: cannot verify what hexstrike-server bound to." >&2
+    echo "Refusing to leave an unauthenticated /api/command up unverified." >&2
+    exit 1
+  }
+done
 
 # Flask binds a moment after the process starts; poll rather than race it.
+#
+# Scoped to MAINPID's own socket, not merely to the port. "Something on this
+# box holds loopback:$PORT" is a weaker question that a stale listener
+# squatting the port -- or an ExecStart `--port` that has drifted from
+# HEXSTRIKE_PORT -- answers just as well, while hexstrike itself is bound
+# 0.0.0.0 somewhere else.
+#
+# This is why the unit spells ExecStartPost with a `+`. Without it the guard
+# runs inside the unit's own sandbox, which for a --user unit means its own
+# user namespace; from there ss cannot read the /proc/<pid>/fd links it needs
+# to attribute a socket and every line comes back with no users:(...) field at
+# all, so this filter matches nothing and takes a perfectly healthy service
+# down. (Any mount-namespace setting is enough to cause it: ProtectSystem,
+# ProtectHome and PrivateTmp each do it alone. RestrictAddressFamilies without
+# AF_NETLINK separately forces ss onto its /proc/net/tcp fallback, whose tell
+# is a Send-Q of 0.) Verified both ways round before settling on `+`.
 addrs=""
-for _ in $(seq 1 50); do
-  addrs="$(ss -ltnH "sport = :$PORT" 2>/dev/null | awk '{print $4}')" || true
+listeners=""
+seen_alive=0
+probed=0
+while :; do
+  # `timeout` bounds the probe itself. DEADLINE is only consulted between
+  # polls, so a wedged ss -- hung netlink read, NFS-stalled binary, a PATH
+  # shim -- would otherwise hang the start job for as long as systemd allows.
+  # `probed` separates "ss ran and saw nothing" from "ss never ran", which
+  # otherwise reach the same dead end wearing the same (wrong) explanation.
+  listeners="$(timeout 5 ss -ltnpH "sport = :$PORT" 2>/dev/null)" && probed=1 || true
+  addrs="$(awk -v pid="${MAINPID:-0}" 'index($0, "pid=" pid ",") {print $4}' <<<"$listeners")" || true
   [[ -n "$addrs" ]] && break
+  # Main process already gone -- systemd owns that failure, not this check.
+  # Only a pid this script has actually watched be alive may prove that. The
+  # failure mode of this branch is `exit 0`, i.e. report a pass having checked
+  # nothing, so it gets the narrowest trigger available. `kill -0` is the
+  # obvious probe and the wrong one: it answers "already gone" both for a
+  # MAINPID that is not a pid at all and for a live pid we are not allowed to
+  # signal. /proc removes the second ambiguity; `seen_alive` removes the
+  # first, so a numeric MAINPID that never existed (above pid_max, say) falls
+  # through to the deadline and fails closed rather than passing in 4ms.
+  if [[ "${MAINPID:-}" =~ ^[1-9][0-9]*$ ]] && [[ -d "/proc/$MAINPID" ]]; then
+    seen_alive=1
+  elif ((seen_alive)); then
+    # Infer "no server" from "no listener", not from "no MAINPID". Those are
+    # the same thing only because Type=simple makes MAINPID the process that
+    # holds the socket; a wrapper script, a Type= change, or an upstream that
+    # starts daemonising would leave a child holding it -- possibly on
+    # 0.0.0.0 -- while the pid this branch watches disappears. So sweep the
+    # port one last time, unattributed, before taking the exit-0 door.
+    if [[ -n "$(timeout 5 ss -ltnH "sport = :$PORT" 2>/dev/null)" ]]; then
+      echo "hexstrike-server (PID $MAINPID) is gone, but something still holds" >&2
+      echo "port $PORT. Refusing to pass a bind this check cannot attribute." >&2
+      exit 1
+    fi
+    # Say so rather than exiting silently: this is the one path that returns
+    # success without verifying a bind, and a silent pass is indistinguishable
+    # in the journal from a real one.
+    echo "hexstrike-server (PID $MAINPID) exited before binding; nothing is" >&2
+    echo "listening on port $PORT, so there is nothing to verify." >&2
+    exit 0
+  fi
+  ((SECONDS >= DEADLINE)) && break
   sleep 0.1
 done
 
-# Never bound in 5s. Not this script's call -- if the server could not listen,
-# the service itself fails. Silence here is the correct answer.
-[[ -z "$addrs" ]] && exit 0
+# Alive, but nothing we can attribute to it is listening. This used to `exit 0`
+# here, on the reasoning that a server which could not listen fails on its own
+# -- but that conflates "could not" with "has not yet", and resolves the
+# ambiguity in the open direction. Every miss (a slow cold start, a wrong port,
+# an ss that returned nothing for any reason) was reported as a pass, leaving
+# the unit up with ExecStartPost showing status=0/SUCCESS and nothing having
+# been checked. An unverified unauthenticated /api/command must not be left
+# running.
+if [[ -z "$addrs" ]]; then
+  echo "hexstrike-server (PID ${MAINPID:-?}) is not listening on port $PORT" >&2
+  echo "after ${WAIT}s, so its bind could not be verified." >&2
+  echo "It is being stopped rather than left running unchecked." >&2
+  if ((probed == 0)); then
+    echo "Every \`ss\` probe failed or timed out, so nothing was ever observed." >&2
+  elif [[ -n "$listeners" ]]; then
+    if [[ "$listeners" == *"users:("* ]]; then
+      echo "That port is held by something else:" >&2
+    else
+      # The socket is there but nameless, which is what the sandbox does to
+      # ss. Say that, rather than sending the operator hunting a squatter
+      # that does not exist.
+      echo "Something holds that port, but the socket could not be attributed" >&2
+      echo "to a pid -- check the unit's ExecStartPost= still has its \`+\`:" >&2
+    fi
+    echo "$listeners" >&2
+  else
+    echo "Check that ExecStart's --port matches HEXSTRIKE_PORT ($PORT)." >&2
+  fi
+  exit 1
+fi
 
 while read -r addr; do
   [[ -z "$addr" ]] && continue

@@ -12,9 +12,26 @@ Type=simple
 WorkingDirectory=%h/tools/hexstrike-ai
 ExecStart=%h/tools/hexstrike-ai/hexstrike-env/bin/python3 %h/tools/hexstrike-ai/hexstrike_server.py --port 8888
 # Verify what the socket actually bound to, and stop the service if it is not
-# loopback. See the NOTE at the bottom for why this exists alongside the
-# install-time source rewrite.
-ExecStartPost=%h/.local/bin/hexstrike-assert-loopback
+# loopback -- or if the bind cannot be observed at all within the guard's 15s
+# deadline, since "unverified" and "safe" are not the same answer. See the NOTE
+# at the bottom for why this exists alongside the install-time source rewrite.
+#
+# The `+` is load-bearing: it runs the guard outside this unit's sandbox. The
+# guard asks ss which pid owns the listening socket, and ss needs to read
+# /proc/<MainPID>/fd to answer. From inside the sandbox it cannot -- a --user
+# unit's mount namespace comes with its own user namespace, so every ss line
+# arrives with no users:(...) field and the check matches nothing and takes a
+# healthy service down. Without `+`, the guard can only ask the weaker "is
+# anything at all on loopback:8888". Nothing is escalated: a user unit has no
+# privileges to regain, and the guard reads sockets and exits.
+ExecStartPost=+%h/.local/bin/hexstrike-assert-loopback
+# Pinned, not inherited. The guard's deadline is only meaningful if it expires
+# before systemd's: this user manager's DefaultTimeoutStartUSec is 15s, which
+# is the same as the guard's own wait, so the start job was being killed at
+# the same moment the guard was about to report *why* it failed. A generic
+# "start-post operation timed out" is the one failure message that tells the
+# next person nothing.
+TimeoutStartSec=45
 Restart=on-failure
 RestartSec=5
 Environment=HEXSTRIKE_HOST=127.0.0.1
