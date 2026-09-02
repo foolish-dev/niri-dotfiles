@@ -1250,8 +1250,8 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         "iio-sensor-proxy",
         &["iio-sensor-proxy"],
     )?;
-    ensure_aur_pkg(helper, "iio-niri", "iio-niri")?;
-    ensure_aur_pkg(helper, "wvkbd", "wvkbd")?;
+    // The two AUR members of this pack are deferred to after the chaotic-aur
+    // bootstrap below — see the note there.
     sudo_write(
         "/etc/security/limits.d/99-amdxdna.conf",
         "*  soft  memlock  unlimited\n*  hard  memlock  unlimited\n",
@@ -1293,6 +1293,19 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     if helper.is_none() && !no_aur_helper {
         helper = ensure_aur_helper(distro);
     }
+
+    // GZ302EA AUR add-ons, deliberately down here rather than beside the
+    // pacman half of the same hardware pack. They used to sit up there and so
+    // consumed the *first* helper resolution, which on stock Arch always
+    // answers `None` — neither yay nor paru is in any Arch official repo, and
+    // chaotic-aur, dotctl's only source for one, was configured twenty lines
+    // later. A fresh `dotctl all` therefore printed "skipped — no AUR helper
+    // available" for both, bootstrapped yay immediately afterwards, and never
+    // came back: Mod+O did nothing and tablet rotation was dead until the user
+    // happened to run `dotctl install` a second time. CachyOS hid it, because
+    // there the first ask already succeeds from [cachyos].
+    ensure_aur_pkg(helper, "iio-niri", "iio-niri")?;
+    ensure_aur_pkg(helper, "wvkbd", "wvkbd")?;
 
     // BlackArch (2800+ offensive-security tools, paired with HexStrike AI)
     if let Err(e) = setup_blackarch() {
