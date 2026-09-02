@@ -39,7 +39,7 @@ case "/$NAME/" in
 esac
 
 DIR="$BASE/$NAME"
-if [[ -e "$DIR" ]]; then
+if [[ -e "$DIR" || -L "$DIR" ]]; then
   echo "mkproj: $DIR already exists -- refusing to overwrite" >&2
   exit 1
 fi

@@ -617,6 +617,23 @@ expect_unchanged "$ARENA" "$_before"
 end_case
 unset _before
 
+start_case "a_dangling_symlink_with_the_projects_name_is_refused_by_the_guard_and_the_link_survives"
+arena_fixture
+bin_fixture with-cargo
+# `[[ -e ]]` follows the link and is false for a dangling one, so the plain
+# guard misses this and the run dies later, in mkdir, with a message about a
+# file that "exists" after the script just said it did not. The refusal must
+# come from the guard and name the same reason as every other collision.
+ln -s /nonexistent/nowhere "$BASE/dangling"
+_before="$(snapshot "$ARENA")"
+in_base dangling rust
+expect_refused
+expect_err "already exists -- refusing to overwrite"
+if [[ ! -L "$BASE/dangling" ]]; then note "the dangling symlink did not survive"; fi
+expect_unchanged "$ARENA" "$_before"
+end_case
+unset _before
+
 for _pair in "a_name_of_dot_is_refused_and_changes_nothing|." \
   "a_name_of_dotdot_is_refused_and_changes_nothing|.." \
   "an_existing_sibling_named_through_dotdot_is_refused_and_left_untouched|../sibling"; do
