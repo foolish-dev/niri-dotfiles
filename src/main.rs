@@ -1533,13 +1533,45 @@ fn setup_gitconfig(repo: &Path, h: &Path, backup_dir: &Path) -> Result<()> {
         h,
     )?;
 
-    // Replace a legacy ~/.gitconfig that symlinked straight at the tracked file.
+    // A symlinked ~/.gitconfig is either the legacy dotctl link straight at the
+    // tracked file, or a link some other dotfiles manager left dangling. Both
+    // have to go before the stub is written: `fs::write` opens
+    // O_CREAT|O_WRONLY|O_TRUNC and follows the link, so a dangling one either
+    // scribbles the stub onto whatever foreign path it names — while dotctl
+    // reports "Wrote ~/.gitconfig stub" and leaves the link in place — or
+    // fails with a bare ENOENT that names neither the file nor the cause,
+    // part-way through a deploy that has already relinked most of ~/.config.
+    // `exists()` alone can't see either case; it follows symlinks.
     let gitconfig = h.join(".gitconfig");
-    if gitconfig.is_symlink() && gitconfig.canonicalize().ok() == tracked.canonicalize().ok() {
-        fs::remove_file(&gitconfig)?;
+    if gitconfig.is_symlink() {
+        if gitconfig.canonicalize().ok() == tracked.canonicalize().ok() {
+            fs::remove_file(&gitconfig)
+                .with_context(|| format!("remove legacy symlink {}", gitconfig.display()))?;
+        } else if !gitconfig.exists() {
+            // Dangling. Back the link itself up rather than dropping it, so the
+            // user can still see where it pointed. Same convention as link_item.
+            let rel = gitconfig.strip_prefix(h).unwrap_or(&gitconfig);
+            let backup_target = backup_dir.join(rel);
+            if let Some(parent) = backup_target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::rename(&gitconfig, &backup_target).with_context(|| {
+                format!(
+                    "backup dangling {} -> {}",
+                    gitconfig.display(),
+                    backup_target.display()
+                )
+            })?;
+            warn(&format!(
+                "Backed up dangling symlink: {} -> {}",
+                gitconfig.display(),
+                backup_target.display()
+            ));
+        }
     }
-    if !gitconfig.exists() {
-        fs::write(&gitconfig, GITCONFIG_STUB)?;
+    if !gitconfig.exists() && !gitconfig.is_symlink() {
+        fs::write(&gitconfig, GITCONFIG_STUB)
+            .with_context(|| format!("write {}", gitconfig.display()))?;
         ok("Wrote ~/.gitconfig stub");
     }
 
@@ -2634,6 +2666,94 @@ mod tests {
         assert!(GITCONFIG_STUB.contains("path = ~/.config/git/dotfiles.config"));
         assert!(GITCONFIG_STUB.contains("path = ~/.gitconfig.local"));
         assert_eq!(GITCONFIG_STUB.matches("[include]").count(), 2);
+    }
+
+    // A ~/.gitconfig left dangling by some other dotfiles manager is not the
+    // legacy dotctl link, so it walked past the first branch; then `exists()`
+    // followed the dead link and reported false, and `fs::write` followed it
+    // too (O_CREAT|O_WRONLY|O_TRUNC), scribbling the stub onto whatever
+    // foreign path the link named — while dotctl printed a green "Wrote
+    // ~/.gitconfig stub" and left ~/.gitconfig still pointing away from it.
+    #[test]
+    fn setup_gitconfig_backs_up_a_dangling_symlink_instead_of_writing_through_it() {
+        let f = LinkItemFixture::new();
+        f.write_src(".gitconfig", "[core]\n\tpager = less\n");
+
+        // Target parent exists, so the pre-fix `fs::write` succeeds and the
+        // stub silently lands on the foreign path instead of on ~/.gitconfig.
+        let foreign = f.home.join(".local/share/other-manager/gitconfig");
+        fs::create_dir_all(foreign.parent().expect("foreign parent")).expect("mkdir foreign dir");
+        let gitconfig = f.home.join(".gitconfig");
+        symlink(&foreign, &gitconfig).expect("seed dangling symlink");
+
+        setup_gitconfig(&f.repo, &f.home, &f.backup).expect("setup_gitconfig");
+
+        assert!(
+            !foreign.exists(),
+            "the stub must never be written through a dangling ~/.gitconfig symlink onto the \
+             foreign path it names ({})",
+            foreign.display()
+        );
+        assert!(
+            !gitconfig.is_symlink(),
+            "~/.gitconfig must end up a real file, not a symlink still pointing away from the stub"
+        );
+        assert_eq!(
+            fs::read_to_string(&gitconfig).expect("read ~/.gitconfig"),
+            GITCONFIG_STUB,
+            "~/.gitconfig must hold the include-stub itself"
+        );
+
+        let backed_up = f.backup.join(".gitconfig");
+        assert!(
+            backed_up.is_symlink(),
+            "the dangling link must be moved into the backup dir as a link, not resolved or \
+             dropped, so the user can still see where it pointed"
+        );
+        assert_eq!(
+            fs::read_link(&backed_up).expect("read_link backup"),
+            foreign,
+            "the backed-up link must still name its original target"
+        );
+    }
+
+    // Same dangling link, other half of the bug: when the foreign path's parent
+    // does not exist the pre-fix `fs::write` failed with a bare ENOENT naming
+    // neither the file nor the cause, aborting a deploy that had already
+    // relinked most of ~/.config.
+    #[test]
+    fn setup_gitconfig_survives_a_dangling_symlink_into_a_missing_directory() {
+        let f = LinkItemFixture::new();
+        f.write_src(".gitconfig", "[core]\n\tpager = less\n");
+
+        let foreign = f.home.join(".local/share/gone-manager/gitconfig");
+        let gitconfig = f.home.join(".gitconfig");
+        symlink(&foreign, &gitconfig).expect("seed dangling symlink");
+
+        let res = setup_gitconfig(&f.repo, &f.home, &f.backup);
+        assert!(
+            res.is_ok(),
+            "a dangling ~/.gitconfig must not abort the deploy: {:?}",
+            res.err()
+        );
+        assert!(
+            !foreign.parent().expect("foreign parent").exists(),
+            "dotctl must not conjure the missing directory the dead link pointed into"
+        );
+        assert!(
+            !gitconfig.is_symlink(),
+            "~/.gitconfig must end up a real file, not a symlink still pointing away from the stub"
+        );
+        assert_eq!(
+            fs::read_to_string(&gitconfig).expect("read ~/.gitconfig"),
+            GITCONFIG_STUB,
+            "~/.gitconfig must hold the include-stub itself"
+        );
+        assert_eq!(
+            fs::read_link(f.backup.join(".gitconfig")).expect("read_link backup"),
+            foreign,
+            "the backed-up link must still name its original target"
+        );
     }
 
     // ── setup_gitconfig ────────────────────────────────────────────────────
