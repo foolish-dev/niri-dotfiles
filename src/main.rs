@@ -360,13 +360,66 @@ fn has_pacman_repo(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Where `pacman -Sy` drops the sync database for a repo. Its presence is the
+/// difference between "the repo is written into pacman.conf" and "the repo can
+/// actually resolve a package".
+fn sync_db_path(repo: &str) -> String {
+    format!("/var/lib/pacman/sync/{repo}.db")
+}
+
+/// How far the chaotic-aur setup actually got on this box.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChaoticState {
+    /// In pacman.conf *and* its sync db is on disk — `pacman -S yay`
+    /// resolves. Nothing to do.
+    Ready,
+    /// The repo line is in pacman.conf but no sync db was ever written, so
+    /// the repo is named and cannot install a thing. One `pacman -Sy`
+    /// repairs it; the keyring and mirrorlist are already in place.
+    ConfiguredUnsynced,
+    /// Not in pacman.conf at all — the full key + keyring + mirrorlist +
+    /// repo-line bootstrap.
+    Absent,
+}
+
+/// Configured and synced are two different states, and only the second one can
+/// install anything. The repo line goes into pacman.conf one step before the
+/// `pacman -Sy` that populates its db, so an interrupted (or, now that the
+/// caller no longer aborts on it, a *failed*) run leaves a repo that
+/// [`has_pacman_repo`] reports as present while `pacman -S yay` still says
+/// "target not found". Folding the two into one boolean *was* the bug: every
+/// later run early-returned "already present" and never repaired it.
+///
+/// `configured` decides alone when it is false — a sync db left behind by a
+/// repo that has since been removed from pacman.conf is not a configured repo,
+/// and must not short-circuit the bootstrap.
+fn chaotic_state(configured: bool, synced: bool) -> ChaoticState {
+    match (configured, synced) {
+        (false, _) => ChaoticState::Absent,
+        (true, false) => ChaoticState::ConfiguredUnsynced,
+        (true, true) => ChaoticState::Ready,
+    }
+}
+
 fn setup_chaotic_aur() -> Result<()> {
     if !command_exists("pacman") {
         return Ok(());
     }
-    if has_pacman_repo("chaotic-aur") {
-        ok("Chaotic AUR repo already present");
-        return Ok(());
+    match chaotic_state(
+        has_pacman_repo("chaotic-aur"),
+        Path::new(&sync_db_path("chaotic-aur")).exists(),
+    ) {
+        ChaoticState::Ready => {
+            ok("Chaotic AUR repo already present");
+            return Ok(());
+        }
+        ChaoticState::ConfiguredUnsynced => {
+            info("Chaotic AUR configured but never synced — refreshing ...");
+            run("sudo", &["pacman", "-Sy"])?;
+            ok("Chaotic AUR repo synced");
+            return Ok(());
+        }
+        ChaoticState::Absent => {}
     }
     info("Adding Chaotic AUR repository ...");
     run(
@@ -1797,14 +1850,14 @@ fn copy_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        aur_failure_marker_in, aur_helper_hint, chaotic_aur_policy, command_exists, copy_item,
-        git_has_conflicts, git_pull, greetd_is_replaceable, greetd_session_command, link_dotfiles,
-        link_item, login_action, marker_still_valid_at, noctalia_plan, os_release_value,
-        pacman_conf_has_repo, pacman_pkg_installed, parse_distro, patch_hexstrike_bind,
-        patch_pkgbuild_unistd, preferred_aur_helper, refuse_conflicted_tree, venv_ready, BindState,
-        ChaoticAur, Distro, LoginAction, NoctaliaPlan, ALL_INTERFACE_BINDS, AUR_HELPERS,
-        BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS,
-        REGREET_CSS, REGREET_TOML,
+        aur_failure_marker_in, aur_helper_hint, chaotic_aur_policy, chaotic_state, command_exists,
+        copy_item, git_has_conflicts, git_pull, greetd_is_replaceable, greetd_session_command,
+        link_dotfiles, link_item, login_action, marker_still_valid_at, noctalia_plan,
+        os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro,
+        patch_hexstrike_bind, patch_pkgbuild_unistd, preferred_aur_helper, refuse_conflicted_tree,
+        sync_db_path, venv_ready, BindState, ChaoticAur, ChaoticState, Distro, LoginAction,
+        NoctaliaPlan, ALL_INTERFACE_BINDS, AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER,
+        GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML,
     };
     use std::fs;
     use std::os::unix::fs::symlink;
@@ -2834,6 +2887,65 @@ LOGO=cachyos
             "blackarch"
         ));
         assert!(!pacman_conf_has_repo("  # [blackarch]\n", "blackarch"));
+    }
+
+    #[test]
+    fn a_repo_line_without_a_sync_db_is_not_a_usable_repo() {
+        // The bug this pins: an install that died between appending
+        // `[chaotic-aur]` to pacman.conf and the `pacman -Sy` that fetches its
+        // db. has_pacman_repo saw the line and said "present", `pacman -S yay`
+        // still said "target not found", and every later run took the same
+        // early return and never repaired it.
+        assert_eq!(
+            chaotic_state(true, false),
+            ChaoticState::ConfiguredUnsynced,
+            "a repo line with no sync db is the half-finished install, and must be re-synced \
+             rather than reported as already present"
+        );
+        assert_eq!(
+            chaotic_state(true, true),
+            ChaoticState::Ready,
+            "configured plus a sync db on disk is the only state in which `pacman -S yay` \
+             can actually resolve"
+        );
+    }
+
+    #[test]
+    fn an_unconfigured_chaotic_aur_is_bootstrapped_whatever_is_in_the_sync_dir() {
+        // The other half of the table. No `[chaotic-aur]` in pacman.conf means
+        // the key, keyring, mirrorlist and repo line all still have to be
+        // installed — and a stale chaotic-aur.db left behind by a repo someone
+        // has since commented out must not be mistaken for a configured repo.
+        assert_eq!(
+            chaotic_state(false, false),
+            ChaoticState::Absent,
+            "a box that has never seen chaotic-aur gets the full bootstrap"
+        );
+        assert_eq!(
+            chaotic_state(false, true),
+            ChaoticState::Absent,
+            "a leftover sync db from a removed repo must not skip the bootstrap"
+        );
+    }
+
+    #[test]
+    fn sync_db_path_names_the_file_pacman_actually_writes() {
+        // The whole configured-vs-synced distinction rests on this one path:
+        // `pacman -Sy` writes /var/lib/pacman/sync/<repo>.db, and on this
+        // machine chaotic-aur.db sits there beside core.db and extra.db. Get
+        // the directory or the `.db` suffix wrong and every configured repo
+        // reads as unsynced, so `dotctl install` runs `pacman -Sy` on every
+        // single invocation forever.
+        assert_eq!(
+            sync_db_path("chaotic-aur"),
+            "/var/lib/pacman/sync/chaotic-aur.db",
+            "this is the exact path pacman populates for [chaotic-aur]"
+        );
+        assert_eq!(
+            sync_db_path("blackarch"),
+            "/var/lib/pacman/sync/blackarch.db",
+            "the convention is per-repo, not special-cased for chaotic-aur"
+        );
     }
 
     // ── greetd ownership ─────────────────────────────────────────────────
