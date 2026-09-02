@@ -42,3 +42,25 @@ jobs:
       # the distro-detection logic is never exercised anywhere but the
       # author's own box.
       - run: cargo test --locked
+
+  shell:
+    # Same condition as `rust`, for the same reason: a same-repo PR is already
+    # covered by its branch's push event, so only fork PRs need the
+    # pull_request trigger.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # ShellCheck ships on the runner image today. Installing it when absent
+      # costs one line and stops a green run from depending on that staying
+      # true.
+      - run: command -v shellcheck >/dev/null || { sudo apt-get update && sudo apt-get install -y shellcheck; }
+      - run: shellcheck .local/bin/* tests/*.sh
+      # `hexstrike-assert-loopback` is the one script whose failure mode is an
+      # unauthenticated command API left reachable, so its behaviour is pinned
+      # rather than only linted. The suite is hermetic — a fake `ss` first on
+      # PATH — so it needs no iproute2, opens no socket and never reaches
+      # systemd.
+      - run: tests/hexstrike-assert-loopback.sh
