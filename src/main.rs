@@ -1890,9 +1890,10 @@ mod tests {
         link_dotfiles, link_item, login_action, marker_still_valid_at, noctalia_plan,
         os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro,
         patch_hexstrike_bind, patch_pkgbuild_unistd, preferred_aur_helper, refuse_conflicted_tree,
-        sync_db_path, venv_ready, BindState, ChaoticAur, ChaoticState, Distro, LoginAction,
-        NoctaliaPlan, ALL_INTERFACE_BINDS, AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER,
-        GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML,
+        setup_gitconfig, sync_db_path, venv_ready, BindState, ChaoticAur, ChaoticState, Distro,
+        LoginAction, NoctaliaPlan, ALL_INTERFACE_BINDS, AUR_HELPERS, BASE_DESKTOP_HINT,
+        BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS,
+        REGREET_TOML,
     };
     use std::fs;
     use std::os::unix::fs::symlink;
@@ -2633,6 +2634,148 @@ mod tests {
         assert!(GITCONFIG_STUB.contains("path = ~/.config/git/dotfiles.config"));
         assert!(GITCONFIG_STUB.contains("path = ~/.gitconfig.local"));
         assert_eq!(GITCONFIG_STUB.matches("[include]").count(), 2);
+    }
+
+    // ── setup_gitconfig ────────────────────────────────────────────────────
+    //
+    // The whole point of the stub is that `git config --global` must never
+    // reach the tracked file, and that a machine's identity survives every
+    // re-deploy. Both were unpinned; these cover the paths a rewrite of the
+    // symlink handling can quietly break.
+
+    #[test]
+    fn setup_gitconfig_writes_stub_and_seeds_identity_on_a_fresh_home() {
+        // A brand-new machine: no ~/.gitconfig at all. All three pieces have
+        // to appear together — a real (not symlinked) stub, the tracked config
+        // parked at the neutral XDG path, and a seeded identity — or git either
+        // writes into the repo or commits with no user set.
+        let f = LinkItemFixture::new();
+        let tracked = f.write_src(".gitconfig", "[core]\n    pager = delta\n");
+
+        setup_gitconfig(&f.repo, &f.home, &f.backup).expect("setup_gitconfig");
+
+        let stub = f.home.join(".gitconfig");
+        assert!(
+            stub.is_file() && !stub.is_symlink(),
+            "~/.gitconfig must be a real file, so global writes stay out of the repo"
+        );
+        assert_eq!(
+            fs::read_to_string(&stub).expect("read stub"),
+            GITCONFIG_STUB,
+            "the generated stub must be written verbatim"
+        );
+
+        let deployed = f.home.join(".config/git/dotfiles.config");
+        assert!(
+            deployed.is_symlink(),
+            "the tracked config belongs at ~/.config/git/dotfiles.config as a symlink"
+        );
+        assert_eq!(
+            fs::read_link(&deployed).expect("read_link"),
+            tracked,
+            "that symlink must point at the tracked repo file"
+        );
+
+        let local = f.home.join(".gitconfig.local");
+        let body = fs::read_to_string(&local).expect("read ~/.gitconfig.local");
+        assert!(
+            body.contains("[user]") && body.contains("name =") && body.contains("email ="),
+            "a fresh home must be seeded with a [user] name/email, got: {body}"
+        );
+    }
+
+    #[test]
+    fn setup_gitconfig_replaces_legacy_symlink_without_writing_through_it() {
+        // The legacy layout dotctl used to deploy: ~/.gitconfig symlinked
+        // straight at the tracked repo file. `fs::write` follows symlinks, so
+        // writing the stub without unlinking first would overwrite the user's
+        // tracked .gitconfig with the stub — a repo-dirtying data loss.
+        let f = LinkItemFixture::new();
+        let tracked_body = "[alias]\n    st = status\n";
+        let tracked = f.write_src(".gitconfig", tracked_body);
+        symlink(&tracked, f.home.join(".gitconfig")).expect("seed legacy symlink");
+
+        setup_gitconfig(&f.repo, &f.home, &f.backup).expect("setup_gitconfig");
+
+        let stub = f.home.join(".gitconfig");
+        assert!(
+            !stub.is_symlink(),
+            "the legacy symlink must be removed, not written through"
+        );
+        assert_eq!(
+            fs::read_to_string(&stub).expect("read stub"),
+            GITCONFIG_STUB,
+            "~/.gitconfig must end up as the generated stub"
+        );
+        assert_eq!(
+            fs::read_to_string(&tracked).expect("read tracked"),
+            tracked_body,
+            "the tracked repo .gitconfig must come through byte-for-byte untouched"
+        );
+        assert!(
+            !f.backup.join(".gitconfig").exists(),
+            "dropping our own legacy link is not a backup-worthy event"
+        );
+    }
+
+    #[test]
+    fn setup_gitconfig_is_idempotent_and_keeps_an_existing_local_identity() {
+        // `dotctl deploy` runs on every update, so the second pass must be a
+        // no-op. The identity file is the dangerous one: an unconditional write
+        // would reset the machine's real name/email to the placeholders on
+        // every deploy.
+        let f = LinkItemFixture::new();
+        let tracked = f.write_src(".gitconfig", "[core]\n    pager = delta\n");
+        let identity = "[user]\n    name = Real Person\n    email = real@machine.example\n";
+        let local = f.home.join(".gitconfig.local");
+        fs::write(&local, identity).expect("seed ~/.gitconfig.local");
+
+        setup_gitconfig(&f.repo, &f.home, &f.backup).expect("first setup_gitconfig");
+        setup_gitconfig(&f.repo, &f.home, &f.backup).expect("second setup_gitconfig");
+
+        assert_eq!(
+            fs::read_to_string(&local).expect("read ~/.gitconfig.local"),
+            identity,
+            "an existing machine identity must survive every re-deploy"
+        );
+        assert_eq!(
+            fs::read_to_string(f.home.join(".gitconfig")).expect("read stub"),
+            GITCONFIG_STUB,
+            "the stub is unchanged by a second pass"
+        );
+        assert_eq!(
+            fs::read_link(f.home.join(".config/git/dotfiles.config")).expect("read_link"),
+            tracked,
+            "the already-correct symlink must be left alone"
+        );
+        assert!(
+            !f.backup.exists(),
+            "re-running over dotctl's own output must not back anything up"
+        );
+    }
+
+    #[test]
+    fn setup_gitconfig_does_nothing_when_the_repo_has_no_gitconfig() {
+        // A checkout that doesn't ship a .gitconfig is fine; it must not leave
+        // behind a stub that [include]s a path nothing deployed, nor an
+        // identity file the user never asked for.
+        let f = LinkItemFixture::new();
+
+        setup_gitconfig(&f.repo, &f.home, &f.backup).expect("setup_gitconfig");
+
+        let gitconfig = f.home.join(".gitconfig");
+        assert!(
+            !gitconfig.exists() && !gitconfig.is_symlink(),
+            "no tracked .gitconfig means no ~/.gitconfig stub"
+        );
+        assert!(
+            !f.home.join(".gitconfig.local").exists(),
+            "identity is only seeded alongside a deployed tracked config"
+        );
+        assert!(
+            !f.home.join(".config").exists(),
+            "the XDG git dir must not be created for nothing"
+        );
     }
 
     // ── git_pull ───────────────────────────────────────────────────────────
