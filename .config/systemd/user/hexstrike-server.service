@@ -46,9 +46,34 @@ TasksMax=512
 
 # Hardening for a loopback-only service
 ProtectSystem=strict
+# read-only rather than tmpfs: hexstrike is meant to read targets and wordlists
+# out of $HOME. The mask below is what keeps that from meaning "and every
+# credential too".
 ProtectHome=read-only
 ReadWritePaths=%h/tools/hexstrike-ai
-InaccessiblePaths=-%h/.ssh -%h/.gnupg
+# The threat this unit exists to contain is a file-read primitive first:
+# /api/command is unauthenticated and runs arbitrary shell as this same UID, so
+# 0600 modes stop nothing. This used to mask .ssh and .gnupg only, which left a
+# live OAuth token in ~/.claude/.credentials.json and the login keyring one
+# `cat` away. The leading `-` makes a not-yet-existing path a no-op, so the
+# entries for tools that aren't installed here cost nothing and mean the list
+# doesn't have to be revisited the day one is.
+InaccessiblePaths=-%h/.ssh -%h/.gnupg -%h/.claude -%h/.local/share/keyrings -%h/.aws -%h/.config/gh -%h/.config/gcloud -%h/.netrc -%h/.docker -%h/.kube
+# PrivatePIDs=yes is deliberately NOT here, though the obvious bypass of the
+# mask above is /proc/<pid>/root/... of some unsandboxed process of this same
+# UID. Two measured reasons. It is not needed: ProtectSystem=/ProtectHome=
+# already put this unit in a child user namespace (a --user manager needs one
+# to build the mount sandbox), and ptrace_may_access denies /proc/<pid>/root
+# across that boundary -- reading /proc/<niri-pid>/root/home/<user>/.ssh from
+# in here is EACCES with these settings and succeeds without them. And it is
+# actively harmful. It was tried here: under PrivatePIDs the $MAINPID systemd
+# exports to ExecStartPost= names the short-lived intermediate fork that sets
+# the namespace up, which is dead by the time the guard runs. The guard passed
+# in 23ms while Flask bound 627ms later -- a rubber stamp on the one check
+# that inspects the property that matters. It breaks the guard's pid-scoped
+# socket lookup for the same reason. Both of those fail closed now rather than
+# passing silently, but a setting that buys nothing here and costs that much
+# does not belong in the file.
 PrivateTmp=true
 NoNewPrivileges=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
