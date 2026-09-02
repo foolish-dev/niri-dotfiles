@@ -395,6 +395,17 @@ expect_commits() {
   fi
 }
 
+# expect_cargo_saw_no_option -- NAME must never reach cargo as an argv that
+# argument parsing can mistake for a flag.
+expect_cargo_saw_no_option() {
+  local a
+  while IFS= read -r a; do
+    case "$a" in
+      arg:-*) note "cargo received an option-looking argument: ${a#arg:}" ;;
+    esac
+  done <"$CARGO_LOG"
+}
+
 expect_cargo_not_run() {
   if [[ -s "$CARGO_LOG" ]]; then
     note "cargo was invoked: $(tr '\n' ' ' <"$CARGO_LOG")"
@@ -833,6 +844,19 @@ unset _canary _name
 #    directory keeps it, reuses the existing repo, and writes the same files --
 #    so the rm has nothing to do but lose data.
 # =============================================================================
+start_case "a_rust_project_keeps_the_readme_the_script_just_wrote"
+arena_fixture
+bin_fixture with-cargo
+in_base rustproj rust
+expect_rc 0
+expect_out "Created Rust project."
+expect_file_is "$BASE/rustproj/README.md" "# rustproj"
+if [[ ! -f "$BASE/rustproj/Cargo.toml" ]]; then note "expected $BASE/rustproj/Cargo.toml"; fi
+if [[ ! -f "$BASE/rustproj/src/main.rs" ]]; then note "expected $BASE/rustproj/src/main.rs"; fi
+expect_commits "$BASE/rustproj" 1
+expect_cargo_saw_no_option
+end_case
+
 start_case "a_rust_project_without_cargo_falls_back_to_a_skeleton_and_still_commits"
 arena_fixture
 bin_fixture

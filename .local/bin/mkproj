@@ -88,9 +88,7 @@ TOML
 
   rust|rs)
     if command -v cargo &>/dev/null; then
-      cd "$BASE" && rm -rf "$NAME"
-      cargo init "$NAME"
-      cd "$DIR"
+      cargo init
     else
       echo "cargo not found; creating skeleton."
       mkdir -p src
