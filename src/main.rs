@@ -1515,6 +1515,17 @@ const GITCONFIG_STUB: &str = "\
     path = ~/.gitconfig.local
 ";
 
+/// Whether a pre-existing `~/.gitconfig` leaves the tracked config inert.
+///
+/// git reads `~/.gitconfig` and `~/.config/git/config`; it never reads
+/// `~/.config/git/dotfiles.config` on its own, so the tracked file only takes
+/// effect through an `[include]`. Pure, so the "deployed but not active"
+/// signal is testable without touching a real home. The substring matches both
+/// the `~/…` and absolute spellings of the include path.
+fn gitconfig_lacks_include(body: &str) -> bool {
+    !body.contains(".config/git/dotfiles.config")
+}
+
 /// Deploy the tracked `.gitconfig` to a neutral XDG path with an untracked
 /// ~/.gitconfig include-stub, and seed ~/.gitconfig.local identity once.
 /// Idempotent: never clobbers an existing stub or identity file (honors
@@ -1573,6 +1584,21 @@ fn setup_gitconfig(repo: &Path, h: &Path, backup_dir: &Path) -> Result<()> {
         fs::write(&gitconfig, GITCONFIG_STUB)
             .with_context(|| format!("write {}", gitconfig.display()))?;
         ok("Wrote ~/.gitconfig stub");
+    } else if gitconfig_lacks_include(&fs::read_to_string(&gitconfig).unwrap_or_default()) {
+        // The tracked config is deployed but inert: git reads ~/.gitconfig, and
+        // a pre-existing one (anybody who has ever run `git config --global
+        // user.name`) has no reason to include ours. link_item already printed
+        // a green "Linked: ~/.config/git/dotfiles.config" for a file no git
+        // process will ever open. Don't rewrite the user's file — say so.
+        // Deliberately not `?` on the read: an unreadable ~/.gitconfig should
+        // warn, not abort an otherwise-fine deploy.
+        warn(
+            "~/.gitconfig exists and does not [include] the tracked config, so none of it is \
+             active — the delta pager, pull.rebase/rebase.autoStash, the gh:/gl: insteadOf \
+             rewrites and every alias are inert. Append:\n    [include]\n        path = \
+             ~/.config/git/dotfiles.config\nor move ~/.gitconfig aside and re-run \
+             `dotctl deploy` to get the generated stub.",
+        );
     }
 
     let local = h.join(".gitconfig.local");
@@ -1918,9 +1944,9 @@ fn copy_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 mod tests {
     use super::{
         aur_failure_marker_in, aur_helper_hint, chaotic_aur_policy, chaotic_state, command_exists,
-        copy_item, git_has_conflicts, git_pull, greetd_is_replaceable, greetd_session_command,
-        link_dotfiles, link_item, login_action, marker_still_valid_at, noctalia_plan,
-        os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro,
+        copy_item, git_has_conflicts, git_pull, gitconfig_lacks_include, greetd_is_replaceable,
+        greetd_session_command, link_dotfiles, link_item, login_action, marker_still_valid_at,
+        noctalia_plan, os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro,
         patch_hexstrike_bind, patch_pkgbuild_unistd, preferred_aur_helper, refuse_conflicted_tree,
         setup_gitconfig, sync_db_path, venv_ready, BindState, ChaoticAur, ChaoticState, Distro,
         LoginAction, NoctaliaPlan, ALL_INTERFACE_BINDS, AUR_HELPERS, BASE_DESKTOP_HINT,
@@ -2666,6 +2692,132 @@ mod tests {
         assert!(GITCONFIG_STUB.contains("path = ~/.config/git/dotfiles.config"));
         assert!(GITCONFIG_STUB.contains("path = ~/.gitconfig.local"));
         assert_eq!(GITCONFIG_STUB.matches("[include]").count(), 2);
+    }
+
+    // ── deployed-but-inert ~/.gitconfig ───────────────────────────────────
+    //
+    // git reads ~/.gitconfig and ~/.config/git/config. It never reads
+    // ~/.config/git/dotfiles.config on its own, so the tracked config only
+    // does anything through an [include]. Anyone who had ever run
+    // `git config --global user.name` before installing already had a
+    // ~/.gitconfig, so dotctl skipped the stub and printed a green
+    // "Linked: ~/.config/git/dotfiles.config" for a file no git process
+    // would ever open.
+
+    #[test]
+    fn gitconfig_lacks_include_flags_a_config_that_never_names_the_tracked_file() {
+        assert!(
+            gitconfig_lacks_include(
+                "[user]\n    name = Someone\n    email = someone@example.com\n"
+            ),
+            "the ~/.gitconfig `git config --global user.name` leaves behind includes nothing, so \
+             the tracked config is inert"
+        );
+        assert!(
+            gitconfig_lacks_include(""),
+            "an empty ~/.gitconfig includes nothing either"
+        );
+        assert!(
+            gitconfig_lacks_include("[include]\n    path = ~/.config/git/config\n"),
+            "~/.config/git/config is a different file — including it does not activate the \
+             tracked dotfiles.config"
+        );
+        assert!(
+            gitconfig_lacks_include("[include]\n    path = ~/.config/git/dotfiles.conf\n"),
+            "a near-miss filename in the same directory must not read as the tracked include"
+        );
+    }
+
+    #[test]
+    fn gitconfig_lacks_include_recognises_both_spellings_of_the_include_path() {
+        // git expands `~` itself, but a hand-written [include] just as often
+        // spells the path out in full. Either one makes the tracked config
+        // live, so neither may be reported as inert.
+        assert!(
+            !gitconfig_lacks_include(
+                "[user]\n    name = Someone\n[include]\n    path = ~/.config/git/dotfiles.config\n"
+            ),
+            "the ~/… spelling of the include activates the tracked config"
+        );
+        assert!(
+            !gitconfig_lacks_include(
+                "[user]\n    name = Someone\n[include]\n    path = \
+                 /home/someone/.config/git/dotfiles.config\n"
+            ),
+            "the absolute spelling of the include activates the tracked config just as well"
+        );
+    }
+
+    #[test]
+    fn gitconfig_stub_satisfies_the_inert_check_dotctl_runs_against_it() {
+        // The stub and the predicate have to move together: reword either on
+        // its own and dotctl starts warning, on every deploy after the first,
+        // that the ~/.gitconfig it generated itself leaves the tracked config
+        // inert.
+        assert!(
+            !gitconfig_lacks_include(GITCONFIG_STUB),
+            "the stub dotctl writes must pass the check dotctl runs against it"
+        );
+    }
+
+    #[test]
+    fn setup_gitconfig_never_rewrites_a_pre_existing_gitconfig() {
+        // The file being warned about is the one holding the user's identity.
+        // Warning is a decision: dotctl says the tracked config is inert and
+        // how to fix it, and leaves ~/.gitconfig exactly as it found it.
+        let f = LinkItemFixture::new();
+        f.write_src(".gitconfig", "[core]\n    pager = delta\n");
+        let theirs = "[user]\n    name = Someone\n    email = someone@example.com\n[pull]\n    \
+                      rebase = false\n";
+        let dest = f.write_dest(".gitconfig", theirs);
+
+        setup_gitconfig(&f.repo, &f.home, &f.backup).expect("setup_gitconfig");
+
+        assert!(
+            dest.is_file() && !dest.is_symlink(),
+            "a pre-existing ~/.gitconfig must stay a real file, never be swapped for a link \
+             into the repo"
+        );
+        assert_eq!(
+            fs::read_to_string(&dest).expect("read ~/.gitconfig"),
+            theirs,
+            "the user's ~/.gitconfig must come back byte-for-byte — dotctl warns that the \
+             tracked config is inert, it does not rewrite it"
+        );
+        assert!(
+            f.home.join(".config/git/dotfiles.config").is_symlink(),
+            "the tracked config is still deployed — that is exactly what makes it inert rather \
+             than absent"
+        );
+    }
+
+    #[test]
+    fn setup_gitconfig_leaves_the_stub_it_wrote_byte_identical_on_a_second_run() {
+        // Every deploy after the first meets dotctl's own stub, which does
+        // [include] the tracked config. That path must fall through silently:
+        // no warning, and no second write.
+        let f = LinkItemFixture::new();
+        f.write_src(".gitconfig", "[core]\n    pager = delta\n");
+
+        setup_gitconfig(&f.repo, &f.home, &f.backup).expect("first setup_gitconfig");
+        let stub = f.home.join(".gitconfig");
+        let first = fs::read_to_string(&stub).expect("read stub");
+        assert_eq!(
+            first, GITCONFIG_STUB,
+            "the first run over a home with no ~/.gitconfig writes the stub verbatim"
+        );
+
+        setup_gitconfig(&f.repo, &f.home, &f.backup).expect("second setup_gitconfig");
+
+        assert!(
+            stub.is_file() && !stub.is_symlink(),
+            "the stub must stay a real file across deploys"
+        );
+        assert_eq!(
+            fs::read_to_string(&stub).expect("re-read stub"),
+            first,
+            "a second deploy must leave dotctl's own stub byte-identical"
+        );
     }
 
     // A ~/.gitconfig left dangling by some other dotfiles manager is not the
