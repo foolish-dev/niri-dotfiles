@@ -4,6 +4,10 @@
 # Usage: sddm-theme [theme-name]
 # =============================================================================
 set -euo pipefail
+# Observed with an existing-but-empty themes dir: an unmatched glob left the
+# loop variable holding the literal pattern, so a theme named '*' was offered
+# and reached `sudo sed`/`sudo tee`.
+shopt -s nullglob
 
 DOTFILES="${DOTFILES:-$HOME/niri-dotfiles}"
 SDDM_THEMES="/usr/share/sddm/themes"
@@ -44,7 +48,9 @@ warn()  { echo -e "${YLW}[!]${RST} $*"; }
 fail()  { echo -e "${RED}[-]${RST} $*"; exit 1; }
 
 # Gather available themes
-declare -A THEMES
+# `declare -A THEMES` alone leaves it *unset*, so the `${#THEMES[@]}` test
+# below died on `set -u` before it could print "No SDDM themes found".
+declare -A THEMES=()
 
 # Built-in astronaut variants
 if [[ -d "$ASTRONAUT_DIR/Themes" ]]; then
