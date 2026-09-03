@@ -1801,8 +1801,33 @@ fn link_dotfiles(repo: &Path, home: &Path) -> Result<()> {
     // units writes .wants/ into ~/.config, never back into the repo.
     let sysd_dest = h.join(".config/systemd/user");
     if sysd_dest.is_symlink() {
-        fs::remove_file(&sysd_dest)?;
-        info("Converted ~/.config/systemd/user from symlink to a real directory");
+        // Back the link up instead of unlinking it: whatever it points at holds
+        // the user's own unit files and, worse, their .wants/ enablement
+        // symlinks, and deploy() runs `systemctl --user daemon-reload` a few
+        // lines later — so anything enabled behind that link stops resolving on
+        // the very next reload. The blue info() line this replaces read like
+        // routine progress while it was the destructive step. Every other
+        // displaced item in the deploy path lands in ~/.dotfiles-backup/<ts>/
+        // with a yellow warn (link_item / copy_item); this is not the exception.
+        // Renaming moves the link itself, so its target directory is untouched
+        // and the user can see where it pointed.
+        let rel = sysd_dest.strip_prefix(&h).unwrap_or(&sysd_dest);
+        let backup_target = backup_dir.join(rel);
+        if let Some(parent) = backup_target.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::rename(&sysd_dest, &backup_target).with_context(|| {
+            format!(
+                "backup {} -> {}",
+                sysd_dest.display(),
+                backup_target.display()
+            )
+        })?;
+        warn(&format!(
+            "Backed up: {} -> {}",
+            sysd_dest.display(),
+            backup_target.display()
+        ));
     }
     fs::create_dir_all(&sysd_dest)?;
     let sysd_src = repo.join(".config/systemd/user");
@@ -2738,6 +2763,80 @@ mod tests {
             "the renamed-to path is still deployed"
         );
     }
+
+    #[test]
+    fn link_dotfiles_backs_up_a_symlinked_systemd_user_dir_instead_of_deleting_it() {
+        // ~/.config/systemd/user has to become a real directory so enabling a
+        // unit writes .wants/ into ~/.config rather than back into a repo — but
+        // it got there via fs::remove_file plus a blue "Converted …" info line
+        // that read like routine progress. The link, and with it the only
+        // pointer to the user's own units and their .wants/ enablement links,
+        // was dropped with no backup; deploy() runs `systemctl --user
+        // daemon-reload` a few lines later, so anything enabled behind it stops
+        // resolving on the very next reload.
+        let tmp = TempDir::new().expect("tempdir");
+        let repo = tmp.path().join("repo");
+        let home = tmp.path().join("home");
+        fs::create_dir_all(repo.join(".config/systemd/user")).expect("mkdir repo units");
+        fs::write(
+            repo.join(".config/systemd/user/awww.service"),
+            "[Service]\n",
+        )
+        .expect("seed tracked unit");
+        fs::create_dir_all(home.join(".config/systemd")).expect("mkdir home .config/systemd");
+
+        // The user's own unit tree, behind the whole-dir symlink an earlier
+        // deploy (or another manager) left at ~/.config/systemd/user.
+        let theirs = home.join("elsewhere/units");
+        fs::create_dir_all(theirs.join("default.target.wants")).expect("mkdir their wants");
+        fs::write(
+            theirs.join("mine.service"),
+            "[Service]\nExecStart=/usr/bin/true\n",
+        )
+        .expect("seed their unit");
+        let sysd = home.join(".config/systemd/user");
+        symlink(&theirs, &sysd).expect("seed whole-dir symlink");
+
+        link_dotfiles(&repo, &home).expect("link_dotfiles");
+
+        assert!(
+            sysd.is_dir() && !sysd.is_symlink(),
+            "~/.config/systemd/user must end up a real directory"
+        );
+        assert!(
+            sysd.join("awww.service").is_symlink(),
+            "tracked units are linked in individually afterwards"
+        );
+
+        let backups = home.join(".dotfiles-backup");
+        assert!(
+            backups.is_dir(),
+            "the displaced whole-dir symlink must be backed up rather than unlinked — nothing \
+             was written to ~/.dotfiles-backup at all"
+        );
+        let stamped = fs::read_dir(&backups)
+            .expect("backup dir")
+            .next()
+            .expect("one timestamped backup dir")
+            .expect("backup dir entry")
+            .path();
+        let backed_up = stamped.join(".config/systemd/user");
+        assert!(
+            backed_up.is_symlink(),
+            "the displaced whole-dir symlink must land in ~/.dotfiles-backup/<ts>/ as a link, \
+             like every other displaced item, instead of being unlinked"
+        );
+        assert_eq!(
+            fs::read_link(&backed_up).expect("read_link backup"),
+            theirs,
+            "the backed-up link must still name the unit tree it pointed at"
+        );
+        assert!(
+            theirs.join("mine.service").is_file() && theirs.join("default.target.wants").is_dir(),
+            "the user's own units and their enablement links must be untouched behind it"
+        );
+    }
+
     #[test]
     fn refuse_conflicted_tree_rejects_an_unresolved_merge() {
         // deploy() symlinks this repo straight into ~/.config, so a tree with
