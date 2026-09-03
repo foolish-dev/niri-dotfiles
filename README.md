@@ -138,7 +138,8 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── hexstrike-mcp                        # stdio bridge for MCP clients
 │   └── hexstrike-assert-loopback            # ExecStartPost= bind check, fails closed
 ├── src/main.rs                              # dotctl — Rust installer/deployer
-├── tests/hexstrike-assert-loopback.sh       # 32 hermetic cases over the bind check
+├── tests/hexstrike-assert-loopback.sh       # hermetic cases over the bind check
+├── tests/mkproj.sh                          # hermetic cases over the scaffolder
 ├── Cargo.toml                               # crate manifest (clap-derive + anyhow)
 └── Cargo.lock                               # locked
 ```

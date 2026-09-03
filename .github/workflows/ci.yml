@@ -57,7 +57,7 @@ jobs:
       # costs one line and stops a green run from depending on that staying
       # true.
       - run: command -v shellcheck >/dev/null || { sudo apt-get update && sudo apt-get install -y shellcheck; }
-      - run: shellcheck .local/bin/* tests/*.sh
+      - run: shellcheck .local/bin/* tests/*.sh .config/tmux/scripts/*.sh
       # `hexstrike-assert-loopback` is the one script whose failure mode is an
       # unauthenticated command API left reachable, so its behaviour is pinned
       # rather than only linted. The suite is hermetic — a fake `ss` first on
