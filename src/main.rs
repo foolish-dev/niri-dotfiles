@@ -1181,6 +1181,33 @@ fn login_action(current_dm: Option<String>, greetd_replaceable: bool) -> LoginAc
     }
 }
 
+/// Write the three files that make up the greetd + ReGreet fallback, in the
+/// only order that is safe: config.toml first, because it is the one that is
+/// load-bearing for the other two.
+///
+/// Kept as its own `Result` — with the `?`s intact — rather than three
+/// warn-and-continue calls inlined into [`setup_noctalia_login`]. The three
+/// writes are one unit: config.toml is what makes greetd launch regreet at
+/// all, so regreet.toml and regreet.css mean nothing without it, and a run
+/// that lands only some of them must not print "greetd + ReGreet fallback
+/// config written". The caller turns *this* function's error into a single
+/// warning, so a half-written fallback is reported as a failure rather than
+/// either aborting `install()` or being papered over per-file.
+///
+/// (Ordering matters the other way too: config.toml is written first, so if a
+/// later write fails greetd is at worst pointed at a regreet with its own
+/// defaults — never at a regreet config for a greeter greetd was never told
+/// to launch.)
+fn write_greetd_fallback() -> Result<()> {
+    // config.toml is a pacman backup file shipped by greetd itself, so
+    // back up whatever is there before replacing it. regreet.toml and
+    // regreet.css are paths dotctl solely owns.
+    sudo_write_owned(GREETD_CONF, GREETD_CONFIG_BODY)?;
+    sudo_write(REGREET_CONF, REGREET_TOML)?;
+    sudo_write(REGREET_CSS_PATH, REGREET_CSS)?;
+    Ok(())
+}
+
 /// Set up the login screen: the graphical noctalia **SDDM** theme as the
 /// active display manager, with greetd + ReGreet (also noctalia-themed) left
 /// installed and configured as a disabled fallback. Selects the noctalia SDDM
@@ -1188,8 +1215,17 @@ fn login_action(current_dm: Option<String>, greetd_replaceable: bool) -> LoginAc
 /// (gdm/lightdm/ly) is already enabled, so we never silently steal someone
 /// else's login screen. `greetd.service` is the fallback we also configure, so
 /// switching off it to sddm is allowed. Best-effort like the rest of
-/// `install()`: a missing sddm or a failed `systemctl` call warns and returns
-/// Ok rather than aborting.
+/// `install()`: a missing sddm, a failed `sudo tee` or a failed `systemctl`
+/// call warns and returns Ok rather than aborting.
+///
+/// That promise used to be a lie: every `sudo` write in here was a hard `?`.
+/// This runs after two `cargo install --git` builds and an AUR `makepkg`,
+/// comfortably past sudo's 15-minute `timestamp_timeout` default, so the
+/// first write hits a fresh password prompt — and on an unattended install
+/// that prompt fails, `sudo tee` exits non-zero, and the `?` took down the
+/// whole of `install()` with it. Under `dotctl all` the `install(...)?` in
+/// `main` then meant `deploy()` never ran either: no configs, no symlinks,
+/// over a login screen that had already been half-configured.
 fn setup_noctalia_login() -> Result<()> {
     // Read before we would overwrite it: greetd is a shared entry point, and
     // the answer gates both the config writes and whether greetd.service is
@@ -1201,13 +1237,18 @@ fn setup_noctalia_login() -> Result<()> {
     if command_exists("greetd") {
         if greetd_replaceable {
             info("Writing greetd + ReGreet fallback config ...");
-            // config.toml is a pacman backup file shipped by greetd itself, so
-            // back up whatever is there before replacing it. regreet.toml and
-            // regreet.css are paths dotctl solely owns.
-            sudo_write_owned(GREETD_CONF, GREETD_CONFIG_BODY)?;
-            sudo_write(REGREET_CONF, REGREET_TOML)?;
-            sudo_write(REGREET_CSS_PATH, REGREET_CSS)?;
-            ok("greetd + ReGreet fallback config written");
+            match write_greetd_fallback() {
+                Ok(()) => ok("greetd + ReGreet fallback config written"),
+                // Deliberately not per-file: see `write_greetd_fallback`. The
+                // fallback stays disabled either way, so the cost of stopping
+                // here is a fallback greeter that is not ready — not a broken
+                // login screen — and that is worth strictly less than the rest
+                // of `install()` plus, under `dotctl all`, the whole `deploy()`.
+                Err(e) => warn(&format!(
+                    "greetd + ReGreet fallback config incomplete: {e} — greetd.service stays \
+                     disabled; rerun `dotctl install` to finish it"
+                )),
+            }
         } else {
             warn(&format!(
                 "{GREETD_CONF} configures another greeter (on CachyOS, `noctalia-greeter` \
