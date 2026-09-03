@@ -1248,6 +1248,28 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         &["ttf-jetbrains-mono-nerd"],
     )?;
 
+    // Spawned at startup by config.kdl and in exactly the same boat as
+    // wl-clipboard: Arch `extra`, never installed here, present on this box only
+    // as a dependency of the CachyOS niri meta-package. Without it every
+    // XWayland client has no server to connect to.
+    ensure_pacman(
+        "xwayland-satellite",
+        "xwayland-satellite",
+        &["xwayland-satellite"],
+    )?;
+
+    // Media and brightness keys. config.kdl binds XF86Audio* to `wpctl` and
+    // XF86MonBrightness* to `brightnessctl`; both are in `extra`, neither was
+    // installed, and both are here only via that same meta-package — so on
+    // stock Arch every volume and brightness key was dead. `wpctl` is
+    // wireplumber's binary, so the package name and the gate deliberately differ.
+    ensure_pacman("wireplumber", "wpctl", &["wireplumber"])?;
+    ensure_pacman("brightnessctl", "brightnessctl", &["brightnessctl"])?;
+
+    // `.zshrc` is tracked and deployed and Mod+Ctrl+N drops into `zsh` by name,
+    // but nothing ever installed the shell itself.
+    ensure_pacman("zsh", "zsh", &["zsh"])?;
+
     // Resolve (or bootstrap) an AUR helper before the first AUR package. On
     // CachyOS this installs one straight from [cachyos]; on stock Arch it can
     // only succeed once setup_chaotic_aur further down has run, so we ask
@@ -1331,6 +1353,13 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     // there the first ask already succeeds from [cachyos].
     ensure_aur_pkg(helper, "iio-niri", "iio-niri")?;
     ensure_aur_pkg(helper, "wvkbd", "wvkbd")?;
+    // The Armoury Crate key (XF86Launch1) is bound to `rog-control-center` in
+    // config.kdl and nothing installed it — missing from PATH here too, so that
+    // key has never done anything. AUR-only on both distros: it resolves from
+    // `pacman -Si` on this box purely because chaotic-aur was configured here,
+    // and dotctl deliberately skips chaotic-aur on CachyOS. Pulls in asusctl,
+    // the daemon it drives.
+    ensure_aur_pkg(helper, "rog-control-center", "rog-control-center")?;
 
     // BlackArch (2800+ offensive-security tools, paired with HexStrike AI)
     if let Err(e) = setup_blackarch() {
