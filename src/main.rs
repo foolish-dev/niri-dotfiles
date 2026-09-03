@@ -1674,6 +1674,38 @@ fn refuse_conflicted_tree(repo: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Drop a symlink an older deploy of *this* repo left at `path`, and only
+/// such a link.
+///
+/// Ownership is decided by the link's own target — `read_link`, not
+/// `canonicalize`: the links this cleans up are precisely the ones whose repo
+/// target no longer exists (a unit dropped from the repo, a config directory
+/// renamed), so canonicalize fails on every one of them. A link pointing
+/// anywhere else is the user's own and is left exactly as found: dotctl no
+/// longer deploys anything at these paths, so it has no claim on the name and
+/// nothing to put there. Pre-fix this tested only `is_symlink()` at a
+/// hardcoded path — "something is linked here" — and then `let _ =
+/// fs::remove_file`, so a link the user made themselves was deleted with no
+/// "Backed up:" line, no backup-dir entry, and no report even when the removal
+/// failed.
+fn drop_stale_repo_link(path: &Path, repo: &Path) {
+    if !path.is_symlink() {
+        return;
+    }
+    match fs::read_link(path) {
+        Ok(target) if target.starts_with(repo) => {
+            if let Err(e) = fs::remove_file(path) {
+                warn(&format!(
+                    "could not remove stale link {}: {e}",
+                    path.display()
+                ));
+            }
+        }
+        Ok(_) => {}
+        Err(e) => warn(&format!("could not read link {}: {e}", path.display())),
+    }
+}
+
 /// The filesystem half of a deploy: symlink the tracked configs into
 /// `home`, copy the wallpapers, and clear out stale links older deploys left.
 ///
@@ -1788,16 +1820,12 @@ fn link_dotfiles(repo: &Path, home: &Path) -> Result<()> {
     // (enabled below), so drop the obsolete custom unit symlink an earlier
     // deploy may have left behind — otherwise it lingers as a dangling link.
     let stale_unit = h.join(".config/systemd/user/noctalia-auth-agent.service");
-    if stale_unit.is_symlink() {
-        let _ = fs::remove_file(&stale_unit);
-    }
+    drop_stale_repo_link(&stale_unit, repo);
 
     // `telia` was renamed to `teleia`; drop the obsolete config symlink an
     // older deploy left behind so it doesn't dangle at ~/.config/telia.
     let stale_telia = h.join(".config/telia");
-    if stale_telia.is_symlink() {
-        let _ = fs::remove_file(&stale_telia);
-    }
+    drop_stale_repo_link(&stale_telia, repo);
 
     let bin_src = repo.join(".local/bin");
     let bin_dest = h.join(".local/bin");
@@ -2613,6 +2641,101 @@ mod tests {
             fs::read_to_string(stamped.join(".zshrc")).expect("read backup"),
             "user-precious\n",
             "the displaced file must survive byte-for-byte in the backup"
+        );
+    }
+
+    #[test]
+    fn link_dotfiles_leaves_a_stale_path_symlink_it_did_not_make() {
+        // The sweep for the renamed ~/.config/telia and the dropped
+        // noctalia-auth-agent.service asked only `is_symlink()` at a hardcoded
+        // path — "something is linked here", a proxy for "a previous deploy of
+        // THIS repo put it here" — and then `let _ = fs::remove_file`. A link
+        // the user made at either name was deleted outright: no backup-dir
+        // entry, no "Backed up:" line, and `let _` swallowed even a failed
+        // removal.
+        let tmp = TempDir::new().expect("tempdir");
+        let repo = tmp.path().join("repo");
+        let home = tmp.path().join("home");
+        fs::create_dir_all(repo.join(".config/kitty")).expect("mkdir kitty");
+        fs::write(repo.join(".config/kitty/kitty.conf"), "font_size 12\n").expect("seed conf");
+        fs::create_dir_all(home.join(".config/systemd/user")).expect("mkdir home units");
+
+        // The user's own config tree and their own unit, reached through links
+        // at exactly the two paths the sweep clears.
+        let their_telia = home.join("elsewhere/telia");
+        fs::create_dir_all(&their_telia).expect("mkdir their telia");
+        fs::write(their_telia.join("config.toml"), "theirs\n").expect("seed their config");
+        let telia_link = home.join(".config/telia");
+        symlink(&their_telia, &telia_link).expect("seed their telia link");
+
+        let their_unit = home.join("elsewhere/noctalia-auth-agent.service");
+        fs::write(&their_unit, "[Service]\nExecStart=/usr/bin/true\n").expect("seed their unit");
+        let unit_link = home.join(".config/systemd/user/noctalia-auth-agent.service");
+        symlink(&their_unit, &unit_link).expect("seed their unit link");
+
+        link_dotfiles(&repo, &home).expect("link_dotfiles");
+
+        assert!(
+            telia_link.is_symlink(),
+            "a link into the user's own tree is not a stale dotctl link and must survive the sweep"
+        );
+        assert_eq!(
+            fs::read_link(&telia_link).expect("read_link telia"),
+            their_telia,
+            "…and must still point where the user pointed it"
+        );
+        assert!(
+            unit_link.is_symlink(),
+            "the user's own unit link at the obsolete name must survive too"
+        );
+        assert_eq!(
+            fs::read_to_string(&unit_link).expect("read through unit link"),
+            "[Service]\nExecStart=/usr/bin/true\n",
+            "the unit behind it must still resolve — deploy() runs daemon-reload right after"
+        );
+    }
+
+    #[test]
+    fn link_dotfiles_still_drops_the_stale_links_an_older_deploy_left() {
+        // Counterpart to the test above: scoping the sweep to links that point
+        // into the repo must not stop it doing its job. Both stale links name
+        // repo paths that no longer exist — the unit was dropped from the repo,
+        // .config/telia was renamed to teleia — so both dangle, which is why
+        // ownership is read off the link's target rather than canonicalize(),
+        // which fails on exactly these.
+        let tmp = TempDir::new().expect("tempdir");
+        let repo = tmp.path().join("repo");
+        let home = tmp.path().join("home");
+        fs::create_dir_all(repo.join(".config/teleia")).expect("mkdir teleia");
+        fs::write(repo.join(".config/teleia/config.toml"), "tracked\n").expect("seed teleia");
+        fs::create_dir_all(home.join(".config/systemd/user")).expect("mkdir home units");
+
+        // link_dotfiles canonicalises the repo before linking anything, so the
+        // links an older deploy left carry that resolved spelling.
+        let repo_real = repo.canonicalize().expect("canonicalize repo");
+        let telia_link = home.join(".config/telia");
+        symlink(repo_real.join(".config/telia"), &telia_link).expect("seed stale telia link");
+        let unit_link = home.join(".config/systemd/user/noctalia-auth-agent.service");
+        symlink(
+            repo_real.join(".config/systemd/user/noctalia-auth-agent.service"),
+            &unit_link,
+        )
+        .expect("seed stale unit link");
+
+        link_dotfiles(&repo, &home).expect("link_dotfiles");
+
+        assert!(
+            !telia_link.is_symlink(),
+            "the renamed config's own dangling link must still be swept"
+        );
+        assert!(
+            !unit_link.is_symlink(),
+            "the obsolete unit's own dangling link must still be swept, or it dangles in \
+             ~/.config/systemd/user forever"
+        );
+        assert!(
+            home.join(".config/teleia").is_symlink(),
+            "the renamed-to path is still deployed"
         );
     }
     #[test]
