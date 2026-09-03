@@ -1677,10 +1677,12 @@ fn refuse_conflicted_tree(repo: &Path) -> Result<()> {
 /// Drop a symlink an older deploy of *this* repo left at `path`, and only
 /// such a link.
 ///
-/// Ownership is decided by the link's own target — `read_link`, not
-/// `canonicalize`: the links this cleans up are precisely the ones whose repo
-/// target no longer exists (a unit dropped from the repo, a config directory
-/// renamed), so canonicalize fails on every one of them. A link pointing
+/// Two conditions, both necessary. The link must dangle — a live link is a
+/// path the repo still owns, and sweeping one would delete a link `link_item`
+/// had just correctly created, which is a real ordering hazard now that this
+/// list names paths the repo could plausibly carry again. And its target must
+/// be inside the repo, read with `read_link` rather than `canonicalize`, since
+/// canonicalize fails on exactly the dangling links this exists to clear. A link pointing
 /// anywhere else is the user's own and is left exactly as found: dotctl no
 /// longer deploys anything at these paths, so it has no claim on the name and
 /// nothing to put there. Pre-fix this tested only `is_symlink()` at a
@@ -1689,7 +1691,7 @@ fn refuse_conflicted_tree(repo: &Path) -> Result<()> {
 /// "Backed up:" line, no backup-dir entry, and no report even when the removal
 /// failed.
 fn drop_stale_repo_link(path: &Path, repo: &Path) {
-    if !path.is_symlink() {
+    if !path.is_symlink() || path.exists() {
         return;
     }
     match fs::read_link(path) {
@@ -1841,16 +1843,24 @@ fn link_dotfiles(repo: &Path, home: &Path) -> Result<()> {
         }
     }
 
-    // The noctalia auth agent now uses its packaged `bb-auth.service` unit
-    // (enabled below), so drop the obsolete custom unit symlink an earlier
-    // deploy may have left behind — otherwise it lingers as a dangling link.
-    let stale_unit = h.join(".config/systemd/user/noctalia-auth-agent.service");
-    drop_stale_repo_link(&stale_unit, repo);
-
-    // `telia` was renamed to `teleia`; drop the obsolete config symlink an
-    // older deploy left behind so it doesn't dangle at ~/.config/telia.
-    let stale_telia = h.join(".config/telia");
-    drop_stale_repo_link(&stale_telia, repo);
+    // Paths this repo used to own and no longer does. Nothing above revisits
+    // them — `link_item` only ever walks what the repo still has — so the last
+    // deploy's symlink stays behind pointing at a file that is gone.
+    //   noctalia-auth-agent.service — superseded by the packaged bb-auth.service.
+    //   .config/telia               — `telia` was renamed to `teleia`.
+    //   awww.service, .local/bin/wallpaper — the awww/pywal wallpaper stack,
+    //     dropped because awww/awww-daemon/swww are in no repo dotctl configures
+    //     and it never installed any of them; wallpaper is noctalia's picker plus
+    //     grogu now. Left behind, the unit made every `daemon-reload` report
+    //     awww.service as not-found and kept a broken `wallpaper` on PATH.
+    for stale in [
+        ".config/systemd/user/noctalia-auth-agent.service",
+        ".config/systemd/user/awww.service",
+        ".config/telia",
+        ".local/bin/wallpaper",
+    ] {
+        drop_stale_repo_link(&h.join(stale), repo);
+    }
 
     let bin_src = repo.join(".local/bin");
     let bin_dest = h.join(".local/bin");
@@ -2717,6 +2727,49 @@ mod tests {
             fs::read_to_string(&unit_link).expect("read through unit link"),
             "[Service]\nExecStart=/usr/bin/true\n",
             "the unit behind it must still resolve — deploy() runs daemon-reload right after"
+        );
+    }
+
+    #[test]
+    fn link_dotfiles_clears_the_links_a_dropped_tracked_file_stranded() {
+        // link_item only ever visits paths the repo still has, so deleting a
+        // tracked file leaves the previous deploy's symlink pointing at nothing.
+        // Observed when the awww stack went: ~/.config/systemd/user/awww.service
+        // made every `daemon-reload` report a not-found unit, and a broken
+        // `wallpaper` stayed on PATH.
+        let tmp = TempDir::new().expect("tempdir");
+        let repo = tmp.path().join("repo");
+        let home = tmp.path().join("home");
+        fs::create_dir_all(repo.join(".config/systemd/user")).expect("mkdir repo units");
+        fs::create_dir_all(repo.join(".local/bin")).expect("mkdir repo bin");
+        fs::write(
+            repo.join(".config/systemd/user/cliphist.service"),
+            "[Unit]\n",
+        )
+        .expect("seed unit");
+        fs::create_dir_all(home.join(".config/systemd/user")).expect("mkdir home units");
+        fs::create_dir_all(home.join(".local/bin")).expect("mkdir home bin");
+
+        // Exactly what the last deploy before the removal left behind.
+        let stale_unit = home.join(".config/systemd/user/awww.service");
+        let stale_script = home.join(".local/bin/wallpaper");
+        symlink(repo.join(".config/systemd/user/awww.service"), &stale_unit).expect("link unit");
+        symlink(repo.join(".local/bin/wallpaper"), &stale_script).expect("link script");
+
+        link_dotfiles(&repo, &home).expect("link_dotfiles");
+
+        assert!(
+            !stale_unit.is_symlink(),
+            "the stranded awww.service link must be cleared, not left for systemd to trip over"
+        );
+        assert!(
+            !stale_script.is_symlink(),
+            "the stranded ~/.local/bin/wallpaper link must be cleared"
+        );
+        assert!(
+            home.join(".config/systemd/user/cliphist.service")
+                .is_symlink(),
+            "a unit the repo still owns must still be linked"
         );
     }
 

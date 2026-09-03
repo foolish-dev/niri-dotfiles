@@ -263,7 +263,6 @@ environment {
 // Spawn at startup
 // ---------------------------------------------------------------------------
 spawn-at-startup "qs" "-c" "noctalia-shell"
-spawn-at-startup "awww-daemon"
 spawn-at-startup "xwayland-satellite"
 
 // IBus input method setup (Korean Hangul + general IME). Run this once to
