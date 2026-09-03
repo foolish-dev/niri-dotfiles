@@ -73,3 +73,4 @@ jobs:
       # Nothing else in CI opens any of them. json and tomllib are stdlib, so
       # this needs no install.
       - run: tests/config-syntax.sh
+      - run: tests/dotfiles-check.sh

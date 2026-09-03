@@ -1,40 +1,192 @@
 #!/usr/bin/env bash
 # dotfiles-check -- post-deploy health check.
-# Verifies that user systemd units actually came up and that key symlinks
-# resolve into the dotfiles repo. Designed to catch silent failures --
-# units that were "enabled" but fail on every session start, or symlinks
-# that point at a stale path after a repo move.
+# Verifies that user systemd units actually came up, and that every symlink
+# `dotctl deploy` creates still exists, is still a symlink, still points into
+# the dotfiles repo, and still RESOLVES. Designed to catch silent failures --
+# units that were "enabled" but fail on every session start, or links left
+# pointing at a path that has since gone away.
 #
-# Usage: dotfiles-check        (run any time; exits 1 if anything is red)
+# The resolve half is what was missing, and it certified dead desktops: the
+# test was `readlink -f "$path" == $DOTFILES/*`, and readlink -f prints a path
+# whose FINAL component does not exist. Delete the repo's .config/niri and
+# ~/.config/niri -> $DOTFILES/.config/niri still printed a green OK on a
+# machine with no compositor config at all. `-e` on the link is the test that
+# follows through; a prefix test only ever answers "where does it aim".
+#
+# The list of links is built from both sides on purpose: what the repo would
+# deploy, AND what is already deployed into $HOME pointing at the repo. Repo
+# side alone repeats the same bug one level up -- delete the tracked config and
+# the link into it stops being checked at all.
+#
+# Units and .local/bin scripts are enumerated the way link_dotfiles() does. The
+# two by-name lists below are copies of its literals; bash cannot share them
+# with the Rust, so tests/dotfiles-check.sh diffs `dotfiles-check --list`
+# against src/main.rs and fails when the two drift.
+#
+# Usage: dotfiles-check          (run any time; exits 1 if anything is red)
+#        dotfiles-check --list   (repo-relative paths it expects deployed)
 # Override repo path: DOTFILES=/path/to/repo dotfiles-check
 set -uo pipefail
+# An empty .local/bin or systemd/user must expand to nothing rather than to a
+# literal '*', and dotctl links dot-prefixed files in those dirs too.
+shopt -s nullglob dotglob
 
 DOTFILES="${DOTFILES:-$HOME/niri-dotfiles}"
-fail=0
 
-GRN='\033[0;32m'; RED='\033[0;31m'; YLW='\033[1;33m'; RST='\033[0m'
+# Mirrors of the two by-name lists in link_dotfiles() (src/main.rs), in the
+# same order as the Rust so a drift diff reads cleanly.
+CONFIG_ITEMS=(
+  teleia nvim noctalia fastfetch tmux fuzzel gtk-3.0 gtk-4.0 kitty
+  lazygit neofetch niri opencode qt5ct qt6ct wal starship.toml
+)
+HOME_ITEMS=(.zshrc .editorconfig .gitignore_global)
+# setup_gitconfig() links the tracked .gitconfig to a neutral XDG path. The
+# real ~/.gitconfig is deliberately a plain file -- a stub that [include]s it --
+# so it is NOT checked as a symlink here.
+GITCONFIG_DEST=".config/git/dotfiles.config"
+
+if [[ "${1:-}" == "--list" ]]; then
+  # The static candidates only: the part of the deploy this file duplicates by
+  # name. Units and bin scripts are read out of the repo and cannot drift.
+  for _d in "${CONFIG_ITEMS[@]}"; do printf '.config/%s\n' "$_d"; done
+  for _f in "${HOME_ITEMS[@]}"; do printf '%s\n' "$_f"; done
+  printf '.gitconfig\n'
+  exit 0
+fi
+
+fail=0
+skipped=0
+
+if [[ -t 1 ]]; then
+  GRN='\033[0;32m'; RED='\033[0;31m'; YLW='\033[1;33m'; RST='\033[0m'
+else
+  GRN=''; RED=''; YLW=''; RST=''
+fi
 ok()   { echo -e "  ${GRN}OK${RST}   $*"; }
-bad()  { echo -e "  ${RED}FAIL${RST} $*"; fail=1; }
-skip() { echo -e "  ${YLW}SKIP${RST} $*"; }
+bad()  { echo -e "  ${RED}FAIL${RST} $*"; fail=$((fail + 1)); }
+warn() { echo -e "  ${YLW}WARN${RST} $*"; }
+# SKIP is for what is genuinely optional -- a host with no user systemd manager
+# to have failed. It must never stand in for a check that could have gone red:
+# skip() deliberately does not touch $fail, so every state that can be unwell
+# goes through bad() instead, and the summary prints the skip count so a run
+# that skipped something never looks like a clean one.
+skip() { echo -e "  ${YLW}SKIP${RST} $*"; skipped=$((skipped + 1)); }
 
 echo "==> Failed user systemd units"
-mapfile -t failed < <(systemctl --user list-units --state=failed --no-legend --plain 2>/dev/null | awk '{print $1}')
-if (( ${#failed[@]} == 0 )); then
-  ok "no failed units"
+if ! command -v systemctl >/dev/null 2>&1; then
+  skip "systemctl not found; no user units to check"
+elif ! systemctl --user list-units --no-legend --plain >/dev/null 2>&1; then
+  # ssh without lingering, a chroot, CI: there is no user manager, so there are
+  # no units to have failed. Genuinely optional, unlike anything below.
+  skip "no user systemd manager reachable (not a graphical session?)"
 else
-  for u in "${failed[@]}"; do bad "$u (systemctl --user status $u)"; done
+  mapfile -t failed < <(systemctl --user list-units --state=failed --no-legend --plain 2>/dev/null | awk 'NF {print $1}')
+  if (( ${#failed[@]} == 0 )); then
+    ok "no failed units"
+  else
+    for u in "${failed[@]}"; do bad "$u (systemctl --user status $u)"; done
+  fi
 fi
 
 echo "==> Symlinks resolve into \$DOTFILES ($DOTFILES)"
+# An absent repo is the worst state this script can be run in: every deployed
+# link is dangling by definition. It used to skip() here and then print
+# "OK: all checks passed" -- the one answer that must never come out of a
+# machine in this state.
 if [[ ! -d "$DOTFILES" ]]; then
-  skip "\$DOTFILES does not exist; export DOTFILES=/path/to/repo"
+  bad "\$DOTFILES does not exist: $DOTFILES (export DOTFILES=/path/to/repo)"
 else
-  for path in "$HOME/.config/niri" "$HOME/.config/noctalia" "$HOME/.zshrc" \
-              "$HOME/.config/starship.toml"; do
+  DOTFILES_CANON="$(readlink -m -- "$DOTFILES")"
+
+  # True when $1 is a symlink aiming into the repo -- i.e. something a deploy
+  # put there, whether or not it still resolves. This is what lets a link whose
+  # tracked target was deleted stay on the list.
+  aims_into_repo() {
+    [[ -L "$1" ]] || return 1
+    local abs
+    abs="$(readlink -m -- "$1")"
+    [[ "$abs" == "$DOTFILES_CANON" || "$abs" == "$DOTFILES_CANON"/* ]]
+  }
+
+  declare -A seen=()
+  paths=()  # deployed paths, in report order
+  srcs=()   # the repo path each one must point at
+  want() {
+    [[ -n "${seen[$1]:-}" ]] && return 0
+    seen["$1"]=1
+    paths+=("$1")
+    srcs+=("$2")
+  }
+
+  # By-name candidates: on the list if the repo tracks it (link_dotfiles links
+  # a path only `if src.exists()`) or if $HOME already holds a link into the
+  # repo for it.
+  for d in "${CONFIG_ITEMS[@]}"; do
+    if [[ -e "$DOTFILES/.config/$d" ]] || aims_into_repo "$HOME/.config/$d"; then
+      want "$HOME/.config/$d" "$DOTFILES/.config/$d"
+    fi
+  done
+  for f in "${HOME_ITEMS[@]}"; do
+    if [[ -e "$DOTFILES/$f" ]] || aims_into_repo "$HOME/$f"; then
+      want "$HOME/$f" "$DOTFILES/$f"
+    fi
+  done
+  if [[ -e "$DOTFILES/.gitconfig" ]] || aims_into_repo "$HOME/$GITCONFIG_DEST"; then
+    want "$HOME/$GITCONFIG_DEST" "$DOTFILES/.gitconfig"
+  fi
+
+  # Units and scripts are linked file by file, not as whole directories. Repo
+  # side first (skipping symlinks, as read_dir()/is_file() does), then whatever
+  # a past deploy left in the destination dirs -- that half is what catches a
+  # unit link whose tracked file has since been deleted or renamed.
+  for f in "$DOTFILES"/.config/systemd/user/*; do
+    [[ -L "$f" ]] && continue
+    [[ -f "$f" ]] && want "$HOME/.config/systemd/user/${f##*/}" "$f"
+  done
+  for p in "$HOME"/.config/systemd/user/*; do
+    aims_into_repo "$p" && want "$p" "$DOTFILES/.config/systemd/user/${p##*/}"
+  done
+  for f in "$DOTFILES"/.local/bin/*; do
+    [[ -L "$f" ]] && continue
+    [[ -f "$f" ]] && want "$HOME/.local/bin/${f##*/}" "$f"
+  done
+  for p in "$HOME"/.local/bin/*; do
+    aims_into_repo "$p" && want "$p" "$DOTFILES/.local/bin/${p##*/}"
+  done
+
+  if (( ${#paths[@]} == 0 )); then
+    # A repo that exists but tracks nothing we deploy: an interrupted clone, or
+    # $DOTFILES aimed at the wrong directory. With an empty list every check
+    # below passes vacuously -- the same false green as the old skip.
+    bad "$DOTFILES tracks none of the paths dotctl deploys (wrong \$DOTFILES, or a partial clone?)"
+  fi
+
+  for i in "${!paths[@]}"; do
+    path="${paths[$i]}"
+    src="${srcs[$i]}"
     if [[ ! -L "$path" ]]; then
-      bad "$path is not a symlink"
-    elif [[ "$(readlink -f "$path")" != "$DOTFILES"/* ]]; then
-      bad "$path -> $(readlink -f "$path") (outside repo)"
+      if [[ -d "$path" ]]; then
+        bad "$path is a real directory, not a symlink (expected -> $src)"
+      elif [[ -e "$path" ]]; then
+        bad "$path is a real file, not a symlink (expected -> $src)"
+      else
+        bad "$path is missing (expected -> $src)"
+      fi
+      continue
+    fi
+    tgt="$(readlink -- "$path")"
+    # readlink -m normalises a path that need not exist, so this answers "where
+    # does it aim" and nothing more. Whether it ARRIVES is the -e below, on the
+    # link itself -- the half whose absence made this script useless.
+    abs="$(readlink -m -- "$path")"
+    if [[ "$abs" != "$DOTFILES_CANON" && "$abs" != "$DOTFILES_CANON"/* ]]; then
+      bad "$path -> $tgt (outside repo)"
+    elif [[ ! -e "$path" ]]; then
+      bad "$path -> $tgt (dangling: target does not exist; run \`dotctl deploy\`)"
+    elif [[ "$abs" != "$(readlink -m -- "$src")" ]]; then
+      # Resolves, and into the repo, so the desktop works -- but it is not what
+      # a deploy lays down, so the next `dotctl deploy` will move it aside.
+      warn "$path -> $tgt (into the repo, but not at $src)"
     else
       ok "$path"
     fi
@@ -45,5 +197,9 @@ echo
 if (( fail )); then
   echo -e "${RED}FAIL${RST}: $fail check(s) failed"
   exit 1
+fi
+if (( skipped )); then
+  echo -e "${GRN}OK${RST}: all checks passed ($skipped skipped)"
+  exit 0
 fi
 echo -e "${GRN}OK${RST}: all checks passed"
