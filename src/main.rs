@@ -515,6 +515,26 @@ fn ensure_pacman(label: &str, cmd: &str, packages: &[&str]) -> Result<()> {
     }
 }
 
+/// [`ensure_pacman`] for a package that nothing later in `install()` and
+/// nothing in `deploy()` reads back: the failure warns, names what the user
+/// loses, and the run carries on.
+///
+/// The reason is `main`: `dotctl all` is `ensure_repo()?` then `install()?`
+/// then `deploy()`, so ANY `?` that fires inside `install()` ends the run with
+/// packages half installed and not one config deployed — the inverse of this
+/// repo's opening invariant, that a fresh clone produces a bootable desktop.
+/// A dead volume key is worth a red line; it is not worth throwing away the
+/// whole deploy. Deliberately not used for niri, kitty, fuzzel or git: without
+/// those there is no session to read the warning in, and warning would only
+/// turn a broken install into a silent one.
+///
+/// `lost` is a sentence fragment continuing "<label> not installed: <err> — ".
+fn optional_pacman(label: &str, cmd: &str, packages: &[&str], lost: &str) {
+    if let Err(e) = ensure_pacman(label, cmd, packages) {
+        warn(&format!("{label} not installed: {e} — {lost}"));
+    }
+}
+
 /// True if `pkg` is currently installed according to pacman's database.
 /// Used for packages that ship config / QML / library files instead of
 /// a PATH binary, where `command_exists` would always miss them.
@@ -560,6 +580,15 @@ fn ensure_pacman_pkg(label: &str, pkg: &str, packages: &[&str]) -> Result<()> {
         Ok(())
     } else {
         pacman_install(label, packages)
+    }
+}
+
+/// [`optional_pacman`] with the `pacman -Q` gate of [`ensure_pacman_pkg`], for
+/// the optional packages that ship no binary of their own (a font, a QML
+/// shell). Same warn-and-continue contract, same `lost` fragment.
+fn optional_pacman_pkg(label: &str, pkg: &str, packages: &[&str], lost: &str) {
+    if let Err(e) = ensure_pacman_pkg(label, pkg, packages) {
+        warn(&format!("{label} not installed: {e} — {lost}"));
     }
 }
 
@@ -652,6 +681,30 @@ fn aur_install(helper: &str, label: &str, packages: &[&str]) -> Result<()> {
     }
     ok(&format!("{label} installed"));
     Ok(())
+}
+
+/// `cargo install --git` one of our own crates, best-effort. grogu and teleia
+/// are source-installed for the same reason (packaged nowhere) and fail for the
+/// same reasons — no network, a broken upstream commit, a toolchain break in a
+/// third-party dependency tree — none of which anything else in `install()`
+/// depends on, and `deploy()` symlinks their configs whether or not the binary
+/// landed. Warning here is what keeps a bad day at foolish-dev/grogu from
+/// costing the user their whole deploy. See [`optional_pacman`] for the
+/// invariant this protects.
+fn ensure_cargo_git(label: &str, bin: &str, url: &str, lost: &str) {
+    if command_exists(bin) {
+        ok(&format!("{bin} already installed"));
+        return;
+    }
+    info(&format!("Installing {label} ..."));
+    if let Err(e) = run(
+        "cargo",
+        &["install", "--git", url, "--branch", "main", "--locked"],
+    ) {
+        warn(&format!("{label} install failed: {e} — {lost}"));
+        return;
+    }
+    ok(&format!("{bin} installed -> ~/.cargo/bin/{bin}"));
 }
 
 fn cache_dir() -> PathBuf {
@@ -1387,15 +1440,33 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     info(&format!("Distro: {}", distro.label()));
 
     // Prerequisites assumed by later steps. Idempotent — `ensure_pacman`
-    // is a no-op when the binary is already on PATH. Without these, a
-    // fresh-box install would fail later with cryptic errors:
-    //   git    → ensure_repo, cargo install --git for grogu
-    //   curl   → setup_blackarch fetches strap.sh
-    //   python → HexStrike AI venv (the Arch-family package is `python`, the
-    //            binary is `python3`)
+    // is a no-op when the binary is already on PATH.
+    //
+    // Only `git` is fatal, and it is fatal here rather than at its uses so the
+    // run dies at step two with nothing half-done: every source install below
+    // (grogu, teleia, the HexStrike clone, the auth agent's makepkg) shells out
+    // to it, and so does dotctl's own update path. That path is also why the
+    // older "git → ensure_repo" note here was backwards: `main` runs
+    // `ensure_repo(&repo)?` BEFORE `install()`, so a `dotctl all` on a box with
+    // no git dies spawning `git clone` long before this line could install it.
+    // This line covers `dotctl install` on its own.
+    //   curl   → setup_blackarch fetches strap.sh (itself warn-and-continue).
+    //            Never actually fires on a pacman host: pacman depends on curl.
+    //   python → the HexStrike venv only (the Arch-family package is `python`,
+    //            the binary is `python3`), and that whole step now warns.
     ensure_pacman("git", "git", &["git"])?;
-    ensure_pacman("curl", "curl", &["curl"])?;
-    ensure_pacman("Python 3", "python3", &["python"])?;
+    optional_pacman(
+        "curl",
+        "curl",
+        &["curl"],
+        "the BlackArch repo step will be skipped",
+    );
+    optional_pacman(
+        "Python 3",
+        "python3",
+        &["python"],
+        "HexStrike AI cannot create its venv",
+    );
 
     // Niri base desktop — compositor, terminal, launcher, clipboard persistence.
     // All four are in Arch `extra` (and rebuilt in cachyos-extra-znver4 on
@@ -1413,13 +1484,28 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     // and the Mod+V pipe both need it; it was present on this box only because
     // CachyOS's niri meta-package happens to pull it in. wl-clip-persist is a
     // different package that depends on neither, so having it proved nothing.
-    ensure_pacman("wl-clipboard", "wl-paste", &["wl-clipboard"])?;
-    ensure_pacman("wl-clip-persist", "wl-clip-persist", &["wl-clip-persist"])?;
+    optional_pacman(
+        "wl-clipboard",
+        "wl-paste",
+        &["wl-clipboard"],
+        "config.kdl's `wl-paste --watch` spawn and the Mod+V pipe will do nothing",
+    );
+    optional_pacman(
+        "wl-clip-persist",
+        "wl-clip-persist",
+        &["wl-clip-persist"],
+        "clipboard contents vanish when the source window closes",
+    );
     // The history store behind that same spawn and Mod+V — advertised by
     // config.kdl, installed by nobody, and absent from PATH here, so Mod+V has
     // always opened an empty fuzzel. Plain repo package on both distros
     // (extra 1:0.7.0-2); it is in no AUR, so no helper is involved.
-    ensure_pacman("cliphist", "cliphist", &["cliphist"])?;
+    optional_pacman(
+        "cliphist",
+        "cliphist",
+        &["cliphist"],
+        "Mod+V opens an empty fuzzel",
+    );
 
     // Fonts. kitty.conf, fuzzel.ini, qt5ct.conf and qt6ct.conf every one pin
     // `JetBrainsMono Nerd Font` by name, and no font package was installed at
@@ -1429,33 +1515,50 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     // carries none of the powerline/Nerd glyphs starship, tmux and fastfetch
     // draw with. Gated by package, not binary: a font ships no executable, so a
     // `command_exists` gate would miss forever and re-run pacman every install.
-    ensure_pacman_pkg(
+    optional_pacman_pkg(
         "JetBrainsMono Nerd Font",
         "ttf-jetbrains-mono-nerd",
         &["ttf-jetbrains-mono-nerd"],
-    )?;
+        "fontconfig substitutes a font with no powerline/Nerd glyphs",
+    );
 
     // Spawned at startup by config.kdl and in exactly the same boat as
     // wl-clipboard: Arch `extra`, never installed here, present on this box only
     // as a dependency of the CachyOS niri meta-package. Without it every
     // XWayland client has no server to connect to.
-    ensure_pacman(
+    optional_pacman(
         "xwayland-satellite",
         "xwayland-satellite",
         &["xwayland-satellite"],
-    )?;
+        "X11 clients have no server to connect to (Wayland clients are unaffected)",
+    );
 
     // Media and brightness keys. config.kdl binds XF86Audio* to `wpctl` and
     // XF86MonBrightness* to `brightnessctl`; both are in `extra`, neither was
     // installed, and both are here only via that same meta-package — so on
     // stock Arch every volume and brightness key was dead. `wpctl` is
     // wireplumber's binary, so the package name and the gate deliberately differ.
-    ensure_pacman("wireplumber", "wpctl", &["wireplumber"])?;
-    ensure_pacman("brightnessctl", "brightnessctl", &["brightnessctl"])?;
+    optional_pacman(
+        "wireplumber",
+        "wpctl",
+        &["wireplumber"],
+        "the XF86Audio* keys stay dead",
+    );
+    optional_pacman(
+        "brightnessctl",
+        "brightnessctl",
+        &["brightnessctl"],
+        "the XF86MonBrightness* keys stay dead",
+    );
 
     // `.zshrc` is tracked and deployed and Mod+Ctrl+N drops into `zsh` by name,
     // but nothing ever installed the shell itself.
-    ensure_pacman("zsh", "zsh", &["zsh"])?;
+    optional_pacman(
+        "zsh",
+        "zsh",
+        &["zsh"],
+        "Mod+Ctrl+N fails and the deployed .zshrc stays inert",
+    );
 
     // Resolve (or bootstrap) an AUR helper before the first AUR package. On
     // CachyOS this installs one straight from [cachyos]; on stock Arch it can
@@ -1599,23 +1702,12 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     }
 
     // grogu
-    if command_exists("grogu") {
-        ok("grogu already installed");
-    } else {
-        info("Installing grogu (wallpaper-driven theme propagator) ...");
-        run(
-            "cargo",
-            &[
-                "install",
-                "--git",
-                "https://github.com/foolish-dev/grogu",
-                "--branch",
-                "main",
-                "--locked",
-            ],
-        )?;
-        ok("grogu installed -> ~/.cargo/bin/grogu");
-    }
+    ensure_cargo_git(
+        "grogu (wallpaper-driven theme propagator)",
+        "grogu",
+        "https://github.com/foolish-dev/grogu",
+        "wallpaper changes will not repaint the theme until you rerun `dotctl install`",
+    );
 
     // teleia — the TUI agent Mod+T spawns, and the owner of the tracked
     // .config/teleia/config.toml that wires its MCP servers. Both the bind and
@@ -1624,32 +1716,41 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     // dropped into ~/.local/bin by hand, so a fresh clone got a keybind that
     // opens a kitty window and closes it again. Same source-install shape as
     // grogu above, for the same reason — our own crate, not packaged anywhere.
-    if command_exists("teleia") {
-        ok("teleia already installed");
-    } else {
-        info("Installing teleia (TUI coding agent) ...");
-        run(
-            "cargo",
-            &[
-                "install",
-                "--git",
-                "https://github.com/foolish-dev/teleia",
-                "--branch",
-                "main",
-                "--locked",
-            ],
-        )?;
-        ok("teleia installed -> ~/.cargo/bin/teleia");
-    }
+    ensure_cargo_git(
+        "teleia (TUI coding agent)",
+        "teleia",
+        "https://github.com/foolish-dev/teleia",
+        "Mod+T opens a kitty window that closes again until you rerun `dotctl install`",
+    );
 
-    ensure_pacman("tmux", "tmux", &["tmux"])?;
-    ensure_pacman("fastfetch", "fastfetch", &["fastfetch"])?;
+    optional_pacman(
+        "tmux",
+        "tmux",
+        &["tmux"],
+        "the deployed tmux config has nothing to load it",
+    );
+    optional_pacman(
+        "fastfetch",
+        "fastfetch",
+        &["fastfetch"],
+        "the deployed fastfetch config has nothing to load it",
+    );
     // `.zshrc` runs `eval "$(starship init zsh)"` behind a `command -v` guard
     // and .config/starship.toml is deployed, but the binary was never installed
     // — the guard turned that into a silently missing prompt rather than an
     // error. It is also the loudest consumer of the Nerd font above.
-    ensure_pacman("starship", "starship", &["starship"])?;
-    ensure_pacman("Neovim", "nvim", &["neovim"])?;
+    optional_pacman(
+        "starship",
+        "starship",
+        &["starship"],
+        "the `command -v` guard in .zshrc leaves you on the bare zsh prompt",
+    );
+    optional_pacman(
+        "Neovim",
+        "nvim",
+        &["neovim"],
+        "the deployed nvim config has no editor to load it",
+    );
     // Firmware updates. `fwupd-check.timer` (armed by `dotctl deploy`) runs
     // `fwupdmgr refresh` + `get-updates` monthly and speaks up only when LVFS
     // has something. Nothing in dotctl ever installed the package, so
@@ -1664,11 +1765,12 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     // function, and its ~25 dependencies give it the widest failure surface of
     // any single package here. Nothing below reads fwupd, and deploy() skips
     // the timer on its own when the binary is absent.
-    if let Err(e) = ensure_pacman("fwupd", "fwupdmgr", &["fwupd"]) {
-        warn(&format!(
-            "fwupd not installed: {e} — `dotctl deploy` will skip fwupd-check.timer"
-        ));
-    }
+    optional_pacman(
+        "fwupd",
+        "fwupdmgr",
+        &["fwupd"],
+        "`dotctl deploy` will skip fwupd-check.timer",
+    );
     // Noctalia: the v4 quickshell shell plus its quickshell fork. Both
     // packages exist ONLY in CachyOS's [cachyos] repo — not Arch `extra`, not
     // chaotic-aur, not the AUR — so `pacman -Si` is the honest gate. On
@@ -1685,11 +1787,17 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         ok("Noctalia already installed");
     } else {
         match noctalia_plan(distro, repo_has_pkg(NOCTALIA_SHELL_PKG)) {
-            NoctaliaPlan::Install => ensure_pacman_pkg(
+            // Warn on failure, exactly as the sibling arm below already does
+            // when the package is in no repo at all: "the download broke" and
+            // "the package does not exist here" cost the user the same thing,
+            // so it would be incoherent for one to abort the run and the other
+            // to print a line.
+            NoctaliaPlan::Install => optional_pacman_pkg(
                 "Noctalia",
                 NOCTALIA_SHELL_PKG,
                 &[NOCTALIA_SHELL_PKG, "noctalia-qs"],
-            )?,
+                "you get bare niri — no bar, no notifications, no shell",
+            ),
             NoctaliaPlan::Unavailable(hint) => warn(&format!(
                 "Noctalia ({NOCTALIA_SHELL_PKG}) is in no configured repository — {hint}"
             )),
@@ -1710,13 +1818,63 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     // The noctalia SDDM theme above is the active login screen; greetd +
     // ReGreet (graphical, hosted by cage) is configured as a disabled
     // fallback. All in Arch `extra` (rebuilt in cachyos-extra-znver4).
-    ensure_pacman("greetd", "greetd", &["greetd"])?;
-    ensure_pacman("regreet", "regreet", &["greetd-regreet"])?;
-    ensure_pacman("cage", "cage", &["cage"])?;
+    // Optional by construction: this greeter is installed *disabled*, SDDM is
+    // the active login screen, and `setup_noctalia_login` already gates its
+    // config writes on `command_exists("greetd")`. A missing fallback costs
+    // nothing until someone enables it by hand.
+    optional_pacman(
+        "greetd",
+        "greetd",
+        &["greetd"],
+        "the greetd + ReGreet fallback greeter will not be available",
+    );
+    optional_pacman(
+        "regreet",
+        "regreet",
+        &["greetd-regreet"],
+        "greetd would fall back to its text-mode agreety greeter",
+    );
+    optional_pacman(
+        "cage",
+        "cage",
+        &["cage"],
+        "greetd has no compositor to host ReGreet in",
+    );
     setup_noctalia_login()?;
     ensure_noctalia_auth_agent()?;
 
-    // HexStrike AI
+    // HexStrike AI. Warn-and-continue, and the widest failure surface in this
+    // function by a distance: a GitHub clone, a Python venv and a `pip install
+    // -r` against PyPI, re-run on every invocation. It is also LAST, so a `?`
+    // here threw the deploy away after every other step had already succeeded.
+    // Nothing below reads it, and `deploy()` already handles its absence on its
+    // own — `enable_user_unit` checks for the venv python before enabling the
+    // unit.
+    //
+    // That is also why the loopback refusals inside can be warnings without
+    // loosening anything. This rewrite is not the control that confines the
+    // API, and hexstrike-server.service says so in as many words: `deploy()`
+    // re-derives `BindState` from the file and refuses to enable the service
+    // unless it is `AlreadySafe`, and the unit's
+    // `ExecStartPost=hexstrike-assert-loopback` then checks the socket the
+    // process actually bound. Both fail closed on the state a warn leaves
+    // behind, so the service simply never starts.
+    if let Err(e) = setup_hexstrike() {
+        warn(&format!(
+            "HexStrike AI setup failed: {e} — continuing; hexstrike-server.service stays \
+             unenabled until you rerun `dotctl install`"
+        ));
+    }
+
+    Ok(())
+}
+
+/// Clone, venv, loopback-pin and pip-install HexStrike AI.
+///
+/// Split out of `install()` for one reason: so the caller can warn instead of
+/// aborting (see the note there). The body is the code that used to sit inline,
+/// unchanged — every `?` in here now ends this step rather than the whole run.
+fn setup_hexstrike() -> Result<()> {
     let hex_dir = home().join("tools/hexstrike-ai");
     if hex_dir.exists() {
         info("HexStrike AI already cloned");
