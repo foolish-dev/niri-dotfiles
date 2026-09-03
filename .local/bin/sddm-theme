@@ -9,20 +9,7 @@ set -euo pipefail
 # and reached `sudo sed`/`sudo tee`.
 shopt -s nullglob
 
-DOTFILES="${DOTFILES:-$HOME/niri-dotfiles}"
 SDDM_THEMES="/usr/share/sddm/themes"
-# deploy.sh creates an upgrade-proof local copy of the packaged theme; fall
-# back to the upstream dir so `sddm-theme` still works pre-deploy.
-ASTRONAUT_LOCAL="$SDDM_THEMES/sddm-astronaut-local"
-ASTRONAUT_UPSTREAM="$SDDM_THEMES/sddm-astronaut-theme"
-if [[ -d "$ASTRONAUT_LOCAL" ]]; then
-  ASTRONAUT_DIR="$ASTRONAUT_LOCAL"
-  ASTRONAUT_NAME="sddm-astronaut-local"
-else
-  ASTRONAUT_DIR="$ASTRONAUT_UPSTREAM"
-  ASTRONAUT_NAME="sddm-astronaut-theme"
-fi
-CUSTOM_THEMES="$DOTFILES/etc/sddm-themes"
 
 # The drop-in dotctl owns (SDDM_THEME_CONF, src/main.rs). Verified against
 # sddm 0.21.0 -- man 5 sddm.conf, plus stracing the order it opens them --
@@ -47,38 +34,18 @@ ok()    { echo -e "${GRN}[+]${RST} $*"; }
 warn()  { echo -e "${YLW}[!]${RST} $*"; }
 fail()  { echo -e "${RED}[-]${RST} $*"; exit 1; }
 
-# Gather available themes
+# Installed SDDM themes. Main.qml or theme.conf is what makes a directory one
+# SDDM can actually load.
 # `declare -A THEMES` alone leaves it *unset*, so the `${#THEMES[@]}` test
 # below died on `set -u` before it could print "No SDDM themes found".
 declare -A THEMES=()
-
-# Built-in astronaut variants
-if [[ -d "$ASTRONAUT_DIR/Themes" ]]; then
-  for conf in "$ASTRONAUT_DIR/Themes"/*.conf; do
-    name="$(basename "$conf" .conf)"
-    THEMES["$name"]="astronaut:$conf"
-  done
-fi
-
-# Custom Tokyo Night configs
-if [[ -d "$CUSTOM_THEMES" ]]; then
-  for conf in "$CUSTOM_THEMES"/*.conf; do
-    name="$(basename "$conf" .conf)"
-    THEMES["$name"]="astronaut:$conf"
-  done
-fi
-
-# Other installed SDDM themes
 for dir in "$SDDM_THEMES"/*/; do
   name="$(basename "$dir")"
-  # Skip both the packaged and local astronaut dirs -- their variants are
-  # already enumerated from the Themes/*.conf glob above.
-  [[ "$name" == "sddm-astronaut-theme" || "$name" == "sddm-astronaut-local" ]] && continue
-  [[ -f "$dir/Main.qml" || -f "$dir/theme.conf" ]] && THEMES["$name"]="standalone:$dir"
+  [[ -f "$dir/Main.qml" || -f "$dir/theme.conf" ]] && THEMES["$name"]="$dir"
 done
 
 if [[ ${#THEMES[@]} -eq 0 ]]; then
-  fail "No SDDM themes found. Run install.sh first."
+  fail "No SDDM themes found in $SDDM_THEMES. Run \`dotctl install\` to install the noctalia theme."
 fi
 
 # Select theme
@@ -91,66 +58,14 @@ fi
 [[ -z "$SELECTED" ]] && exit 0
 [[ -v "THEMES[$SELECTED]" ]] || fail "Theme '$SELECTED' not found. Available: ${!THEMES[*]}"
 
-IFS=':' read -r TYPE THEME_PATH <<< "${THEMES[$SELECTED]}"
-
+info "Setting SDDM theme: $SELECTED"
 sudo mkdir -p "$(dirname "$SDDM_DROPIN")"
-
-if [[ "$TYPE" == "astronaut" ]]; then
-  # Copy wallpaper to astronaut Backgrounds dir
-  info "Setting astronaut theme variant: $SELECTED"
-
-  # Copy custom config to astronaut Themes dir
-  DEST="$ASTRONAUT_DIR/Themes/$SELECTED.conf"
-  if [[ "$THEME_PATH" != "$DEST" && -f "$THEME_PATH" ]]; then
-    sudo cp "$THEME_PATH" "$DEST"
-    ok "Copied config to $DEST"
-  fi
-
-  # Copy a matching wallpaper from dotfiles if available
-  WALL_SRC="$DOTFILES/wallpapers"
-  if [[ -d "$WALL_SRC" ]]; then
-    # Pick the best wallpaper for this theme
-    case "$SELECTED" in
-      tokyo-night)          WP="samurai.png" ;;
-      tokyo-night-cyberpunk) WP="matrix.png" ;;
-      *)                    WP="" ;;
-    esac
-    if [[ -n "$WP" && -f "$WALL_SRC/$WP" ]]; then
-      sudo cp "$WALL_SRC/$WP" "$ASTRONAUT_DIR/Backgrounds/tokyonight.png"
-      ok "Set background: $WP"
-    fi
-  fi
-
-  # Point metadata.desktop to the selected config
-  sudo sed -i "s|^ConfigFile=.*|ConfigFile=Themes/$SELECTED.conf|" "$ASTRONAUT_DIR/metadata.desktop"
-  ok "Updated metadata.desktop -> Themes/$SELECTED.conf"
-
-  # Set SDDM to use the astronaut theme (local copy if deploy.sh has run;
-  # otherwise the packaged dir, with the caveat that pacman upgrades will
-  # clobber this until ./deploy.sh is run).
-  if [[ "$ASTRONAUT_NAME" == "sddm-astronaut-theme" ]]; then
-    warn "Using the packaged theme dir -- pacman -Syu will wipe your edits."
-    warn "Run ./deploy.sh to create an upgrade-proof local copy."
-  fi
-  sudo tee "$SDDM_DROPIN" > /dev/null <<EOF
+sudo tee "$SDDM_DROPIN" > /dev/null <<EOF
 [Theme]
-Current=$ASTRONAUT_NAME
+Current=$SELECTED
 CursorTheme=Bibata-Modern-Classic
 CursorSize=24
 EOF
-
-else
-  # Standalone theme
-  THEME_NAME="$(basename "$THEME_PATH")"
-  info "Setting standalone theme: $THEME_NAME"
-
-  sudo tee "$SDDM_DROPIN" > /dev/null <<EOF
-[Theme]
-Current=$THEME_NAME
-CursorTheme=Bibata-Modern-Classic
-CursorSize=24
-EOF
-fi
 
 if [[ -e "$SDDM_STALE_DROPIN" ]]; then
   # Cannot be renamed aside: SDDM parses every file in that directory, so a
