@@ -1297,6 +1297,49 @@ fn parse_pci_id(raw: &str) -> Option<u16> {
     u16::from_str_radix(hex, 16).ok()
 }
 
+/// Which account the NPU memlock grant belongs to, given `$SUDO_USER` and
+/// `$USER`.
+///
+/// `SUDO_USER` wins. dotctl is meant to run unprivileged and shell out to
+/// `sudo` itself, but under a `sudo dotctl install` `$USER` is `root` — and
+/// root is the single account that never needed the grant (`mlock` skips the
+/// RLIMIT_MEMLOCK check entirely for CAP_IPC_LOCK), while the human who will
+/// actually run FastFlowLM would get nothing. Empty is treated as unset: a
+/// display manager or an `env -u` can hand down `USER=`.
+fn memlock_user<'a>(sudo_user: Option<&'a str>, user: Option<&'a str>) -> Option<&'a str> {
+    [sudo_user, user]
+        .into_iter()
+        .flatten()
+        .find(|u| !u.is_empty() && *u != "root")
+}
+
+/// Body of `/etc/security/limits.d/99-amdxdna.conf`.
+///
+/// Scoped to one account rather than the `*` this used to write. pam_limits
+/// applies limits.d to PAM *login sessions*, so `*` never did loosen system
+/// daemons — systemd units take `DefaultLimitMEMLOCK` (8 MiB here) and never
+/// consult PAM at all — but it did hand unlimited locked memory to every human
+/// login on the box, and mlock'd pages are unswappable and unreclaimable, so
+/// that 8 MiB default is the only thing standing between an unprivileged
+/// account and pinning all of RAM. One user is all this workload needs.
+///
+/// Not a group: the obvious candidate, `@render`, is wrong twice over —
+/// udev's `50-udev-default.rules` publishes the accel node as `0666`, so group
+/// membership is not what gates NPU access, and the desktop user is typically
+/// not in `render` anyway.
+fn amdxdna_memlock_conf(user: &str) -> String {
+    format!(
+        "# Written by `dotctl install` for the AMD XDNA NPU.\n\
+         # XRT pins the host-side DMA buffers it hands the NPU, and the default\n\
+         # RLIMIT_MEMLOCK is 8 MiB — three orders of magnitude under a multi-GB\n\
+         # FastFlowLM model, so without this a model load dies with ENOMEM.\n\
+         # `-` sets the soft and hard limit together. Unlimited rather than a\n\
+         # figure because the ceiling is the model, not the runtime: XRT\n\
+         # documents no bound to size a number against.\n\
+         {user}  -  memlock  unlimited\n"
+    )
+}
+
 /// Every PCI function the kernel enumerated, as `(vendor, device)`.
 ///
 /// sysfs rather than `lspci`: pciutils is not installed by dotctl and is not a
@@ -1457,20 +1500,25 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
                     "FastFlowLM not installed: {e} — no NPU model runner"
                 ));
             }
-            // A pam_limits drop-in, applied to every PAM login session. XRT
-            // pins the host-side DMA buffers it hands the NPU, and the default
-            // RLIMIT_MEMLOCK is 8 MiB — three orders of magnitude under a
-            // multi-GB FastFlowLM model, so without this a model load dies with
-            // ENOMEM. Unlimited rather than a figure because the ceiling is the
-            // model, not the runtime: there is no bound XRT documents to size a
-            // number against.
-            if let Err(e) = sudo_write(
-                "/etc/security/limits.d/99-amdxdna.conf",
-                "*  soft  memlock  unlimited\n*  hard  memlock  unlimited\n",
-            ) {
-                warn(&format!(
-                    "memlock limit for the NPU not written: {e} — NPU model loads may fail with ENOMEM"
-                ));
+            // A pam_limits drop-in, read at login. See `amdxdna_memlock_conf`
+            // for what it is for and why it is scoped to one account rather
+            // than the `*` this used to write.
+            let sudo_user = std::env::var("SUDO_USER").unwrap_or_default();
+            let login_user = std::env::var("USER").unwrap_or_default();
+            match memlock_user(Some(&sudo_user), Some(&login_user)) {
+                Some(user) => {
+                    if let Err(e) = sudo_write(
+                        "/etc/security/limits.d/99-amdxdna.conf",
+                        &amdxdna_memlock_conf(user),
+                    ) {
+                        warn(&format!(
+                            "memlock limit for the NPU not written: {e} — NPU model loads may fail with ENOMEM"
+                        ));
+                    }
+                }
+                // Only reachable as root with no SUDO_USER, where the grant
+                // would be a no-op: CAP_IPC_LOCK already exempts root.
+                None => info("Running as root — skipping the NPU memlock drop-in"),
             }
         }
         NpuPack::Skip => info(
@@ -2347,16 +2395,17 @@ fn copy_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        aur_failure_marker_in, aur_helper_hint, chaotic_aur_policy, chaotic_state, command_exists,
-        copy_item, git_has_conflicts, git_pull, gitconfig_lacks_include, greetd_is_replaceable,
-        greetd_session_command, link_dotfiles, link_item, login_action, marker_still_valid_at,
-        noctalia_plan, npu_pack, os_release_value, pacman_conf_has_repo, pacman_pkg_installed,
-        parse_distro, parse_pci_id, patch_hexstrike_bind, patch_pkgbuild_unistd, pci_devices,
-        preferred_aur_helper, refuse_conflicted_tree, sddm_theme_is_ours, setup_gitconfig,
-        sync_db_path, venv_ready, BindState, ChaoticAur, ChaoticState, Distro, LoginAction,
-        NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, AUR_HELPERS, BASE_DESKTOP_HINT,
-        BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS,
-        REGREET_TOML, XDNA_PCI_DEVICE_IDS,
+        amdxdna_memlock_conf, aur_failure_marker_in, aur_helper_hint, chaotic_aur_policy,
+        chaotic_state, command_exists, copy_item, git_has_conflicts, git_pull,
+        gitconfig_lacks_include, greetd_is_replaceable, greetd_session_command, link_dotfiles,
+        link_item, login_action, marker_still_valid_at, memlock_user, noctalia_plan, npu_pack,
+        os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
+        patch_hexstrike_bind, patch_pkgbuild_unistd, pci_devices, preferred_aur_helper,
+        refuse_conflicted_tree, sddm_theme_is_ours, setup_gitconfig, sync_db_path, venv_ready,
+        BindState, ChaoticAur, ChaoticState, Distro, LoginAction, NoctaliaPlan, NpuPack,
+        ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER,
+        GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML,
+        XDNA_PCI_DEVICE_IDS,
     };
     use std::env;
     use std::fs;
@@ -4307,6 +4356,59 @@ LOGO=cachyos
             .expect("read /sys/bus/pci/devices")
             .count();
         assert_eq!(pci_devices().len(), enumerated);
+    }
+
+    #[test]
+    fn memlock_user_prefers_the_human_behind_a_sudo_invocation() {
+        // dotctl calls sudo itself, but under `sudo dotctl install` $USER is
+        // root — writing the grant for root leaves the account that actually
+        // runs FastFlowLM at the 8 MiB default.
+        assert_eq!(memlock_user(Some("fool"), Some("root")), Some("fool"));
+    }
+
+    #[test]
+    fn memlock_user_takes_the_login_user_when_sudo_user_is_unset() {
+        // The normal path: dotctl run unprivileged, SUDO_USER absent or empty.
+        assert_eq!(memlock_user(None, Some("fool")), Some("fool"));
+        assert_eq!(memlock_user(Some(""), Some("fool")), Some("fool"));
+    }
+
+    #[test]
+    fn memlock_user_declines_to_write_a_grant_for_root() {
+        // mlock skips the RLIMIT_MEMLOCK check outright for CAP_IPC_LOCK, so a
+        // root entry buys nothing; None makes the caller say so instead of
+        // writing a misleading line into /etc.
+        assert_eq!(memlock_user(Some("root"), Some("root")), None);
+        assert_eq!(memlock_user(None, Some("root")), None);
+        assert_eq!(memlock_user(None, None), None);
+        assert_eq!(memlock_user(Some(""), Some("")), None);
+    }
+
+    #[test]
+    fn amdxdna_memlock_conf_grants_exactly_one_named_account() {
+        // The bug this replaced: a `*` domain handed unlimited locked memory to
+        // every login on the box, on hardware most of them do not have.
+        let body = amdxdna_memlock_conf("fool");
+        let rules: Vec<&str> = body
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
+            .collect();
+        assert_eq!(rules, ["fool  -  memlock  unlimited"]);
+        assert!(!body.contains('*'), "no wildcard domain: {body}");
+    }
+
+    #[test]
+    fn amdxdna_memlock_conf_says_what_the_file_is_for() {
+        // pam_limits ignores everything after a `#`, so the explanation the next
+        // reader needs lives in the file itself rather than only in this repo.
+        let body = amdxdna_memlock_conf("fool");
+        for word in ["XRT", "8 MiB", "ENOMEM", "dotctl install"] {
+            assert!(body.contains(word), "{word:?} missing from:\n{body}");
+        }
+        assert!(
+            body.ends_with('\n'),
+            "pam_limits wants a terminated last line"
+        );
     }
 
     // ── pacman.conf parsing ──────────────────────────────────────────────
