@@ -20,6 +20,17 @@ else
 fi
 CUSTOM_THEMES="$DOTFILES/etc/sddm-themes"
 
+# The drop-in dotctl owns (SDDM_THEME_CONF, src/main.rs). Verified against
+# sddm 0.21.0 -- man 5 sddm.conf, plus stracing the order it opens them --
+# SDDM reads every *file* in /etc/sddm.conf.d, not just *.conf, in name order,
+# then /etc/sddm.conf, and the last value read wins. A second drop-in of our
+# own would just be arbitrated by a filename sort, so write dotctl's file.
+SDDM_DROPIN="/etc/sddm.conf.d/10-noctalia-theme.conf"
+# What this script used to write. It sorts after the drop-in above, so a
+# leftover keeps shadowing every later choice -- including dotctl's, which
+# went on reporting success while its setting never reached the greeter.
+SDDM_STALE_DROPIN="/etc/sddm.conf.d/theme.conf"
+
 RED='\033[0;31m'
 GRN='\033[0;32m'
 BLU='\033[0;34m'
@@ -76,6 +87,8 @@ fi
 
 IFS=':' read -r TYPE THEME_PATH <<< "${THEMES[$SELECTED]}"
 
+sudo mkdir -p "$(dirname "$SDDM_DROPIN")"
+
 if [[ "$TYPE" == "astronaut" ]]; then
   # Copy wallpaper to astronaut Backgrounds dir
   info "Setting astronaut theme variant: $SELECTED"
@@ -113,7 +126,7 @@ if [[ "$TYPE" == "astronaut" ]]; then
     warn "Using the packaged theme dir -- pacman -Syu will wipe your edits."
     warn "Run ./deploy.sh to create an upgrade-proof local copy."
   fi
-  sudo tee /etc/sddm.conf.d/theme.conf > /dev/null <<EOF
+  sudo tee "$SDDM_DROPIN" > /dev/null <<EOF
 [Theme]
 Current=$ASTRONAUT_NAME
 CursorTheme=Bibata-Modern-Classic
@@ -125,12 +138,19 @@ else
   THEME_NAME="$(basename "$THEME_PATH")"
   info "Setting standalone theme: $THEME_NAME"
 
-  sudo tee /etc/sddm.conf.d/theme.conf > /dev/null <<EOF
+  sudo tee "$SDDM_DROPIN" > /dev/null <<EOF
 [Theme]
 Current=$THEME_NAME
 CursorTheme=Bibata-Modern-Classic
 CursorSize=24
 EOF
+fi
+
+if [[ -e "$SDDM_STALE_DROPIN" ]]; then
+  # Cannot be renamed aside: SDDM parses every file in that directory, so a
+  # .bak next to it would still be read, and would still sort last.
+  sudo rm -f "$SDDM_STALE_DROPIN"
+  warn "Removed $SDDM_STALE_DROPIN -- it sorted last and shadowed $SDDM_DROPIN"
 fi
 
 ok "SDDM theme set to: ${CYN}$SELECTED${RST}"

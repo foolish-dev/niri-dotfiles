@@ -926,11 +926,40 @@ fn ensure_noctalia_auth_agent() -> Result<()> {
     Ok(())
 }
 
-/// SDDM reads every `*.conf` here; we own one drop-in instead of editing
-/// /etc/sddm.conf so other settings (autologin, numlock, …) are left alone.
-/// SDDM stays installed as a themed fallback even though greetd is the
-/// active display manager.
+/// The single SDDM drop-in this repo writes. `.local/bin/sddm-theme` writes
+/// *this same path* rather than one of its own, deliberately: verified against
+/// sddm 0.21.0 (`man 5 sddm.conf`, plus stracing the order it opens them),
+/// SDDM reads **every file** in /etc/sddm.conf.d — not only `*.conf` — in
+/// name order, then /etc/sddm.conf, with the last value read winning. Two
+/// drop-ins would therefore be arbitrated by a filename sort: the
+/// `theme.conf` older `sddm-theme` versions wrote sorts after this one and
+/// silently shadowed it, while `dotctl install` still reported success.
+///
+/// A drop-in rather than /etc/sddm.conf so other settings (autologin,
+/// numlock, …) are left alone. SDDM stays installed as a themed fallback even
+/// though greetd is the active display manager.
 const SDDM_THEME_CONF: &str = "/etc/sddm.conf.d/10-noctalia-theme.conf";
+
+/// The theme `dotctl install` selects, and the marker for "this drop-in is
+/// still ours to rewrite" — see [`sddm_theme_is_ours`].
+const SDDM_THEME_NAME: &str = "noctalia";
+
+/// Whether the drop-in at [`SDDM_THEME_CONF`] is still dotctl's to write.
+/// Now that `.local/bin/sddm-theme` writes the same file, a `Current=` naming
+/// a different theme is a choice the user made *after* install, and
+/// re-asserting noctalia on every `dotctl all` would silently undo it. Same
+/// rule as [`greetd_is_replaceable`], and pure for the same reason: absent,
+/// or without a parseable `Current=`, counts as ours.
+fn sddm_theme_is_ours(body: Option<&str>) -> bool {
+    let Some(body) = body else {
+        return true;
+    };
+    body.lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with('#'))
+        .find_map(|l| l.strip_prefix("Current")?.trim_start().strip_prefix('='))
+        .is_none_or(|v| v.trim() == SDDM_THEME_NAME)
+}
 
 /// greetd's whole config. We do *not* exclusively own this file: the greetd
 /// package ships this exact path as a pacman backup file, whose stock body
@@ -1065,18 +1094,26 @@ fn setup_noctalia_login() -> Result<()> {
         warn("sddm not found (theme install may have failed) — skipping login-screen setup");
         return Ok(());
     }
-    info("Selecting the noctalia SDDM theme ...");
-    run(
-        "sudo",
-        &[
-            "sh",
-            "-c",
+    // Read before overwriting, exactly as for greetd: `.local/bin/sddm-theme`
+    // writes this same file now, so a different Current= is the user's choice.
+    let existing = fs::read_to_string(SDDM_THEME_CONF).ok();
+    if sddm_theme_is_ours(existing.as_deref()) {
+        info("Selecting the noctalia SDDM theme ...");
+        // The same three keys `sddm-theme` writes, so whichever of the two ran
+        // last leaves the same shape and the cursor settings don't vanish on
+        // the next install.
+        sudo_write(
+            SDDM_THEME_CONF,
             &format!(
-                "mkdir -p /etc/sddm.conf.d && printf '[Theme]\\nCurrent=noctalia\\n' > {SDDM_THEME_CONF}"
+                "[Theme]\nCurrent={SDDM_THEME_NAME}\nCursorTheme=Bibata-Modern-Classic\nCursorSize=24\n"
             ),
-        ],
-    )?;
-    ok("SDDM theme set to noctalia");
+        )?;
+        ok("SDDM theme set to noctalia");
+    } else {
+        ok(&format!(
+            "{SDDM_THEME_CONF} selects another theme (set with `sddm-theme`) — leaving it"
+        ));
+    }
 
     match login_action(current_display_manager(), greetd_replaceable) {
         LoginAction::AlreadySddm => ok("sddm is already the active display manager"),
@@ -2171,10 +2208,10 @@ mod tests {
         greetd_session_command, link_dotfiles, link_item, login_action, marker_still_valid_at,
         noctalia_plan, os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro,
         patch_hexstrike_bind, patch_pkgbuild_unistd, preferred_aur_helper, refuse_conflicted_tree,
-        setup_gitconfig, sync_db_path, venv_ready, BindState, ChaoticAur, ChaoticState, Distro,
-        LoginAction, NoctaliaPlan, ALL_INTERFACE_BINDS, AUR_HELPERS, BASE_DESKTOP_HINT,
-        BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS,
-        REGREET_TOML,
+        sddm_theme_is_ours, setup_gitconfig, sync_db_path, venv_ready, BindState, ChaoticAur,
+        ChaoticState, Distro, LoginAction, NoctaliaPlan, ALL_INTERFACE_BINDS, AUR_HELPERS,
+        BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS,
+        REGREET_CSS, REGREET_TOML,
     };
     use std::env;
     use std::fs;
@@ -3196,6 +3233,39 @@ mod tests {
             LoginAction::OtherDm(dm) => assert_eq!(dm, "gdm.service"),
             _ => panic!("a third-party DM must be left in place, never overridden"),
         }
+    }
+
+    // ── sddm_theme_is_ours ─────────────────────────────────────────────────
+    //
+    // .local/bin/sddm-theme writes SDDM_THEME_CONF too — one file, one
+    // precedence, no filename-sort tiebreak. The cost of sharing it is that
+    // `dotctl all` must not stomp a theme the user picked with that script.
+
+    #[test]
+    fn sddm_drop_in_is_ours_when_absent() {
+        assert!(sddm_theme_is_ours(None));
+    }
+
+    #[test]
+    fn sddm_drop_in_is_ours_when_it_still_names_noctalia() {
+        assert!(sddm_theme_is_ours(Some(
+            "[Theme]\nCurrent=noctalia\nCursorSize=24\n"
+        )));
+    }
+
+    #[test]
+    fn sddm_drop_in_is_left_alone_once_sddm_theme_picked_another() {
+        assert!(
+            !sddm_theme_is_ours(Some("[Theme]\nCurrent=elarun\nCursorSize=24\n")),
+            "a theme chosen with `sddm-theme` must survive the next `dotctl install`"
+        );
+    }
+
+    #[test]
+    fn sddm_drop_in_without_a_current_key_is_ours() {
+        // Nothing to preserve — write our own rather than leave a themeless
+        // login screen.
+        assert!(sddm_theme_is_ours(Some("[Theme]\n# Current=elarun\n")));
     }
 
     // The greeter is wired greetd → cage → regreet, with the noctalia-themed
