@@ -158,18 +158,18 @@
     },
     "filesystem": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "{env:HOME}"]
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem@2026.8.31", "{env:HOME}"]
     },
     "github": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-github"],
+      "command": ["npx", "-y", "@modelcontextprotocol/server-github@2025.4.8"],
       "environment": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "{env:GITHUB_PERSONAL_ACCESS_TOKEN}"
       }
     },
     "fetch": {
       "type": "local",
-      "command": ["npx", "-y", "@tokenizin/mcp-npx-fetch"]
+      "command": ["npx", "-y", "@tokenizin/mcp-npx-fetch@1.0.0"]
     },
     "hexstrike-ai": {
       "type": "local",
@@ -185,15 +185,15 @@
     },
     "playwright": {
       "type": "local",
-      "command": ["npx", "-y", "@playwright/mcp@latest"]
+      "command": ["npx", "-y", "@playwright/mcp@0.0.80"]
     },
     "sequential-thinking": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"]
+      "command": ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking@2026.8.31"]
     },
     "memory": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-memory"]
+      "command": ["npx", "-y", "@modelcontextprotocol/server-memory@2026.8.31"]
     },
     "git": {
       "type": "local",
@@ -202,7 +202,7 @@
     // From heimdall_opencode — demo MCP, runs via `opencode x`.
     "weather": {
       "type": "local",
-      "command": ["opencode", "x", "@h1deya/mcp-server-weather"]
+      "command": ["opencode", "x", "@h1deya/mcp-server-weather@0.1.3"]
     }
   },
 

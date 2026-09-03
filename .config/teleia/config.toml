@@ -13,19 +13,19 @@
 
 [mcps.context7]
 command = "npx"
-args    = ["-y", "@upstash/context7-mcp"]
+args    = ["-y", "@upstash/context7-mcp@4.0.4"]
 
 [mcps.filesystem]
 command = "npx"
-args    = ["-y", "@modelcontextprotocol/server-filesystem", "/home/fool"]
+args    = ["-y", "@modelcontextprotocol/server-filesystem@2026.8.31", "/home/fool"]
 
 [mcps.github]
 command = "npx"
-args    = ["-y", "@modelcontextprotocol/server-github"]
+args    = ["-y", "@modelcontextprotocol/server-github@2025.4.8"]
 
 [mcps.fetch]
 command = "npx"
-args    = ["-y", "@tokenizin/mcp-npx-fetch"]
+args    = ["-y", "@tokenizin/mcp-npx-fetch@1.0.0"]
 
 [mcps.hexstrike-ai]
 command = "/home/fool/tools/hexstrike-ai/hexstrike-env/bin/python"
@@ -37,19 +37,20 @@ args    = [
 
 [mcps.playwright]
 command = "npx"
-args    = ["-y", "@playwright/mcp@latest"]
+args    = ["-y", "@playwright/mcp@0.0.80"]
 
 [mcps.sequential-thinking]
 command = "npx"
-args    = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+args    = ["-y", "@modelcontextprotocol/server-sequential-thinking@2026.8.31"]
 
 [mcps.memory]
 command = "npx"
-args    = ["-y", "@modelcontextprotocol/server-memory"]
+args    = ["-y", "@modelcontextprotocol/server-memory@2026.8.31"]
 
 [mcps.git]
 command = "/home/fool/.local/bin/mcp-server-git"
 
 [mcps.weather]
 command = "opencode"
-args    = ["x", "@h1deya/mcp-server-weather"]
+args    = ["x", "@h1deya/mcp-server-weather@0.1.3"]
+
