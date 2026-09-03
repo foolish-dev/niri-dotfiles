@@ -1526,6 +1526,36 @@ fn gitconfig_lacks_include(body: &str) -> bool {
     !body.contains(".config/git/dotfiles.config")
 }
 
+/// Move a dangling symlink out of the way, into the same
+/// `~/.dotfiles-backup/<ts>/` tree [`link_item`] uses, keeping the link itself
+/// rather than resolving or dropping it so the user can still see where it
+/// pointed.
+///
+/// Split out because `fs::write` is not the only caller that needs it: every
+/// `exists()`-then-`write` pair in a deploy has the same hole, since `exists()`
+/// follows a symlink and reports a dead one as absent while `fs::write`
+/// (O_CREAT|O_WRONLY|O_TRUNC) follows it and writes to whatever it names.
+fn back_up_dangling_symlink(path: &Path, backup_dir: &Path, home: &Path) -> Result<()> {
+    let rel = path.strip_prefix(home).unwrap_or(path);
+    let backup_target = backup_dir.join(rel);
+    if let Some(parent) = backup_target.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::rename(path, &backup_target).with_context(|| {
+        format!(
+            "backup dangling {} -> {}",
+            path.display(),
+            backup_target.display()
+        )
+    })?;
+    warn(&format!(
+        "Backed up dangling symlink: {} -> {}",
+        path.display(),
+        backup_target.display()
+    ));
+    Ok(())
+}
+
 /// Deploy the tracked `.gitconfig` to a neutral XDG path with an untracked
 /// ~/.gitconfig include-stub, and seed ~/.gitconfig.local identity once.
 /// Idempotent: never clobbers an existing stub or identity file (honors
@@ -1561,23 +1591,7 @@ fn setup_gitconfig(repo: &Path, h: &Path, backup_dir: &Path) -> Result<()> {
         } else if !gitconfig.exists() {
             // Dangling. Back the link itself up rather than dropping it, so the
             // user can still see where it pointed. Same convention as link_item.
-            let rel = gitconfig.strip_prefix(h).unwrap_or(&gitconfig);
-            let backup_target = backup_dir.join(rel);
-            if let Some(parent) = backup_target.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::rename(&gitconfig, &backup_target).with_context(|| {
-                format!(
-                    "backup dangling {} -> {}",
-                    gitconfig.display(),
-                    backup_target.display()
-                )
-            })?;
-            warn(&format!(
-                "Backed up dangling symlink: {} -> {}",
-                gitconfig.display(),
-                backup_target.display()
-            ));
+            back_up_dangling_symlink(&gitconfig, backup_dir, h)?;
         }
     }
     if !gitconfig.exists() && !gitconfig.is_symlink() {
@@ -1602,7 +1616,20 @@ fn setup_gitconfig(repo: &Path, h: &Path, backup_dir: &Path) -> Result<()> {
     }
 
     let local = h.join(".gitconfig.local");
-    if !local.exists() {
+    // The stub write above is guarded against a dangling ~/.gitconfig; the
+    // identity write has exactly the same hole and had none of the guard.
+    // `exists()` follows the link, so a dead ~/.gitconfig.local reads as absent
+    // and `fs::write` follows it too — seeding this machine's name/email onto
+    // whatever foreign path the link names (a file dotctl then never reads
+    // again, while it reports "Wrote ~/.gitconfig.local identity"), or failing
+    // with a bare ENOENT when that path's parent is gone, part-way through a
+    // deploy that has already relinked most of ~/.config. A link that still
+    // resolves is somebody's real identity file: it counts as present and is
+    // left alone, exactly as a regular file is.
+    if local.is_symlink() && !local.exists() {
+        back_up_dangling_symlink(&local, backup_dir, h)?;
+    }
+    if !local.exists() && !local.is_symlink() {
         let name = std::env::var("GIT_USER_NAME").unwrap_or_else(|_| "Your Name".into());
         let email = std::env::var("GIT_USER_EMAIL").unwrap_or_else(|_| "you@example.com".into());
         let body = format!(
@@ -2588,7 +2615,6 @@ mod tests {
             "the displaced file must survive byte-for-byte in the backup"
         );
     }
-
     #[test]
     fn refuse_conflicted_tree_rejects_an_unresolved_merge() {
         // deploy() symlinks this repo straight into ~/.config, so a tree with
@@ -3022,6 +3048,133 @@ mod tests {
             fs::read_link(f.backup.join(".gitconfig")).expect("read_link backup"),
             foreign,
             "the backed-up link must still name its original target"
+        );
+    }
+
+    // Same trap as the ~/.gitconfig stub, one guard short: the identity write
+    // below it asked only `exists()`, which follows the link and reports a dead
+    // one as absent, and `fs::write` followed it too — seeding this machine's
+    // name/email onto the foreign path the dead link named, while dotctl
+    // printed "Wrote ~/.gitconfig.local identity" and left ~/.gitconfig.local
+    // still pointing away from it.
+    #[test]
+    fn setup_gitconfig_backs_up_a_dangling_local_instead_of_seeding_through_it() {
+        let f = LinkItemFixture::new();
+        f.write_src(".gitconfig", "[core]\n\tpager = less\n");
+
+        // Target parent exists, so the pre-fix `fs::write` succeeds and the
+        // identity silently lands on the foreign path.
+        let foreign = f.home.join(".local/share/other-manager/identity");
+        fs::create_dir_all(foreign.parent().expect("foreign parent")).expect("mkdir foreign dir");
+        let local = f.home.join(".gitconfig.local");
+        symlink(&foreign, &local).expect("seed dangling symlink");
+
+        setup_gitconfig(&f.repo, &f.home, &f.backup).expect("setup_gitconfig");
+
+        assert!(
+            !foreign.exists(),
+            "the identity must never be seeded through a dangling ~/.gitconfig.local onto the \
+             foreign path it names ({})",
+            foreign.display()
+        );
+        assert!(
+            !local.is_symlink(),
+            "~/.gitconfig.local must end up a real file, not a symlink still pointing away from \
+             the identity dotctl thinks it wrote"
+        );
+        let body = fs::read_to_string(&local).expect("read ~/.gitconfig.local");
+        assert!(
+            body.contains("[user]") && body.contains("name =") && body.contains("email ="),
+            "the [user] identity must be in ~/.gitconfig.local itself, got: {body}"
+        );
+
+        let backed_up = f.backup.join(".gitconfig.local");
+        assert!(
+            backed_up.is_symlink(),
+            "the dangling link must be moved into the backup dir as a link, not resolved or \
+             dropped, so the user can still see where it pointed"
+        );
+        assert_eq!(
+            fs::read_link(&backed_up).expect("read_link backup"),
+            foreign,
+            "the backed-up link must still name its original target"
+        );
+    }
+
+    // Other half of the same bug: with the foreign path's parent gone, the
+    // pre-fix `fs::write` failed with a bare ENOENT naming neither the file nor
+    // the cause, aborting a deploy that had already relinked most of ~/.config.
+    #[test]
+    fn setup_gitconfig_survives_a_dangling_local_into_a_missing_directory() {
+        let f = LinkItemFixture::new();
+        f.write_src(".gitconfig", "[core]\n\tpager = less\n");
+
+        let foreign = f.home.join(".local/share/gone-manager/identity");
+        let local = f.home.join(".gitconfig.local");
+        symlink(&foreign, &local).expect("seed dangling symlink");
+
+        let res = setup_gitconfig(&f.repo, &f.home, &f.backup);
+        assert!(
+            res.is_ok(),
+            "a dangling ~/.gitconfig.local must not abort the deploy: {:?}",
+            res.err()
+        );
+        assert!(
+            !foreign.parent().expect("foreign parent").exists(),
+            "dotctl must not conjure the missing directory the dead link pointed into"
+        );
+        assert!(
+            !local.is_symlink(),
+            "~/.gitconfig.local must end up a real file, not a symlink still pointing away from \
+             the identity"
+        );
+        assert!(
+            fs::read_to_string(&local)
+                .expect("read ~/.gitconfig.local")
+                .contains("[user]"),
+            "the identity must land in ~/.gitconfig.local itself"
+        );
+        assert_eq!(
+            fs::read_link(f.backup.join(".gitconfig.local")).expect("read_link backup"),
+            foreign,
+            "the backed-up link must still name its original target"
+        );
+    }
+
+    #[test]
+    fn setup_gitconfig_keeps_an_identity_reached_through_a_live_symlink() {
+        // Over-correction guard for the two above: only a *dead*
+        // ~/.gitconfig.local is displaced. A link into the user's own synced
+        // tree still resolves, so it is a present identity file — neither
+        // backed up nor overwritten with the placeholders.
+        let f = LinkItemFixture::new();
+        f.write_src(".gitconfig", "[core]\n\tpager = less\n");
+        let real = f.home.join("sync/identity");
+        fs::create_dir_all(real.parent().expect("sync parent")).expect("mkdir sync dir");
+        let identity = "[user]\n    name = Real Person\n    email = real@machine.example\n";
+        fs::write(&real, identity).expect("seed identity");
+        let local = f.home.join(".gitconfig.local");
+        symlink(&real, &local).expect("seed live symlink");
+
+        setup_gitconfig(&f.repo, &f.home, &f.backup).expect("setup_gitconfig");
+
+        assert!(
+            local.is_symlink(),
+            "a link that still resolves is a present identity file, not a displaced one"
+        );
+        assert_eq!(
+            fs::read_link(&local).expect("read_link"),
+            real,
+            "it must still point where the user pointed it"
+        );
+        assert_eq!(
+            fs::read_to_string(&real).expect("read identity"),
+            identity,
+            "the machine's real identity must not be reset to the placeholders"
+        );
+        assert!(
+            !f.backup.join(".gitconfig.local").is_symlink(),
+            "a live link is not a backup-worthy event"
         );
     }
 
