@@ -1234,6 +1234,20 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     // (extra 1:0.7.0-2); it is in no AUR, so no helper is involved.
     ensure_pacman("cliphist", "cliphist", &["cliphist"])?;
 
+    // Fonts. kitty.conf, fuzzel.ini, qt5ct.conf and qt6ct.conf every one pin
+    // `JetBrainsMono Nerd Font` by name, and no font package was installed at
+    // all — so fontconfig substituted silently, with no error anywhere:
+    // `fc-list | grep -ci "jetbrainsmono nerd"` returns 0 here and
+    // `fc-match "JetBrainsMono Nerd Font"` answers NotoSansMono-Regular, which
+    // carries none of the powerline/Nerd glyphs starship, tmux and fastfetch
+    // draw with. Gated by package, not binary: a font ships no executable, so a
+    // `command_exists` gate would miss forever and re-run pacman every install.
+    ensure_pacman_pkg(
+        "JetBrainsMono Nerd Font",
+        "ttf-jetbrains-mono-nerd",
+        &["ttf-jetbrains-mono-nerd"],
+    )?;
+
     // Resolve (or bootstrap) an AUR helper before the first AUR package. On
     // CachyOS this installs one straight from [cachyos]; on stock Arch it can
     // only succeed once setup_chaotic_aur further down has run, so we ask
@@ -1347,6 +1361,11 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
 
     ensure_pacman("tmux", "tmux", &["tmux"])?;
     ensure_pacman("fastfetch", "fastfetch", &["fastfetch"])?;
+    // `.zshrc` runs `eval "$(starship init zsh)"` behind a `command -v` guard
+    // and .config/starship.toml is deployed, but the binary was never installed
+    // — the guard turned that into a silently missing prompt rather than an
+    // error. It is also the loudest consumer of the Nerd font above.
+    ensure_pacman("starship", "starship", &["starship"])?;
     ensure_pacman("Neovim", "nvim", &["neovim"])?;
     // Noctalia: the v4 quickshell shell plus its quickshell fork. Both
     // packages exist ONLY in CachyOS's [cachyos] repo — not Arch `extra`, not
