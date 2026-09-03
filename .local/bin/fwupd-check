@@ -2,10 +2,32 @@
 # Check LVFS for firmware updates and notify if any appear.
 # Driven by fwupd-check.timer (monthly). Reports only — never applies.
 #
-# Exit codes from `fwupdmgr get-updates`:
-#   0 = updates available
-#   2 = nothing to update (treated as success here)
-#   * = real failure
+# No sudo, deliberately. fwupd is a daemon with its own polkit policy, and
+# neither verb this script uses needs privilege:
+#   get-updates -> GetDevices + GetUpgrades on the daemon, which
+#                  fu-dbus-daemon.c guards with no polkit action at all.
+#   refresh     -> downloads metadata client-side, then UpdateMetadata,
+#                  guarded by org.freedesktop.fwupd.refresh-remote, whose
+#                  upstream defaults are allow_active=yes AND allow_inactive=yes
+#                  (allow_any=auth_admin). Any local session is authorised with
+#                  no prompt.
+# Measured here (polkit 127, systemd 261): a oneshot started by the *user*
+# manager lands in user@1000.service/app.slice, and polkit still resolves it to
+# the active local session — pkcheck on an active-only action returns 0 from
+# inside such a unit. The `sudo` this used to carry could never have worked:
+# Type=oneshot under the user manager has no TTY and no SUDO_ASKPASS, so sudo
+# had nothing to ask with, and the catch-all arm turned that into a monthly
+# *critical* popup. That popup was the only thing this feature ever did.
+#
+# Bare command names, not /usr/bin/…: the user manager's PATH carries /usr/bin
+# (so does systemd's compiled-in fallback), so the absolute paths bought nothing
+# while diverging from every other script in .local/bin.
+#
+# Exit codes from fwupdmgr, per fwupdmgr(1) "Exit status":
+#   0 = success — here, updates are available
+#   1 = generic failure
+#   2 = nothing to do — no updates
+#   3 = not found — no updatable devices (a VM, or nothing this box has on LVFS)
 set -u
 set -o pipefail
 
@@ -13,29 +35,61 @@ LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}"
 LOG="$LOG_DIR/fwupd-check.log"
 mkdir -p "$LOG_DIR"
 
-{
-    printf '\n=== %s ===\n' "$(date -Is)"
-    sudo /usr/bin/fwupdmgr refresh --force
-} >>"$LOG" 2>&1
+log() { printf '%s\n' "$*" >>"$LOG"; }
 
-out=$(sudo /usr/bin/fwupdmgr get-updates 2>&1)
+# notify-send is not guaranteed: nothing else here depends on libnotify, and it
+# needs a notification daemon that a Persistent=true timer can beat to the
+# session after a cold boot. Fall back to the log rather than spraying
+# "command not found" into the journal.
+notify() {
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send "$@" || log 'notify-send failed — no notification daemon yet?'
+  else
+    log "notify-send unavailable, would have said: $*"
+  fi
+}
+
+printf '\n=== %s ===\n' "$(date -Is)" >>"$LOG"
+
+# Prereq guard. `dotctl deploy` only enables the timer when fwupdmgr exists, but
+# the units are plain symlinks in ~/.config/systemd/user: a hand-run `systemctl
+# --user enable`, or an fwupd removed after deploy, both leave the timer armed
+# on a machine with no fwupd. Exit 0 — "not installed" is not a fault, and a
+# firmware *reporter* must never be the loudest thing on the desktop.
+if ! command -v fwupdmgr >/dev/null 2>&1; then
+  log 'fwupdmgr not installed — nothing to check'
+  exit 0
+fi
+
+# --force because fwupdmgr refuses a refresh under 24h old and exits 2 saying
+# so; this runs monthly, so that age check can only ever get in the way.
+if ! fwupdmgr refresh --force >>"$LOG" 2>&1; then
+  # Overwhelmingly "the laptop was offline at 10:00 on the 1st". Do NOT notify:
+  # fail the unit instead, so `dotfiles-check` — which already lists failed user
+  # units — is the quiet, pull-based channel for it. Skip get-updates rather
+  # than answer from stale metadata: a stale "no updates" is indistinguishable
+  # from a real one, so it would turn a failed check into a false all-clear.
+  log 'refresh failed — skipping get-updates so stale metadata cannot read as a clean bill of health'
+  exit 1
+fi
+
+out=$(fwupdmgr get-updates 2>&1)
 rc=$?
-printf '%s\n' "$out" >>"$LOG"
+log "$out"
 
 case "$rc" in
-    0)
-        /usr/bin/notify-send -u normal -i system-software-update \
-            "Firmware updates available" \
-            "Run 'fwupdmgr update' to apply. Log: $LOG"
-        ;;
-    2)
-        printf 'no updates\n' >>"$LOG"
-        ;;
-    *)
-        /usr/bin/notify-send -u critical -i dialog-error \
-            "fwupd check failed" \
-            "exit=$rc — see $LOG"
-        ;;
+  0)
+    notify -u normal -i system-software-update \
+      "Firmware updates available" \
+      "Run 'fwupdmgr update' to apply. Log: $LOG"
+    ;;
+  2 | 3)
+    log 'no updates'
+    ;;
+  *)
+    log "get-updates failed (exit=$rc)"
+    exit 1
+    ;;
 esac
 
 exit 0

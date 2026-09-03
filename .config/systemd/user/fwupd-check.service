@@ -1,7 +1,11 @@
 [Unit]
 Description=Check LVFS for firmware updates (report-only)
-After=network-online.target
-Wants=network-online.target
+# No network-online.target: that unit exists only in the *system* manager
+# (`systemctl --user cat network-online.target` -> "No files found"), so the
+# After=/Wants= that used to sit here were dropped on every load and ordered
+# nothing at all. The user manager has no equivalent, so the script handles
+# being offline directly instead: a failed refresh fails the unit, quietly,
+# and does not fall through to answering from stale metadata.
 ConditionVirtualization=!container
 
 [Service]

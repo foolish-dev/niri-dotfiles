@@ -1421,6 +1421,25 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     // error. It is also the loudest consumer of the Nerd font above.
     ensure_pacman("starship", "starship", &["starship"])?;
     ensure_pacman("Neovim", "nvim", &["neovim"])?;
+    // Firmware updates. `fwupd-check.timer` (armed by `dotctl deploy`) runs
+    // `fwupdmgr refresh` + `get-updates` monthly and speaks up only when LVFS
+    // has something. Nothing in dotctl ever installed the package, so
+    // `command -v fwupdmgr` failed here while the units sat symlinked into
+    // ~/.config/systemd/user and unenabled — the check had never run once.
+    // In `extra` on Arch and cachyos-extra-znver4 on CachyOS, so no distro
+    // branch, and no `systemctl enable fwupd.service` needs to follow: the
+    // package ships a D-Bus service file, so the daemon is activated by the
+    // first fwupdmgr call.
+    // Warn-and-continue rather than `?`, like the chaotic-aur and blackarch
+    // steps: a monthly firmware reporter is the most optional thing in this
+    // function, and its ~25 dependencies give it the widest failure surface of
+    // any single package here. Nothing below reads fwupd, and deploy() skips
+    // the timer on its own when the binary is absent.
+    if let Err(e) = ensure_pacman("fwupd", "fwupdmgr", &["fwupd"]) {
+        warn(&format!(
+            "fwupd not installed: {e} — `dotctl deploy` will skip fwupd-check.timer"
+        ));
+    }
     // Noctalia: the v4 quickshell shell plus its quickshell fork. Both
     // packages exist ONLY in CachyOS's [cachyos] repo — not Arch `extra`, not
     // chaotic-aur, not the AUR — so `pacman -Si` is the honest gate. On
@@ -2022,6 +2041,18 @@ fn deploy(repo: &Path, home: &Path) -> Result<()> {
         "bb-auth.service",
         Path::new("/usr/libexec/bb-auth"),
         "reinstall dotctl (or run `dotctl install`) to build noctalia-unofficial-auth-agent-git",
+    );
+    // Monthly LVFS firmware check. This line is why the feature had never run:
+    // link_dotfiles has symlinked fwupd-check.{service,timer} into
+    // ~/.config/systemd/user since they were added, and nothing enabled them.
+    // The *timer* is what gets enabled — fwupd-check.service has no [Install]
+    // and exists only as the timer's Unit=. The prereq is fwupdmgr itself,
+    // which is also what the script's own guard checks, so a box without fwupd
+    // stays silent from both directions instead of failing the unit monthly.
+    enable_user_unit(
+        "fwupd-check.timer",
+        Path::new("/usr/bin/fwupdmgr"),
+        "run `dotctl install` to pacman -S fwupd",
     );
 
     ok("Deploy complete");
