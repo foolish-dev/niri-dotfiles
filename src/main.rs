@@ -907,6 +907,47 @@ fn patch_pkgbuild_unistd(pkgbuild: &str) -> String {
     pkgbuild.replacen("build() {\n", &replacement, 1)
 }
 
+/// Bring the AUR clone at `dir` back to upstream: discard whatever the last
+/// run left in the working tree, then fast-forward.
+///
+/// The `reset --hard` is the whole point. [`build_noctalia_auth_agent`] writes
+/// a patched PKGBUILD (see [`patch_pkgbuild_unistd`]) straight into the clone
+/// and never restores it, so from the second run onwards the tree is
+/// permanently dirty and the `--ff-only` pull aborts the moment upstream
+/// touches PKGBUILD — the exact case the refresh exists to catch. Reproduced
+/// against this box's own clone with a published upstream commit:
+///   error: Your local changes to the following files would be overwritten by
+///   merge: PKGBUILD / Please commit your changes or stash them before you
+///   merge. / Aborting        (exit 1)
+/// The caller discarded that status, printed "Refreshing ... AUR clone", and
+/// rebuilt the same frozen PKGBUILD forever — so an upstream fix for the very
+/// GCC 16 break we patch around could never arrive. It also wasted the one
+/// retry [`marker_still_valid`] grants per dotctl reinstall, which re-runs the
+/// identical build and re-records the identical failure.
+///
+/// `reset --hard` and not `git checkout -- PKGBUILD`: checkout restores the
+/// working tree from the *index*, so anything a previous run or a user had
+/// staged still blocks the merge, and it only covers the paths we remember
+/// dirtying — the reset needs no such list and cannot drift as the patch grows.
+/// Not a re-clone either: that throws away makepkg's downloaded sources and
+/// costs a full refetch every run to fix a dirty file. And deliberately not
+/// `git clean -fdx`: `src/`, `pkg/` and the built `*.pkg.tar.zst` are
+/// makepkg's, untracked, and never block a fast-forward.
+///
+/// A clone the user has hand-edited loses those edits, and that is correct.
+/// This lives under `$XDG_CACHE_HOME` — data dotctl creates and must be free
+/// to recreate — and dotctl rewrites the PKGBUILD in it on every run anyway,
+/// so it was never a place to keep work. The sanctioned override is the one
+/// [`ensure_noctalia_auth_agent`] already documents: build and install the
+/// package yourself, and `pacman_pkg_installed` short-circuits before this
+/// function is ever reached.
+fn refresh_aur_clone(dir: &str) -> Result<()> {
+    // Undo last run's PKGBUILD patch before the pull, not after: a dirty
+    // tracked file is what aborts the fast-forward.
+    run("git", &["-C", dir, "reset", "--hard", "HEAD"])?;
+    run("git", &["-C", dir, "pull", "--ff-only"])
+}
+
 /// Clone (or refresh) the AUR repo for `pkg`, patch its PKGBUILD to
 /// force-include `<unistd.h>`, then build + install with `makepkg -si`.
 fn build_noctalia_auth_agent(pkg: &str) -> Result<()> {
@@ -914,8 +955,15 @@ fn build_noctalia_auth_agent(pkg: &str) -> Result<()> {
     let dir_str = dir.to_str().context("AUR build dir path is not utf-8")?;
     if dir.join(".git").exists() {
         info(&format!("Refreshing {pkg} AUR clone ..."));
-        // Best-effort: upstream may have fixed the build since last time.
-        let _ = run("git", &["-C", dir_str, "pull", "--ff-only"]);
+        // Best-effort: a refresh that fails (no network, rewritten upstream
+        // history) is no reason to skip building the checkout already on disk.
+        // But it is reported now — the `let _` this replaced hid a pull that
+        // had been failing on every run since the first build.
+        if let Err(e) = refresh_aur_clone(dir_str) {
+            warn(&format!(
+                "could not refresh {pkg} AUR clone: {e} — building the checkout already on disk"
+            ));
+        }
     } else {
         info(&format!("Cloning {pkg} from the AUR ..."));
         if let Some(parent) = dir.parent() {
@@ -2559,11 +2607,11 @@ mod tests {
         link_item, login_action, marker_still_valid_at, memlock_user, noctalia_plan, npu_pack,
         os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
         patch_hexstrike_bind, patch_pkgbuild_unistd, pci_devices, preferred_aur_helper,
-        refuse_conflicted_tree, sddm_theme_is_ours, setup_gitconfig, sync_db_path, venv_ready,
-        BindState, ChaoticAur, ChaoticState, Distro, LoginAction, NoctaliaPlan, NpuPack,
-        ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER,
-        GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML,
-        XDNA_PCI_DEVICE_IDS,
+        refresh_aur_clone, refuse_conflicted_tree, sddm_theme_is_ours, setup_gitconfig,
+        sync_db_path, venv_ready, BindState, ChaoticAur, ChaoticState, Distro, LoginAction,
+        NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, AUR_HELPERS, BASE_DESKTOP_HINT,
+        BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS,
+        REGREET_TOML, XDNA_PCI_DEVICE_IDS,
     };
     use std::env;
     use std::fs;
@@ -3585,6 +3633,120 @@ mod tests {
             LoginAction::OtherDm(dm) => assert_eq!(dm, "gdm.service"),
             _ => panic!("a third-party DM must be left in place, never overridden"),
         }
+    }
+
+    // ── refresh_aur_clone ──────────────────────────────────────────────────
+    //
+    // `build_noctalia_auth_agent` writes a patched PKGBUILD into the clone and
+    // never restores it, so the refresh above it had been a no-op ever since
+    // the first build. Real git in a TempDir, same shape as the git_pull test
+    // below: no network, no sudo, no makepkg.
+
+    #[test]
+    fn refresh_aur_clone_discards_last_runs_pkgbuild_patch_so_the_pull_lands() {
+        // The bug: from run 2 onwards `git pull --ff-only` aborted with
+        // "Your local changes to the following files would be overwritten by
+        // merge: PKGBUILD", the caller discarded that exit status, and dotctl
+        // rebuilt the same frozen PKGBUILD forever while printing
+        // "Refreshing ... AUR clone".
+        if !command_exists("git") {
+            return; // git-less host; nothing to exercise
+        }
+        let tmp = TempDir::new().expect("tempdir");
+        let upstream = tmp.path().join("aur");
+        let clone = tmp.path().join("clone");
+        fs::create_dir_all(&upstream).expect("mkdir upstream");
+
+        git(&upstream, &["init", "-q", "-b", "master"]);
+        git(&upstream, &["config", "user.email", "t@t"]);
+        git(&upstream, &["config", "user.name", "t"]);
+        fs::write(
+            upstream.join("PKGBUILD"),
+            "pkgver=1\nbuild() {\n  make\n}\n",
+        )
+        .expect("seed pkgbuild");
+        git(&upstream, &["add", "-A"]);
+        git(&upstream, &["commit", "-qm", "init"]);
+        git(
+            tmp.path(),
+            &[
+                "clone",
+                "-q",
+                upstream.to_str().unwrap(),
+                clone.to_str().unwrap(),
+            ],
+        );
+
+        // Upstream publishes the fix we have been patching around locally...
+        let fixed = "pkgver=2\nbuild() {\n  make\n}\n";
+        fs::write(upstream.join("PKGBUILD"), fixed).expect("bump pkgbuild");
+        git(&upstream, &["commit", "-qam", "fix build under GCC 16"]);
+
+        // ...while the clone still carries last run's in-place patch.
+        fs::write(
+            clone.join("PKGBUILD"),
+            patch_pkgbuild_unistd("pkgver=1\nbuild() {\n  make\n}\n"),
+        )
+        .expect("patch pkgbuild");
+
+        refresh_aur_clone(clone.to_str().unwrap()).expect("refresh should reset then fast-forward");
+
+        assert_eq!(
+            fs::read_to_string(clone.join("PKGBUILD")).expect("read pkgbuild"),
+            fixed,
+            "the upstream PKGBUILD must reach a clone dotctl dirtied on the previous run"
+        );
+    }
+
+    #[test]
+    fn refresh_aur_clone_leaves_makepkgs_untracked_build_output_alone() {
+        // Why `reset --hard` and not `clean -fdx`: src/ holds sources makepkg
+        // already downloaded, and untracked files never block a fast-forward.
+        // Deleting them would cost a full refetch on every single run.
+        if !command_exists("git") {
+            return; // git-less host; nothing to exercise
+        }
+        let tmp = TempDir::new().expect("tempdir");
+        let upstream = tmp.path().join("aur");
+        let clone = tmp.path().join("clone");
+        fs::create_dir_all(&upstream).expect("mkdir upstream");
+
+        git(&upstream, &["init", "-q", "-b", "master"]);
+        git(&upstream, &["config", "user.email", "t@t"]);
+        git(&upstream, &["config", "user.name", "t"]);
+        fs::write(upstream.join("PKGBUILD"), "pkgver=1\n").expect("seed pkgbuild");
+        git(&upstream, &["add", "-A"]);
+        git(&upstream, &["commit", "-qm", "init"]);
+        git(
+            tmp.path(),
+            &[
+                "clone",
+                "-q",
+                upstream.to_str().unwrap(),
+                clone.to_str().unwrap(),
+            ],
+        );
+
+        fs::create_dir_all(clone.join("src")).expect("mkdir src");
+        fs::write(clone.join("src/upstream.tar.gz"), "sources").expect("seed sources");
+        fs::write(clone.join("pkg-1-x86_64.pkg.tar.zst"), "built").expect("seed artifact");
+        fs::write(clone.join("PKGBUILD"), "pkgver=1\n# dirtied\n").expect("dirty pkgbuild");
+
+        refresh_aur_clone(clone.to_str().unwrap()).expect("refresh on an up-to-date clone");
+
+        assert_eq!(
+            fs::read_to_string(clone.join("PKGBUILD")).expect("read pkgbuild"),
+            "pkgver=1\n",
+            "the tracked PKGBUILD must be restored"
+        );
+        assert!(
+            clone.join("src/upstream.tar.gz").exists(),
+            "makepkg's downloaded sources must survive the refresh"
+        );
+        assert!(
+            clone.join("pkg-1-x86_64.pkg.tar.zst").exists(),
+            "makepkg's built package must survive the refresh"
+        );
     }
 
     // ── sddm_theme_is_ours ─────────────────────────────────────────────────
