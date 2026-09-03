@@ -1045,6 +1045,31 @@ const SDDM_THEME_CONF: &str = "/etc/sddm.conf.d/10-noctalia-theme.conf";
 /// still ours to rewrite" — see [`sddm_theme_is_ours`].
 const SDDM_THEME_NAME: &str = "noctalia";
 
+/// The cursor theme this repo names, and the package that ships it. Kept
+/// adjacent because they were free to drift and did: the *name* is in
+/// .config/gtk-3.0/settings.ini, .config/gtk-4.0/settings.ini,
+/// .config/niri/config.kdl (twice — `xcursor-theme` and `XCURSOR_THEME`),
+/// assets/greetd/regreet.toml, `.local/bin/sddm-theme` and the drop-in below,
+/// while the *package* was installed by nobody — `pacman -Qq
+/// bibata-cursor-theme` fails on this box, so every one of those strings has
+/// been falling back to the default Adwaita cursor with no error anywhere.
+///
+/// `bibata-cursor-theme` is the right one of the four `bibata-*` packages:
+/// its file list carries /usr/share/icons/Bibata-Modern-Classic/index.theme
+/// (verified against the chaotic-aur files database, which ships the six
+/// Modern/Original × Classic/Ice/Amber themes plus `-Right` variants).
+/// `bibata-extra-cursor-theme` ships only DarkRed/DodgerBlue/Pink/Turquoise
+/// and would not provide this name at all.
+const CURSOR_THEME_PKG: &str = "bibata-cursor-theme";
+const CURSOR_THEME_NAME: &str = "Bibata-Modern-Classic";
+
+/// The body of the [`SDDM_THEME_CONF`] drop-in. Pure so the three keys — and
+/// the cursor name shared with the deployed configs — can be asserted without
+/// root; writing it is [`setup_noctalia_login`]'s job.
+fn sddm_theme_conf_body() -> String {
+    format!("[Theme]\nCurrent={SDDM_THEME_NAME}\nCursorTheme={CURSOR_THEME_NAME}\nCursorSize=24\n")
+}
+
 /// Whether the drop-in at [`SDDM_THEME_CONF`] is still dotctl's to write.
 /// Now that `.local/bin/sddm-theme` writes the same file, a `Current=` naming
 /// a different theme is a choice the user made *after* install, and
@@ -1203,13 +1228,19 @@ fn setup_noctalia_login() -> Result<()> {
         // The same three keys `sddm-theme` writes, so whichever of the two ran
         // last leaves the same shape and the cursor settings don't vanish on
         // the next install.
-        sudo_write(
-            SDDM_THEME_CONF,
-            &format!(
-                "[Theme]\nCurrent={SDDM_THEME_NAME}\nCursorTheme=Bibata-Modern-Classic\nCursorSize=24\n"
-            ),
-        )?;
-        ok("SDDM theme set to noctalia");
+        // Warn-and-continue, and the `match` on `login_action` below still
+        // runs: a drop-in we failed to write leaves SDDM on its stock theme,
+        // which is an ugly login screen rather than a broken one, and is
+        // fixed by `sddm-theme noctalia` or another `dotctl install`. If the
+        // cause was a dead sudo prompt, the `systemctl enable` below fails the
+        // same way and says so — so nothing is reported green either way.
+        match sudo_write(SDDM_THEME_CONF, &sddm_theme_conf_body()) {
+            Ok(()) => ok("SDDM theme set to noctalia"),
+            Err(e) => warn(&format!(
+                "could not write {SDDM_THEME_CONF}: {e} — the login screen will use SDDM's \
+                 default theme; rerun `dotctl install` or `sddm-theme {SDDM_THEME_NAME}`"
+            )),
+        }
     } else {
         ok(&format!(
             "{SDDM_THEME_CONF} selects another theme (set with `sddm-theme`) — leaving it"
@@ -1851,6 +1882,24 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
             )),
         }
     }
+    // The cursor theme every config in this repo names (see
+    // [`CURSOR_THEME_NAME`]) and that nothing installed. Placed here, just
+    // ahead of the greeter setup that writes `CursorTheme=` into
+    // /etc/sddm.conf.d, because the login screen is the one consumer that
+    // cannot fall back to a user-session default.
+    //
+    // `ensure_aur_pkg`, not `ensure_pacman*`, for exactly the reason spelled
+    // out for rog-control-center above: it is in no Arch repo and in no
+    // [cachyos]* repo (checked against every synced sync db on this box), and
+    // `pacman -Si bibata-cursor-theme` answers here only because chaotic-aur
+    // is configured — which dotctl deliberately skips on CachyOS. Gating on
+    // the repo would therefore install it on this machine and silently skip it
+    // on the distro the port targets. A helper resolves it from chaotic-aur as
+    // a binary where that repo exists and builds it from the AUR where it does
+    // not; `ensure_aur_pkg` detects it via `pacman -Q` (a cursor theme ships
+    // no binary, so a `command_exists` gate would miss it forever).
+    ensure_aur_pkg(helper, "Bibata cursor theme", CURSOR_THEME_PKG)?;
+
     // AUR add-ons for the full Noctalia ecosystem.
     // sddm-theme-noctalia-git (AUR): login-screen theme matched to the shell;
     //   depends on sddm, so this also pulls in the display manager itself.
@@ -2607,11 +2656,11 @@ mod tests {
         link_item, login_action, marker_still_valid_at, memlock_user, noctalia_plan, npu_pack,
         os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
         patch_hexstrike_bind, patch_pkgbuild_unistd, pci_devices, preferred_aur_helper,
-        refresh_aur_clone, refuse_conflicted_tree, sddm_theme_is_ours, setup_gitconfig,
-        sync_db_path, venv_ready, BindState, ChaoticAur, ChaoticState, Distro, LoginAction,
-        NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, AUR_HELPERS, BASE_DESKTOP_HINT,
-        BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS,
-        REGREET_TOML, XDNA_PCI_DEVICE_IDS,
+        refresh_aur_clone, refuse_conflicted_tree, sddm_theme_conf_body, sddm_theme_is_ours,
+        setup_gitconfig, sync_db_path, venv_ready, BindState, ChaoticAur, ChaoticState, Distro,
+        LoginAction, NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, AUR_HELPERS,
+        BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, CURSOR_THEME_NAME, GITCONFIG_STUB,
+        GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML, XDNA_PCI_DEVICE_IDS,
     };
     use std::env;
     use std::fs;
@@ -3747,6 +3796,38 @@ mod tests {
             clone.join("pkg-1-x86_64.pkg.tar.zst").exists(),
             "makepkg's built package must survive the refresh"
         );
+    }
+
+    // ── the cursor theme ───────────────────────────────────────────────────
+    //
+    // `Bibata-Modern-Classic` was named by six deployed files and installed by
+    // nobody. The install itself needs pacman and cannot be unit-tested; what
+    // *can* be pinned without root is that the name dotctl writes and the name
+    // the deployed configs ask for are the same string.
+
+    #[test]
+    fn the_sddm_drop_in_names_the_same_cursor_theme_as_the_deployed_regreet_config() {
+        // regreet.toml is compiled in, so it is an independent witness: if
+        // someone renames the cursor in one place and not the other, the
+        // greeter and the login screen silently disagree and one of them falls
+        // back to Adwaita with no error anywhere.
+        assert!(
+            REGREET_TOML.contains(&format!("cursor_theme_name = \"{CURSOR_THEME_NAME}\"")),
+            "assets/greetd/regreet.toml must name {CURSOR_THEME_NAME}"
+        );
+        assert!(
+            sddm_theme_conf_body().contains(&format!("CursorTheme={CURSOR_THEME_NAME}")),
+            "the SDDM drop-in must name the cursor theme dotctl installs"
+        );
+    }
+
+    #[test]
+    fn the_sddm_drop_in_we_write_is_one_dotctl_still_recognises_as_its_own() {
+        // sddm_theme_is_ours gates every later rewrite of this file. If the
+        // body we write ever stopped satisfying it, the *second* `dotctl
+        // install` would report "selects another theme — leaving it" over a
+        // drop-in dotctl had just written itself.
+        assert!(sddm_theme_is_ours(Some(&sddm_theme_conf_body())));
     }
 
     // ── sddm_theme_is_ours ─────────────────────────────────────────────────
