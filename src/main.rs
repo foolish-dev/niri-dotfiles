@@ -1221,7 +1221,18 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     ensure_pacman("niri", "niri", &["niri"])?;
     ensure_pacman("fuzzel", "fuzzel", &["fuzzel"])?;
     ensure_pacman("kitty", "kitty", &["kitty"])?;
+    // wl-clipboard is what actually provides wl-copy/wl-paste, and nothing here
+    // installed it. config.kdl's `wl-paste --watch cliphist store` startup spawn
+    // and the Mod+V pipe both need it; it was present on this box only because
+    // CachyOS's niri meta-package happens to pull it in. wl-clip-persist is a
+    // different package that depends on neither, so having it proved nothing.
+    ensure_pacman("wl-clipboard", "wl-paste", &["wl-clipboard"])?;
     ensure_pacman("wl-clip-persist", "wl-clip-persist", &["wl-clip-persist"])?;
+    // The history store behind that same spawn and Mod+V — advertised by
+    // config.kdl, installed by nobody, and absent from PATH here, so Mod+V has
+    // always opened an empty fuzzel. Plain repo package on both distros
+    // (extra 1:0.7.0-2); it is in no AUR, so no helper is involved.
+    ensure_pacman("cliphist", "cliphist", &["cliphist"])?;
 
     // Resolve (or bootstrap) an AUR helper before the first AUR package. On
     // CachyOS this installs one straight from [cachyos]; on stock Arch it can
