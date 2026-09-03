@@ -1218,6 +1218,113 @@ fn ensure_repo(repo: &Path) -> Result<()> {
     Ok(())
 }
 
+// ── NPU (AMD XDNA) detection ──────────────────────────────────────────────────
+
+/// AMD's PCI vendor id.
+const AMD_PCI_VENDOR: u16 = 0x1022;
+
+/// Every PCI device id the in-tree `amdxdna` driver binds, copied verbatim from
+/// its own module alias table so the two can't drift:
+///
+/// ```text
+/// $ modinfo amdxdna | grep ^alias
+/// alias: pci:v00001022d00001502sv*sd*bc*sc*i*   Phoenix / Hawk Point
+/// alias: pci:v00001022d000017F0sv*sd*bc*sc*i*   Strix / Krackan / Strix Halo
+/// alias: pci:v00001022d000017F2sv*sd*bc*sc*i*
+/// alias: pci:v00001022d000017F3sv*sd*bc*sc*i*
+/// alias: pci:v00001022d00001B0Bsv*sd*bc*sc*i*
+/// alias: pci:v00001022d00001B0Csv*sd*bc*sc*i*
+/// ```
+///
+/// The GZ302EA this repo was written on is `1022:17f0` rev 11 at `c5:00.1`.
+const XDNA_PCI_DEVICE_IDS: [u16; 6] = [0x1502, 0x17f0, 0x17f2, 0x17f3, 0x1b0b, 0x1b0c];
+
+/// Whether this host gets the AMD XDNA NPU userspace pack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NpuPack {
+    /// An XDNA NPU function is on the PCI bus. Install XRT + FastFlowLM and
+    /// write the memlock drop-in they need.
+    Install,
+    /// No XDNA function on this box. Skip all three steps — including the
+    /// system-wide memlock policy, which exists only to serve them.
+    Skip,
+}
+
+/// Decide from the enumerated PCI bus alone.
+///
+/// The gate is deliberately the *device*, not any of the four signals that look
+/// equally good on the machine this was written on:
+///
+/// * `/sys/class/accel/accel0` — created when a driver binds, and the accel
+///   class is shared: Intel's `ivpu` and `habanalabs` register there too, so an
+///   Intel Core Ultra laptop would match and get AMD's runtime.
+/// * `/sys/bus/pci/drivers/amdxdna/` and `amdxdna` in `/proc/modules` — both
+///   only exist once the module is loaded. Blacklist it, boot a kernel built
+///   without it, or probe before the modprobe settles and a box with the
+///   hardware answers "no".
+/// * The DMI product name (`ROG Flow Z13 GZ302EA_GZ302EA` here) — brittle in
+///   both directions. It misses every other Phoenix/Strix machine with the same
+///   silicon, and it matches a GZ302EA whose NPU is switched off in firmware.
+///
+/// The PCI vendor/device pair is the only one that answers the actual question.
+/// The nodes under `/sys/bus/pci/devices/` are written by the PCI core at
+/// enumeration, before and regardless of any driver claiming them, so on a host
+/// where the driver exists but is not loaded — blacklisted, or a kernel too old
+/// for it — this still returns `Install`. That is the wanted answer: the
+/// `amdxdna` driver is *in-tree*, so "absent" here can only ever mean absent
+/// hardware. The userspace is the only part this pack supplies, and it is
+/// exactly what such a host is missing.
+fn npu_pack(pci_devices: &[(u16, u16)]) -> NpuPack {
+    let present = pci_devices
+        .iter()
+        .any(|&(vendor, device)| vendor == AMD_PCI_VENDOR && XDNA_PCI_DEVICE_IDS.contains(&device));
+    if present {
+        NpuPack::Install
+    } else {
+        NpuPack::Skip
+    }
+}
+
+/// Parse one `/sys/bus/pci/devices/*/{vendor,device}` file body.
+///
+/// Pure so the format is pinned by tests rather than by the one box that has
+/// the hardware: sysfs writes these as a lowercase `0x`-prefixed 4-digit hex
+/// word plus a trailing newline (`"0x17f0\n"`). Both the prefix and the newline
+/// are load-bearing — `from_str_radix` rejects either one on its own.
+fn parse_pci_id(raw: &str) -> Option<u16> {
+    let t = raw.trim();
+    let hex = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X"))?;
+    u16::from_str_radix(hex, 16).ok()
+}
+
+/// Every PCI function the kernel enumerated, as `(vendor, device)`.
+///
+/// sysfs rather than `lspci`: pciutils is not installed by dotctl and is not a
+/// dependency of anything it has installed by this point, so shelling out to
+/// `lspci` would turn a missing optional tool into a false "no NPU". Reading
+/// the same numbers straight out of `/sys` needs nothing but the kernel, and
+/// skips parsing a human-readable name that changes with every `pci.ids` bump.
+///
+/// An unreadable `/sys/bus/pci` yields an empty list, which reads as "no NPU" —
+/// the safe direction: we skip an optional hardware pack rather than install a
+/// runtime and a system-wide limits policy on a guess.
+fn pci_devices() -> Vec<(u16, u16)> {
+    let Ok(entries) = fs::read_dir("/sys/bus/pci/devices") else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|e| {
+            let field = |name: &str| {
+                fs::read_to_string(e.path().join(name))
+                    .ok()
+                    .and_then(|s| parse_pci_id(&s))
+            };
+            Some((field("vendor")?, field("device")?))
+        })
+        .collect()
+}
+
 // ── install ───────────────────────────────────────────────────────────────────
 
 /// Whether a Python venv at `venv` is usable. The directory merely existing
@@ -1327,8 +1434,49 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     //   On-screen keyboard — wvkbd (AUR); the Mod+O keybind is already in niri.
     // All three pacman packages here are in Arch `extra` with cachyos-extra-znver4
     // rebuilds — correct on both distros, no distro branch wanted.
-    ensure_pacman_pkg("XRT (NPU)", "xrt", &["xrt", "xrt-plugin-amdxdna"])?;
-    ensure_pacman_pkg("FastFlowLM", "fastflowlm", &["fastflowlm"])?;
+    //
+    // The three NPU steps are gated on an XDNA device actually being on the PCI
+    // bus, and warn-and-continue rather than `?` — like the chaotic-aur,
+    // blackarch and fwupd steps. They used to run on every host: `xrt` is the
+    // Xilinx FPGA/AIE runtime, and both installs were hard `?`, so on any box
+    // without the NPU — every reader the README invites in — a resolution
+    // failure on a package that does nothing for it aborted install(), and
+    // under `dotctl all` the `install(...)?` in `main` meant deploy() never ran
+    // and the user was left with no configs at all. The limits drop-in was
+    // worse than fatal: a system-wide locked-memory policy written into /etc
+    // for hardware the machine does not have.
+    match npu_pack(&pci_devices()) {
+        NpuPack::Install => {
+            if let Err(e) = ensure_pacman_pkg("XRT (NPU)", "xrt", &["xrt", "xrt-plugin-amdxdna"]) {
+                warn(&format!(
+                    "XRT not installed: {e} — the NPU is present but has no userspace runtime"
+                ));
+            }
+            if let Err(e) = ensure_pacman_pkg("FastFlowLM", "fastflowlm", &["fastflowlm"]) {
+                warn(&format!(
+                    "FastFlowLM not installed: {e} — no NPU model runner"
+                ));
+            }
+            // A pam_limits drop-in, applied to every PAM login session. XRT
+            // pins the host-side DMA buffers it hands the NPU, and the default
+            // RLIMIT_MEMLOCK is 8 MiB — three orders of magnitude under a
+            // multi-GB FastFlowLM model, so without this a model load dies with
+            // ENOMEM. Unlimited rather than a figure because the ceiling is the
+            // model, not the runtime: there is no bound XRT documents to size a
+            // number against.
+            if let Err(e) = sudo_write(
+                "/etc/security/limits.d/99-amdxdna.conf",
+                "*  soft  memlock  unlimited\n*  hard  memlock  unlimited\n",
+            ) {
+                warn(&format!(
+                    "memlock limit for the NPU not written: {e} — NPU model loads may fail with ENOMEM"
+                ));
+            }
+        }
+        NpuPack::Skip => info(
+            "No AMD XDNA NPU on this host — skipping XRT/FastFlowLM and the amdxdna memlock policy",
+        ),
+    }
     ensure_pacman_pkg(
         "iio-sensor-proxy",
         "iio-sensor-proxy",
@@ -1336,10 +1484,6 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     )?;
     // The two AUR members of this pack are deferred to after the chaotic-aur
     // bootstrap below — see the note there.
-    sudo_write(
-        "/etc/security/limits.d/99-amdxdna.conf",
-        "*  soft  memlock  unlimited\n*  hard  memlock  unlimited\n",
-    )?;
 
     // Chaotic AUR. On stock Arch this is dotctl's only source for an AUR
     // helper — neither yay nor paru is in any Arch official repo. It is NOT a
@@ -2206,12 +2350,13 @@ mod tests {
         aur_failure_marker_in, aur_helper_hint, chaotic_aur_policy, chaotic_state, command_exists,
         copy_item, git_has_conflicts, git_pull, gitconfig_lacks_include, greetd_is_replaceable,
         greetd_session_command, link_dotfiles, link_item, login_action, marker_still_valid_at,
-        noctalia_plan, os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro,
-        patch_hexstrike_bind, patch_pkgbuild_unistd, preferred_aur_helper, refuse_conflicted_tree,
-        sddm_theme_is_ours, setup_gitconfig, sync_db_path, venv_ready, BindState, ChaoticAur,
-        ChaoticState, Distro, LoginAction, NoctaliaPlan, ALL_INTERFACE_BINDS, AUR_HELPERS,
-        BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS,
-        REGREET_CSS, REGREET_TOML,
+        noctalia_plan, npu_pack, os_release_value, pacman_conf_has_repo, pacman_pkg_installed,
+        parse_distro, parse_pci_id, patch_hexstrike_bind, patch_pkgbuild_unistd, pci_devices,
+        preferred_aur_helper, refuse_conflicted_tree, sddm_theme_is_ours, setup_gitconfig,
+        sync_db_path, venv_ready, BindState, ChaoticAur, ChaoticState, Distro, LoginAction,
+        NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, AUR_HELPERS, BASE_DESKTOP_HINT,
+        BASE_DESKTOP_MARKER, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS,
+        REGREET_TOML, XDNA_PCI_DEVICE_IDS,
     };
     use std::env;
     use std::fs;
@@ -4040,6 +4185,128 @@ LOGO=cachyos
             NoctaliaPlan::Unavailable(h) => assert!(h.contains("/etc/pacman.conf")),
             other => panic!("expected Unavailable, got {other:?}"),
         }
+    }
+
+    // ── AMD XDNA NPU detection ───────────────────────────────────────────
+
+    /// The `(vendor, device)` pairs `/sys/bus/pci/devices` reports on the ROG
+    /// Flow Z13 GZ302EA this pack was written for, in bus order. The NPU is the
+    /// second-to-last entry (`1022:17f0` at `c5:00.1`), so a test using this
+    /// list also proves the scan doesn't only look at the head of the bus.
+    const GZ302EA_PCI_BUS: [(u16, u16); 12] = [
+        (0x1022, 0x1507), // Strix Halo root complex
+        (0x1022, 0x1508), // IOMMU
+        (0x1022, 0x150a), // USB4 bridge
+        (0x1022, 0x790b), // FCH SMBus
+        (0x17a0, 0x9755), // Genesys SD host controller
+        (0x14c3, 0x7925), // MediaTek MT7925 wifi
+        (0x15b7, 0x5034), // Sandisk NVMe
+        (0x1002, 0x1586), // Radeon 8060S
+        (0x1022, 0x17e0), // CCP/ASP
+        (0x1022, 0x164a), // Sensor Fusion Hub — also a 0x118000 signal processor
+        (0x1022, 0x17f0), // the NPU
+        (0x1022, 0x1588), // USB 3.1 xHCI
+    ];
+
+    #[test]
+    fn npu_pack_installs_on_the_machine_this_pack_was_written_for() {
+        // Pins the whole detection against the real GZ302EA bus dump, including
+        // that the NPU is found in the middle of a twelve-function listing.
+        assert_eq!(npu_pack(&GZ302EA_PCI_BUS), NpuPack::Install);
+    }
+
+    #[test]
+    fn npu_pack_installs_for_every_device_id_the_amdxdna_driver_binds() {
+        // Exhaustive over the driver's own alias table: any id amdxdna would
+        // claim must get the userspace, or the pack silently misses a Phoenix,
+        // Hawk Point, Krackan or Strix machine that has the hardware.
+        for id in XDNA_PCI_DEVICE_IDS {
+            assert_eq!(
+                npu_pack(&[(AMD_PCI_VENDOR, id)]),
+                NpuPack::Install,
+                "{id:#06x} is in the amdxdna alias table"
+            );
+        }
+    }
+
+    #[test]
+    fn npu_pack_skips_a_host_with_no_npu_function_on_the_bus() {
+        // The case that used to abort install() and take deploy() down with it:
+        // an ordinary AMD desktop, every function present except the NPU.
+        let bus: Vec<(u16, u16)> = GZ302EA_PCI_BUS
+            .into_iter()
+            .filter(|&(_, d)| d != 0x17f0)
+            .collect();
+        assert_eq!(npu_pack(&bus), NpuPack::Skip);
+    }
+
+    #[test]
+    fn npu_pack_skips_an_intel_laptop_that_also_registers_an_accel_device() {
+        // Why the gate is the PCI id and not /sys/class/accel: Intel's `ivpu`
+        // publishes accel0 for its own NPU. Matching on the accel class would
+        // install AMD's XRT and a memlock policy on a Core Ultra box.
+        assert_eq!(
+            npu_pack(&[(0x8086, 0x7d1d), (0x8086, 0x643e), (0x8086, 0xa76f)]),
+            NpuPack::Skip
+        );
+    }
+
+    #[test]
+    fn npu_pack_does_not_match_an_xdna_device_id_from_another_vendor() {
+        // PCI device ids are only unique per vendor: 0x17f0 belongs to some
+        // other part on some other vendor's bus. The pair has to match.
+        for id in XDNA_PCI_DEVICE_IDS {
+            assert_eq!(npu_pack(&[(0x8086, id)]), NpuPack::Skip, "{id:#06x}");
+            assert_eq!(npu_pack(&[(0x10de, id)]), NpuPack::Skip, "{id:#06x}");
+        }
+    }
+
+    #[test]
+    fn npu_pack_skips_when_the_pci_bus_could_not_be_read_at_all() {
+        // `pci_devices()` answers with an empty Vec when /sys/bus/pci is
+        // unreadable. Skip is the safe direction: forgo an optional hardware
+        // pack rather than write a system-wide limits policy on a guess.
+        assert_eq!(npu_pack(&[]), NpuPack::Skip);
+    }
+
+    #[test]
+    fn parse_pci_id_reads_the_exact_spelling_sysfs_uses() {
+        // sysfs writes `0x17f0\n` — the prefix and the trailing newline are
+        // both load-bearing, and `from_str_radix` rejects either one alone.
+        assert_eq!(parse_pci_id("0x17f0\n"), Some(0x17f0));
+        assert_eq!(parse_pci_id("0x1022\n"), Some(0x1022));
+        assert_eq!(parse_pci_id("0x1502"), Some(0x1502));
+        assert_eq!(parse_pci_id("0X17F0\n"), Some(0x17f0));
+        assert_eq!(parse_pci_id("  0x17f0  "), Some(0x17f0));
+    }
+
+    #[test]
+    fn parse_pci_id_rejects_anything_that_is_not_a_sysfs_pci_id() {
+        // A bare number must NOT parse: reading `17f0` as decimal, or an empty
+        // sysfs read as 0, would hand npu_pack a device id that never existed.
+        assert_eq!(parse_pci_id("17f0\n"), None);
+        assert_eq!(parse_pci_id(""), None);
+        assert_eq!(parse_pci_id("0x"), None);
+        assert_eq!(parse_pci_id("0xzzzz"), None);
+        assert_eq!(parse_pci_id("0x117f0"), None); // wider than u16
+    }
+
+    #[test]
+    fn the_real_pci_bus_scan_parses_every_function_the_kernel_enumerated() {
+        // The impure half against real sysfs. Every PCI function Linux
+        // enumerates has readable `vendor` and `device` nodes, so a count short
+        // of the directory listing means `parse_pci_id` silently dropped
+        // something — and a dropped entry is exactly how a host with the NPU
+        // would get told it has none. Skipped where /sys/bus/pci is absent
+        // (containers, non-x86 CI), which the empty-bus test already covers.
+        let dir = Path::new("/sys/bus/pci/devices");
+        if !dir.is_dir() {
+            return;
+        }
+        let enumerated = fs::read_dir(dir)
+            .expect("read /sys/bus/pci/devices")
+            .count();
+        assert_eq!(pci_devices().len(), enumerated);
     }
 
     // ── pacman.conf parsing ──────────────────────────────────────────────
