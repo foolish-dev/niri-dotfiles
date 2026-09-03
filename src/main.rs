@@ -1388,6 +1388,31 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         ok("grogu installed -> ~/.cargo/bin/grogu");
     }
 
+    // teleia — the TUI agent Mod+T spawns, and the owner of the tracked
+    // .config/teleia/config.toml that wires its MCP servers. Both the bind and
+    // the config were deployed by dotctl while the binary was installed by
+    // nobody: it exists on this machine only as an untracked 11MB file someone
+    // dropped into ~/.local/bin by hand, so a fresh clone got a keybind that
+    // opens a kitty window and closes it again. Same source-install shape as
+    // grogu above, for the same reason — our own crate, not packaged anywhere.
+    if command_exists("teleia") {
+        ok("teleia already installed");
+    } else {
+        info("Installing teleia (TUI coding agent) ...");
+        run(
+            "cargo",
+            &[
+                "install",
+                "--git",
+                "https://github.com/foolish-dev/teleia",
+                "--branch",
+                "main",
+                "--locked",
+            ],
+        )?;
+        ok("teleia installed -> ~/.cargo/bin/teleia");
+    }
+
     ensure_pacman("tmux", "tmux", &["tmux"])?;
     ensure_pacman("fastfetch", "fastfetch", &["fastfetch"])?;
     // `.zshrc` runs `eval "$(starship init zsh)"` behind a `command -v` guard
