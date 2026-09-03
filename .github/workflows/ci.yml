@@ -68,3 +68,8 @@ jobs:
       # is deleting one they meant to keep. Hermetic: every case runs with
       # PROJ_DIR inside a mktemp -d, and the suite refuses to start otherwise.
       - run: tests/mkproj.sh
+      # The tracked configs ARE the live desktop — ~/.config/* symlinks into
+      # this repo — so a malformed one is a broken session, not a failed build.
+      # Nothing else in CI opens any of them. json and tomllib are stdlib, so
+      # this needs no install.
+      - run: tests/config-syntax.sh
