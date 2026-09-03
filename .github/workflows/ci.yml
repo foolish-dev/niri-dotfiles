@@ -72,5 +72,11 @@ jobs:
       # this repo — so a malformed one is a broken session, not a failed build.
       # Nothing else in CI opens any of them. json and tomllib are stdlib, so
       # this needs no install.
+      # LuaJIT, not luac: neovim runs LuaJIT, and Lua 5.4/5.5 disagrees with it
+      # on syntax in both directions — `local x = 1 //2` compiles under luac and
+      # not under luajit. A checker that disagrees with the runtime is worse
+      # than none. niri is not packaged for Ubuntu, so the KDL half skips here
+      # and runs on the author's machine, which the suite says out loud.
+      - run: command -v luajit >/dev/null || { sudo apt-get update && sudo apt-get install -y luajit; }
       - run: tests/config-syntax.sh
       - run: tests/dotfiles-check.sh
