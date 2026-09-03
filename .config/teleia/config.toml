@@ -15,9 +15,21 @@
 command = "npx"
 args    = ["-y", "@upstash/context7-mcp@4.0.4"]
 
+# teleia's credential scrub only drops LLM provider keys — it walks
+# teleia_llm::PROVIDERS (ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY / …)
+# and nothing else. GITHUB_PERSONAL_ACCESS_TOKEN and CONTEXT7_API_KEY are not on
+# that list, so as written every child inherited both — including `fetch`, an
+# arbitrary-URL HTTP client, and `playwright`, a live browser. Blank them per
+# server; `env` overrides the parent for that child only. [mcps.github] keeps the
+# PAT because it is the one server that needs it, and [mcps.context7] keeps its
+# own key for the same reason.
+#
+# The limit, not overstated: a hostile child runs as this same user and can read
+# teleia's own /proc/<pid>/environ. This removes the accident, not the attacker.
 [mcps.filesystem]
 command = "npx"
 args    = ["-y", "@modelcontextprotocol/server-filesystem@2026.8.31", "/home/fool"]
+    env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 [mcps.github]
 command = "npx"
@@ -26,6 +38,7 @@ args    = ["-y", "@modelcontextprotocol/server-github@2025.4.8"]
 [mcps.fetch]
 command = "npx"
 args    = ["-y", "@tokenizin/mcp-npx-fetch@1.0.0"]
+    env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 [mcps.hexstrike-ai]
 command = "/home/fool/tools/hexstrike-ai/hexstrike-env/bin/python"
@@ -34,23 +47,29 @@ args    = [
     "--server",
     "http://localhost:8888",
 ]
+    env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 [mcps.playwright]
 command = "npx"
 args    = ["-y", "@playwright/mcp@0.0.80"]
+    env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 [mcps.sequential-thinking]
 command = "npx"
 args    = ["-y", "@modelcontextprotocol/server-sequential-thinking@2026.8.31"]
+    env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 [mcps.memory]
 command = "npx"
 args    = ["-y", "@modelcontextprotocol/server-memory@2026.8.31"]
+    env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 [mcps.git]
 command = "/home/fool/.local/bin/mcp-server-git"
+    env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 [mcps.weather]
 command = "opencode"
 args    = ["x", "@h1deya/mcp-server-weather@0.1.3"]
+    env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
