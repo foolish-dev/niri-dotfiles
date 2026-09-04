@@ -11,12 +11,19 @@
 # committed as its own chore() commit without normalising it -- i.e. committed
 # without being read. This is what reads it.
 #
-# JSON, JSONC and TOML need nothing but python3's standard library, so they are
-# always parsed. KDL and Lua need a parser this suite will not install: `niri
-# validate` for the one, LuaJIT -- standalone or the copy inside nvim -- for
-# the other. Where the tool is missing the files are named in an explicit SKIP
-# giving the reason, because the failure this file exists to prevent is a green
-# run that quietly checked nothing.
+# JSON, JSONC, TOML and INI need nothing but python3's standard library, so
+# they are always parsed. The rest need a tool this suite will not install and
+# so gates on: `niri validate` for KDL, LuaJIT -- standalone or the copy inside
+# nvim -- for Lua, `systemd-analyze verify` for units, PyYAML for YAML, and
+# bash's own `-n` for the one .conf that is a shell script. Where the tool is
+# missing the files are named in an explicit SKIP giving the reason, because
+# the failure this file exists to prevent is a green run that quietly checked
+# nothing.
+#
+# For the same reason the two gated-on parsers that could plausibly load and
+# then check nothing -- systemd-analyze and PyYAML -- are probed against a
+# deliberately broken input before they are trusted, and a probe that does not
+# complain turns into a SKIP rather than a row of OKs.
 #
 # Usage: tests/config-syntax.sh
 # =============================================================================
@@ -34,6 +41,12 @@ command -v python3 >/dev/null 2>&1 || {
   echo "python3 not found: json and tomllib come from its standard library" >&2
   exit 2
 }
+
+# Hoisted out of the nvim branch below because the systemd check also needs a
+# writable directory: `systemd-analyze verify --user` wants XDG_RUNTIME_DIR and
+# aborts before reading anything without one.
+SCRATCH="$(mktemp -d)"
+trap 'rm -rf "$SCRATCH"' EXIT
 
 CHECKED=0
 FAILED=0
@@ -101,6 +114,22 @@ try:
     if kind == "toml":
         with open(path, "rb") as fh:
             tomllib.load(fh)
+    elif kind == "yaml":
+        # Imported here, not at the top: PyYAML is the one non-stdlib parser
+        # this file touches, and a box without it must still parse JSON.
+        import yaml
+        with open(path, encoding="utf-8") as fh:
+            list(yaml.safe_load_all(fh))   # generator; nothing is read until drained
+    elif kind == "ini":
+        # interpolation=None because these are not Python config files: a `%`
+        # in a value is a literal (fuzzel.ini already has one in a comment) and
+        # the default BasicInterpolation would raise on it. strict=True keeps
+        # the duplicate-key case a failure, which is the shape of a bad
+        # hand-merge.
+        import configparser
+        cp = configparser.ConfigParser(strict=True, interpolation=None)
+        with open(path, encoding="utf-8") as fh:
+            cp.read_file(fh)
     else:
         text = open(path, encoding="utf-8").read()
         json.loads(strip_jsonc(text) if kind == "jsonc" else text)
@@ -157,8 +186,6 @@ elif command -v nvim >/dev/null 2>&1; then
 fi
 
 if [[ "$LUA_TOOL" == nvim ]]; then
-  SCRATCH="$(mktemp -d)"
-  trap 'rm -rf "$SCRATCH"' EXIT
   LUA_LOADFILE="$SCRATCH/loadfile.lua"
   cat > "$LUA_LOADFILE" <<'LUA'
 local _, err = loadfile(arg[1])
@@ -178,6 +205,85 @@ lua_check() {  # lua_check <path>
       nvim)   nvim -l "$LUA_LOADFILE" "$1" ;;
     esac 2>&1
   )"; then
+    ok "$1"
+  else
+    bad "$1" "$err"
+  fi
+}
+
+# systemd-analyze verify is the only unit parser that is not systemd itself,
+# and it ships in the same package, so any box with a user manager already has
+# it. Three measured quirks shape how it is called.
+#
+# Its exit status is not the check. The mistakes worth catching most -- a
+# typo'd directive (`Restrt=on-failure`), a line with no `=`, a value that will
+# not parse (`RestartSec=banana`) -- are all reported and then IGNORED: verify
+# prints the complaint and exits 0. Only a unit that could not load at all
+# (unbalanced quoting, a [Timer] with no OnCalendar=) exits 1. So the rule here
+# is "any output is a failure", which makes the exit status redundant rather
+# than wrong. Everything it prints goes to stderr; stdout stays empty.
+#
+# It needs a writable XDG_RUNTIME_DIR under --user, or it dies with "Failed to
+# initialize manager: No such device or address" before opening the file. It is
+# handed this suite's own scratch dir so the check does not depend on the
+# caller having a session -- verified under `env -u XDG_RUNTIME_DIR`. It does
+# not need root, and it starts nothing.
+#
+# It also stats every Exec*= target and calls a missing one an error. Those
+# paths are %h/.local/bin/... and %h/tools/..., which exist on a deployed
+# machine and never on a CI runner, so that one message is dropped: unfiltered
+# it would paint the job red on every push forever, and a check that is always
+# red is a check nobody reads. What survives the filter is the parse. The SKIP
+# under "Not covered" says out loud that Exec targets go unchecked.
+UNIT_TOOL=""
+if command -v systemd-analyze >/dev/null 2>&1; then
+  # Probed, not assumed. A verify that cannot run prints its own error and
+  # would be caught by the "any output" rule, but a verify that silently
+  # stopped diagnosing would hand back a row of OKs, which is the one outcome
+  # this suite is built to prevent.
+  cat > "$SCRATCH/probe.service" <<'UNIT'
+[Unit]
+Description=probe: this file is expected to draw a complaint
+
+[Service]
+Type=simple
+ExecStart=/bin/true
+Restrt=on-failure
+UNIT
+  if XDG_RUNTIME_DIR="$SCRATCH" systemd-analyze verify --user "$SCRATCH/probe.service" 2>&1 \
+       | grep -q "Unknown key"; then
+    UNIT_TOOL=systemd-analyze
+  fi
+fi
+
+unit_check() {  # unit_check <path>
+  local out
+  present "$1" || return 0
+  out="$(XDG_RUNTIME_DIR="$SCRATCH" systemd-analyze verify --user "$1" 2>&1 \
+         | grep -v 'is not executable: No such file or directory' || true)"
+  if [[ -z "$out" ]]; then
+    ok "$1"
+  else
+    bad "$1" "$out"
+  fi
+}
+
+# PyYAML, probed the same way and for the same reason. It is not stdlib, and
+# this suite installs nothing, so a runner without it gets a SKIP naming the
+# files rather than a silent pass.
+YAML_TOOL=""
+if python3 -c 'import yaml' >/dev/null 2>&1 \
+   && ! printf 'a:\n b: [1,\n' | python3 -c 'import sys,yaml; yaml.safe_load(sys.stdin)' >/dev/null 2>&1; then
+  YAML_TOOL=pyyaml
+fi
+
+# `bash -n` compiles without executing, which is the whole requirement: this
+# file is sourced by neofetch, and it sets colours and calls out to other
+# programs.
+conf_bash_check() {  # conf_bash_check <path>
+  local err
+  present "$1" || return 0
+  if err="$(bash -n "$1" 2>&1)"; then
     ok "$1"
   else
     bad "$1" "$err"
@@ -243,10 +349,76 @@ else
 fi
 
 echo
+echo "==> systemd units"
+if [[ -n "$UNIT_TOOL" ]]; then
+  while IFS= read -r -d '' f; do
+    case "$f" in
+      # verify checks a unit against systemd's schema for the manager it is
+      # told about, and --user is the right manager for exactly these: %h and
+      # graphical-session.target mean nothing to the system one.
+      .config/systemd/user/*) unit_check "$f" ;;
+      *) skip "$f" "not a --user unit; verify would be run in the wrong manager" ;;
+    esac
+  done < <(git ls-files -z '*.service' '*.timer' '*.socket' '*.path' '*.target')
+else
+  skip "$(git ls-files '*.service' '*.timer' '*.socket' '*.path' '*.target' | wc -l) unit file(s)" \
+    "systemd-analyze verify absent or not diagnosing; it is the only unit parser here"
+fi
+
+echo
+echo "==> YAML"
+# Worth stating where the value of this actually lands. A malformed
+# .github/workflows/ci.yml fails silently -- GitHub simply does not run it --
+# but it cannot be caught here on a runner either, because the job that would
+# report it is the job that did not start. This check earns its keep before the
+# push, and on dependabot.yml and lazygit's config.yml, which gate nothing and
+# so would otherwise go unread until something quietly stopped working.
+if [[ -n "$YAML_TOOL" ]]; then
+  # safe_load_all, not safe_load: multi-document files are legal YAML, and
+  # safe_load raises ComposerError on one, which would read as a syntax error
+  # in a valid file. Syntax only -- PyYAML accepts duplicate mapping keys that
+  # GitHub Actions rejects, so a green line here is not a promise the workflow
+  # is well-formed.
+  while IFS= read -r -d '' f; do check yaml "$f"; done < <(git ls-files -z '*.yml' '*.yaml')
+else
+  skip "$(git ls-files '*.yml' '*.yaml' | wc -l) yml file(s)" \
+    "python3 has no stdlib YAML and PyYAML is not importable here"
+fi
+
+echo
+echo "==> INI and .conf"
+# One .conf extension, five formats behind it. Each is dispatched by name and
+# the ones with no offline parser are named individually rather than summed,
+# so the reason travels with the file.
+while IFS= read -r -d '' f; do
+  case "$f" in
+    .config/wal/templates/*)
+      # Same as the pywal JSON above: {color0} placeholders, not their format
+      # until grogu renders them.
+      skip "$f" "pywal template, not a conf file until rendered" ;;
+    .config/neofetch/*)
+      # Not INI at all -- neofetch sources it as shell.
+      conf_bash_check "$f" ;;
+    .config/kitty/*)
+      skip "$f" "kitty's own space-separated dialect; its parser needs a running kitty" ;;
+    .config/tmux/*)
+      skip "$f" "tmux's own dialect; parsing it means starting a server" ;;
+    *)
+      # gtk-3.0/gtk-4.0 settings.ini, qt5ct/qt6ct .conf and fuzzel.ini are all
+      # section-and-key INI, and all five parse under configparser (checked).
+      # Shape only: it does not know that GTK reads a `gtk-theme-name` or that
+      # fuzzel rejects an unknown key.
+      check ini "$f" ;;
+  esac
+done < <(git ls-files -z '*.ini' '*.conf')
+
+echo
 # Said out loud rather than left to be inferred from what is absent.
 echo "==> Not covered"
-skip "$(git ls-files '*.ini' '*.conf' '*.yml' '*.service' '*.timer' | wc -l) ini/conf/yml/unit file(s)" \
-  "no parser wired up for these formats yet"
+skip "Exec*= targets in the systemd units" \
+  "verify's missing-binary error is dropped; those paths are outside the repo"
+skip "schemas, everywhere" \
+  "every check above is syntax: a file can parse and still say the wrong thing"
 
 echo
 printf '%s file(s) parsed, %s failed, %s skipped\n' "$CHECKED" "$FAILED" "$SKIPPED"

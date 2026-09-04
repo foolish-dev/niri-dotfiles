@@ -78,5 +78,9 @@ jobs:
       # than none. niri is not packaged for Ubuntu, so the KDL half skips here
       # and runs on the author's machine, which the suite says out loud.
       - run: command -v luajit >/dev/null || { sudo apt-get update && sudo apt-get install -y luajit; }
+      # PyYAML is the one non-stdlib parser the suite wants, and the files it
+      # checks include this one — a malformed workflow fails silently by simply
+      # not running, which is the failure mode least likely to be noticed.
+      - run: python3 -c 'import yaml' 2>/dev/null || sudo apt-get install -y python3-yaml
       - run: tests/config-syntax.sh
       - run: tests/dotfiles-check.sh
