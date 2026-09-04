@@ -30,7 +30,12 @@ vim.opt.rtp:prepend(lazypath)
 require("lazy").setup("plugins", {
   defaults = { lazy = true },
   install = { colorscheme = { "tokyonight" } },
-  checker = { enabled = true, notify = false },
+  -- Left off (upstream default): with it on, lazy registers a VeryLazy
+  -- autocmd whose first check is scheduled at max(last_check + 3600 - now, 0),
+  -- so the first nvim of any day git-fetches all 108 plugins at once -- the
+  -- only thing here that touches the network on a plain start. Versions are
+  -- pinned in the committed lazy-lock.json, so :Lazy check on demand is enough.
+  checker = { enabled = false },
   change_detection = { notify = false },
   performance = {
     rtp = {
