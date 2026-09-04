@@ -177,7 +177,7 @@
         "{env:HOME}/tools/hexstrike-ai/hexstrike-env/bin/python",
         "{env:HOME}/tools/hexstrike-ai/hexstrike_mcp.py",
         "--server",
-        "http://localhost:8888"
+        "http://127.0.0.1:8888"
       ],
       "enabled": true,
       // crush used 300s; opencode timeout is in ms.
@@ -195,10 +195,10 @@
       "type": "local",
       "command": ["npx", "-y", "@modelcontextprotocol/server-memory@2026.8.31"]
     },
-    "git": {
-      "type": "local",
-      "command": ["{env:HOME}/.local/bin/mcp-server-git"]
-    },
+    // No "git" server. It named ~/.local/bin/mcp-server-git, which does not
+    // exist and which nothing creates — and ~/.local/bin is where dotctl deploy
+    // and every pip/npm --user install write, so the entry was a reservation on
+    // a name any of them could later fill, to be executed unprompted.
     // From heimdall_opencode — demo MCP, runs via `opencode x`.
     "weather": {
       "type": "local",

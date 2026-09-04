@@ -8,8 +8,7 @@
 # automatically if exported in the shell.
 #
 # Note: teleia does no `~` / `$HOME` expansion in command/args, so the
-# host-specific MCPs (filesystem root, hexstrike-ai venv, local mcp-server-git
-# binary) are pinned to /home/fool/... — adjust if cloning to another box.
+# host-specific MCPs (filesystem root, hexstrike-ai venv) are pinned to /home/fool/... — adjust if cloning to another box.
 
 [mcps.context7]
 command = "npx"
@@ -45,7 +44,7 @@ command = "/home/fool/tools/hexstrike-ai/hexstrike-env/bin/python"
 args    = [
     "/home/fool/tools/hexstrike-ai/hexstrike_mcp.py",
     "--server",
-    "http://localhost:8888",
+    "http://127.0.0.1:8888",
 ]
     env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
@@ -64,9 +63,13 @@ command = "npx"
 args    = ["-y", "@modelcontextprotocol/server-memory@2026.8.31"]
     env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
-[mcps.git]
-command = "/home/fool/.local/bin/mcp-server-git"
-    env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
+# No [mcps.git]. It named /home/fool/.local/bin/mcp-server-git, which does not
+# exist and which nothing in this repo or on this machine creates — unlike the
+# npx entries, whose command is a PATH lookup that installing node repairs.
+# The path is not merely dead: ~/.local/bin is a directory `dotctl deploy` and
+# every pip/npm --user install write into, so the entry stood as a reservation
+# on a name any of them could later fill — and whatever landed there would be
+# executed by an agent without anyone choosing it.
 
 [mcps.weather]
 command = "opencode"
