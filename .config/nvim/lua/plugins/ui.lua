@@ -48,14 +48,18 @@ return {
     },
   },
 
-  -- ── Barbecue: winbar with LSP breadcrumbs (uses nvim-navic) ────────────
+  -- ── dropbar: winbar with LSP / treesitter breadcrumbs ──────────────────
+  -- Replaces utilyre/barbecue.nvim, archived read-only 2024-08 with its newest
+  -- tag (v1.2.0, 2023-04) three commits behind its own main -- and `version =
+  -- "*"` pinned us to that tag. It had never installed here either: no barbecue
+  -- key in lazy-lock.json and no clone under ~/.local/share/nvim/lazy, so this
+  -- winbar was not actually running. dropbar carries its own symbol sources, so
+  -- nvim-navic (plugins/lsp.lua) no longer feeds the winbar.
   {
-    "utilyre/barbecue.nvim",
-    name = "barbecue",
-    version = "*",
+    "Bekaboo/dropbar.nvim",
     event = "BufReadPost",
-    dependencies = { "SmiteshP/nvim-navic", "nvim-tree/nvim-web-devicons" },
-    opts = { show_dirname = true, show_basename = true, show_modified = true },
+    dependencies = { "nvim-tree/nvim-web-devicons" },
+    opts = {},
   },
 
   -- ── Dashboard (alpha) ──────────────────────────────────────────────────
@@ -129,8 +133,21 @@ return {
     },
   },
 
-  -- ── Dressing (better vim.ui.select / vim.ui.input) ─────────────────────
-  { "stevearc/dressing.nvim", lazy = false },
+  -- ── snacks: vim.ui.select / vim.ui.input ───────────────────────────────
+  -- Replaces stevearc/dressing.nvim, archived read-only 2025-02; its README
+  -- names snacks.nvim as the successor. Still worth having on 0.12.5, where
+  -- the builtin vim.ui.select is still vim.fn.inputlist(). Only these two
+  -- modules are enabled: snacks.picker takes over vim.ui.select and nothing
+  -- else, so telescope keeps every keymap it has today.
+  {
+    "folke/snacks.nvim",
+    priority = 1000,
+    lazy = false,
+    opts = {
+      input  = { enabled = true },
+      picker = { enabled = true },
+    },
+  },
 
   -- ── Notify ──────────────────────────────────────────────────────────────
   {
@@ -147,7 +164,7 @@ return {
 
   -- ── nvim-colorizer: highlight hex codes / CSS colors ──────────────────
   {
-    "NvChad/nvim-colorizer.lua",
+    "catgoose/nvim-colorizer.lua",
     event = { "BufReadPost", "BufNewFile" },
     cmd   = { "ColorizerToggle", "ColorizerAttachToBuffer" },
     opts  = {

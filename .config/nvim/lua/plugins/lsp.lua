@@ -56,15 +56,15 @@ local mason_tools = {
 return {
   -- ── Mason ────────────────────────────────────────────────────────────────
   {
-    "williamboman/mason.nvim",
+    "mason-org/mason.nvim",
     cmd = "Mason",
     opts = { ui = { border = "rounded", height = 0.7 } },
   },
 
   {
-    "williamboman/mason-lspconfig.nvim",
+    "mason-org/mason-lspconfig.nvim",
     event = { "BufReadPre", "BufNewFile" },
-    dependencies = { "williamboman/mason.nvim", "neovim/nvim-lspconfig" },
+    dependencies = { "mason-org/mason.nvim", "neovim/nvim-lspconfig" },
     opts = {
       ensure_installed = servers,
       -- automatic_enable walks the *installed* mason packages, not
@@ -80,7 +80,7 @@ return {
   {
     "WhoIsSethDaniel/mason-tool-installer.nvim",
     event = { "BufReadPre", "BufNewFile" },
-    dependencies = { "williamboman/mason.nvim" },
+    dependencies = { "mason-org/mason.nvim" },
     opts = {
       ensure_installed = mason_tools,
       run_on_start = true,

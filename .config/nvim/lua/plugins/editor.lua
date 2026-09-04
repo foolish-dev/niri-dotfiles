@@ -310,21 +310,21 @@ return {
 
   -- ── mini.ai: smarter text objects ──────────────────────────────────────
   {
-    "echasnovski/mini.ai",
+    "nvim-mini/mini.ai",
     event = { "BufReadPost", "BufNewFile" },
     opts  = { n_lines = 500 },
   },
 
   -- ── mini.bracketed: rich [/] navigation ────────────────────────────────
   {
-    "echasnovski/mini.bracketed",
+    "nvim-mini/mini.bracketed",
     event = "VeryLazy",
     opts  = {},
   },
 
   -- ── mini.indentscope: animated current-scope indent line ──────────────
   {
-    "echasnovski/mini.indentscope",
+    "nvim-mini/mini.indentscope",
     event = { "BufReadPost", "BufNewFile" },
     opts  = {
       symbol = "│",
