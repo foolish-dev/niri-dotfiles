@@ -149,6 +149,19 @@ run_check() {
   OUT="$(printf '%s\n' "$OUT" | sed "s/$(printf '\033')\[[0-9;]*m//g")"
 }
 
+# run_check_repovar -- run the subject with the repo location supplied as
+# whatever env assignments the caller passes (DOTFILES / DOTFILES_REPO), rather
+# than run_check's fixed DOTFILES=$FREPO. Both names are stripped from the
+# inherited environment first so each case states exactly what is set. Used only
+# by the repo-path precedence cases; everything else goes through run_check.
+run_check_repovar() {
+  RAN=1
+  RC=0
+  OUT="$(env -u DOTFILES -u DOTFILES_REPO PATH="$CHECK_PATH" HOME="$FHOME" "$@" \
+    "$BASH_BIN" "$CHECK" 2>&1)" || RC=$?
+  OUT="$(printf '%s\n' "$OUT" | sed "s/$(printf '\033')\[[0-9;]*m//g")"
+}
+
 expect_rc() {
   if [[ "$RC" != "$1" ]]; then note "expected rc $1, actual rc $RC"; fi
 }
@@ -447,6 +460,50 @@ end_case
 unset _body _configs _homes _expected _actual _line
 
 # ---------------------------------------------------------------------------
+# =============================================================================
+# 14-16. Repo-path variable precedence.
+#
+# dotctl's own flag is `#[arg(long, env = "DOTFILES_REPO")]`, so DOTFILES_REPO
+# is the name a user who clones elsewhere has already exported. The check keyed
+# off DOTFILES alone, so on such a machine it aimed at the default path while
+# dotctl deployed to another -- and reported FAIL for links that were fine,
+# which is the one thing it must never get wrong. The resolution is now
+# DOTFILES_REPO > DOTFILES > default; these three pin it. run_check_repovar
+# strips both names from the environment first, so each case sets exactly one.
+# =============================================================================
+start_case "dotfiles_repo_the_name_dotctl_uses_points_the_check"
+seed_repo
+seed_home
+# FREPO is not at $HOME/niri-dotfiles, so a green run can only mean DOTFILES_REPO
+# was read: a check that ignored it would fall back to the absent default here.
+run_check_repovar DOTFILES_REPO="$FREPO"
+expect_rc 0
+expect_out "OK: all checks passed"
+expect_no_out "FAIL"
+end_case
+
+start_case "the_legacy_dotfiles_name_still_works_when_dotfiles_repo_is_unset"
+seed_repo
+seed_home
+# Nobody's muscle memory breaks: DOTFILES on its own still locates the repo.
+run_check_repovar DOTFILES="$FREPO"
+expect_rc 0
+expect_out "OK: all checks passed"
+expect_no_out "FAIL"
+end_case
+
+start_case "dotfiles_repo_wins_over_dotfiles_when_both_are_set"
+seed_repo
+seed_home
+# DOTFILES points at a path that does not exist; were it consulted the run would
+# report "$DOTFILES does not exist". A green run proves DOTFILES_REPO took
+# precedence -- the fix for someone who set dotctl's name over a stale DOTFILES.
+run_check_repovar DOTFILES_REPO="$FREPO" DOTFILES="$WORK/stale-dotfiles.$CASES"
+expect_rc 0
+expect_out "OK: all checks passed"
+expect_no_out "does not exist"
+end_case
+
 printf '\n%s case(s), %s failed\n' "$CASES" "$FAILED"
 if ((FAILED)); then exit 1; fi
 exit 0

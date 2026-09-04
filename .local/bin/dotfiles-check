@@ -25,13 +25,18 @@
 #
 # Usage: dotfiles-check          (run any time; exits 1 if anything is red)
 #        dotfiles-check --list   (repo-relative paths it expects deployed)
-# Override repo path: DOTFILES=/path/to/repo dotfiles-check
+# Override repo path: DOTFILES_REPO=/path/to/repo dotfiles-check  (DOTFILES also works)
 set -uo pipefail
 # An empty .local/bin or systemd/user must expand to nothing rather than to a
 # literal '*', and dotctl links dot-prefixed files in those dirs too.
 shopt -s nullglob dotglob
 
-DOTFILES="${DOTFILES:-$HOME/niri-dotfiles}"
+# dotctl's own flag is `#[arg(long, env = "DOTFILES_REPO")]`, so DOTFILES_REPO
+# is the name a user cloning elsewhere has already set; consult it first or this
+# check aims at the default path while dotctl deploys to another and reports FAIL
+# for links that are fine -- the one job it has. DOTFILES stays honoured so
+# existing muscle memory keeps working: DOTFILES_REPO > DOTFILES > default.
+DOTFILES="${DOTFILES_REPO:-${DOTFILES:-$HOME/niri-dotfiles}}"
 
 # Mirrors of the two by-name lists in link_dotfiles() (src/main.rs), in the
 # same order as the Rust so a drift diff reads cleanly.
@@ -94,7 +99,7 @@ echo "==> Symlinks resolve into \$DOTFILES ($DOTFILES)"
 # "OK: all checks passed" -- the one answer that must never come out of a
 # machine in this state.
 if [[ ! -d "$DOTFILES" ]]; then
-  bad "\$DOTFILES does not exist: $DOTFILES (export DOTFILES=/path/to/repo)"
+  bad "\$DOTFILES does not exist: $DOTFILES (export DOTFILES_REPO=/path/to/repo)"
 else
   DOTFILES_CANON="$(readlink -m -- "$DOTFILES")"
 
