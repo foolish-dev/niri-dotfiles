@@ -2430,6 +2430,29 @@ fn back_up_dangling_symlink(path: &Path, backup_dir: &Path, home: &Path) -> Resu
     Ok(())
 }
 
+/// The identity `setup_gitconfig` seeds when GIT_USER_NAME / GIT_USER_EMAIL
+/// are unset. Constants rather than literals at the write site, so
+/// [`gitconfig_identity_is_placeholder`] cannot drift from what was written.
+const GIT_PLACEHOLDER_NAME: &str = "Your Name";
+const GIT_PLACEHOLDER_EMAIL: &str = "you@example.com";
+
+/// Whether ~/.gitconfig.local still holds the seeded placeholder identity.
+///
+/// Seeding a placeholder is right — it is what stops a fresh user committing
+/// under the repo author's name. Saying nothing afterwards is not: git does
+/// not care that the name is fake, so the placeholder quietly becomes your
+/// identity and every commit carries it. This repo's own history is the
+/// evidence: 61 of its commits are authored `Your Name <you@example.com>`,
+/// against 95 with a real identity, and ~/.gitconfig.local on the machine it
+/// was written on still contained the placeholder verbatim.
+///
+/// Pure so the check is testable without a home directory. Either field
+/// still being a placeholder counts — a half-set identity is the same
+/// problem.
+fn gitconfig_identity_is_placeholder(body: &str) -> bool {
+    body.contains(GIT_PLACEHOLDER_NAME) || body.contains(GIT_PLACEHOLDER_EMAIL)
+}
+
 /// Deploy the tracked `.gitconfig` to a neutral XDG path with an untracked
 /// ~/.gitconfig include-stub, and seed ~/.gitconfig.local identity once.
 /// Idempotent: never clobbers an existing stub or identity file (honors
@@ -2504,8 +2527,9 @@ fn setup_gitconfig(repo: &Path, h: &Path, backup_dir: &Path) -> Result<()> {
         back_up_dangling_symlink(&local, backup_dir, h)?;
     }
     if !local.exists() && !local.is_symlink() {
-        let name = std::env::var("GIT_USER_NAME").unwrap_or_else(|_| "Your Name".into());
-        let email = std::env::var("GIT_USER_EMAIL").unwrap_or_else(|_| "you@example.com".into());
+        let name = std::env::var("GIT_USER_NAME").unwrap_or_else(|_| GIT_PLACEHOLDER_NAME.into());
+        let email =
+            std::env::var("GIT_USER_EMAIL").unwrap_or_else(|_| GIT_PLACEHOLDER_EMAIL.into());
         let body = format!(
             "# ~/.gitconfig.local -- per-machine identity + local overrides.\n\
              # Included by ~/.gitconfig. Not tracked in the dotfiles repo.\n\
@@ -2513,6 +2537,18 @@ fn setup_gitconfig(repo: &Path, h: &Path, backup_dir: &Path) -> Result<()> {
         );
         fs::write(&local, body)?;
         ok("Wrote ~/.gitconfig.local identity");
+    }
+
+    // Having seeded (or found) an identity, say whether it is a real one.
+    // Nothing else will: git accepts the placeholder happily, so it becomes
+    // the author of every commit until somebody notices. Read, don't `?` — an
+    // unreadable identity file should warn, not abort a deploy.
+    if gitconfig_identity_is_placeholder(&fs::read_to_string(&local).unwrap_or_default()) {
+        warn(&format!(
+            "~/.gitconfig.local still holds the placeholder identity ({GIT_PLACEHOLDER_NAME} \
+             <{GIT_PLACEHOLDER_EMAIL}>), so every commit you make is authored as that. Edit it, \
+             or re-run with GIT_USER_NAME and GIT_USER_EMAIL set."
+        ));
     }
     Ok(())
 }
@@ -2939,14 +2975,15 @@ mod tests {
     use super::{
         amdxdna_memlock_conf, asus_pack, aur_failure_marker_in, aur_helper_hint,
         chaotic_aur_policy, chaotic_state, command_exists, copy_item, git_has_conflicts, git_pull,
-        gitconfig_lacks_include, greetd_is_replaceable, greetd_session_command, link_dotfiles,
-        link_item, login_action, marker_still_valid_at, memlock_user, noctalia_plan, npu_pack,
-        os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
-        patch_hexstrike_bind, patch_pkgbuild_unistd, pci_devices, platform_devices,
-        preferred_aur_helper, refresh_aur_clone, refuse_conflicted_tree, sddm_theme_conf_body,
-        sddm_theme_is_ours, setup_gitconfig, sync_db_path, venv_ready, AsusPack, BindState,
-        ChaoticAur, ChaoticState, Distro, LoginAction, NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS,
-        AMD_PCI_VENDOR, ASUS_PLATFORM_DEVICE, AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER,
+        gitconfig_identity_is_placeholder, gitconfig_lacks_include, greetd_is_replaceable,
+        greetd_session_command, link_dotfiles, link_item, login_action, marker_still_valid_at,
+        memlock_user, noctalia_plan, npu_pack, os_release_value, pacman_conf_has_repo,
+        pacman_pkg_installed, parse_distro, parse_pci_id, patch_hexstrike_bind,
+        patch_pkgbuild_unistd, pci_devices, platform_devices, preferred_aur_helper,
+        refresh_aur_clone, refuse_conflicted_tree, sddm_theme_conf_body, sddm_theme_is_ours,
+        setup_gitconfig, sync_db_path, venv_ready, AsusPack, BindState, ChaoticAur, ChaoticState,
+        Distro, LoginAction, NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR,
+        ASUS_PLATFORM_DEVICE, AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER,
         CURSOR_THEME_NAME, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS,
         REGREET_TOML, XDNA_PCI_DEVICE_IDS,
     };
@@ -4116,6 +4153,38 @@ mod tests {
         // install` would report "selects another theme — leaving it" over a
         // drop-in dotctl had just written itself.
         assert!(sddm_theme_is_ours(Some(&sddm_theme_conf_body())));
+    }
+
+    // ── gitconfig_identity_is_placeholder ──────────────────────────────────
+    //
+    // Seeding a placeholder is deliberate; leaving it silent was not. git
+    // accepts it, so it becomes the commit author indefinitely — 61 commits in
+    // this repo's own history are authored `Your Name <you@example.com>`.
+
+    #[test]
+    fn a_freshly_seeded_identity_is_recognised_as_a_placeholder() {
+        assert!(gitconfig_identity_is_placeholder(
+            "[user]\n    name = Your Name\n    email = you@example.com\n"
+        ));
+    }
+
+    #[test]
+    fn a_real_identity_is_not_flagged() {
+        assert!(!gitconfig_identity_is_placeholder(
+            "[user]\n    name = Ada Lovelace\n    email = ada@example.org\n"
+        ));
+    }
+
+    #[test]
+    fn half_a_real_identity_still_counts_as_a_placeholder() {
+        // The likelier shape than either field alone: one gets edited and the
+        // other is forgotten, and the commits carry the leftover.
+        assert!(gitconfig_identity_is_placeholder(
+            "[user]\n    name = Ada Lovelace\n    email = you@example.com\n"
+        ));
+        assert!(gitconfig_identity_is_placeholder(
+            "[user]\n    name = Your Name\n    email = ada@example.org\n"
+        ));
     }
 
     // ── sddm_theme_is_ours ─────────────────────────────────────────────────
