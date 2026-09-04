@@ -1541,6 +1541,111 @@ fn pci_devices() -> Vec<(u16, u16)> {
         .collect()
 }
 
+// ── ASUS ROG platform detection ───────────────────────────────────────────────
+
+/// The udev sysname of the platform device the in-tree `asus-nb-wmi` driver
+/// registers, and the exact string asusctl's own `rog-platform` crate hunts for
+/// before it will do anything (`rog-platform/src/platform.rs`):
+///
+/// ```text
+/// enumerator.match_subsystem("platform")?;
+/// enumerator.match_sysname("asus-nb-wmi")?;
+/// ...
+/// Err(PlatformError::MissingFunction("asus-nb-wmi not found".into()))
+/// ```
+///
+/// Everything rog-control-center draws is a read or a write of an attribute on
+/// that device — on this GZ302EA `throttle_thermal_policy`, `panel_od`,
+/// `ppt_pl1_spl`, `ppt_pl2_sppt`, `ppt_fppt`, `nv_temp_target` and
+/// `charge_mode`, plus its `platform-profile`, `hwmon`, `leds` and `rfkill`
+/// children.
+const ASUS_PLATFORM_DEVICE: &str = "asus-nb-wmi";
+
+/// Whether this host gets the ASUS ROG control pack — `rog-control-center` and
+/// the `asusctl` daemon it is a front end for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AsusPack {
+    /// `asus-nb-wmi` is bound, so asusd has the device it drives and the
+    /// Armoury Crate key has something to open.
+    Install,
+    /// No ASUS notebook WMI device. Skip it: asusd would exit with
+    /// `MissingFunction` and the GUI would open onto nothing.
+    Skip,
+}
+
+/// Decide from the platform bus alone.
+///
+/// Deliberately *not* DMI, even though DMI is the natural home for a vendor's
+/// identity and this pack really is vendor firmware rather than a PCI function.
+/// `/sys/class/dmi/id` on this box says `sys_vendor=ASUSTeK COMPUTER INC.`,
+/// `chassis_vendor=ASUSTeK COMPUTER INC.`,
+/// `product_name=ROG Flow Z13 GZ302EA_GZ302EA`, `board_name=GZ302EA` — and
+/// every one of those answers a question we are not asking:
+///
+/// * `sys_vendor` / `chassis_vendor` — "was this box built by ASUS", which is
+///   equally true of every ASUS desktop and of anyone else's case with an ASUS
+///   motherboard in it. Those publish the desktop sensor interfaces
+///   (`asus_wmi_sensors`, `asus-ec-sensors`), not the notebook one, so asusd
+///   would install, fail to find its device and the GUI would open onto
+///   nothing. The string is unstable too — firmware ships `ASUSTeK COMPUTER
+///   INC.`, `ASUSTeK Computer Inc.` and bare `ASUS` across generations — so the
+///   match would have to be case-folded and prefix-y, widening it further.
+/// * `product_name` / `board_name` — "is this the author's laptop". It misses
+///   every other ROG and Zenbook asusctl supports, which is the entire reason
+///   to install a vendor daemon instead of hard-coding this machine.
+///
+/// The platform device answers the question that actually matters — *will this
+/// daemon do anything here* — because it is the same question asusd asks
+/// itself, in the same words.
+///
+/// This is the opposite call from [`npu_pack`], which rejected every
+/// driver-bound signal, and the two are consistent rather than in tension.
+/// There the pack ships the *userspace* for an in-tree driver, so a host with
+/// the silicon and an unloaded module still needs the packages and a
+/// driver-bound gate would have wrongly said no. Here the pack's entire value
+/// arrives *through* that driver's sysfs attributes, so a host where
+/// `asus-nb-wmi` is not bound — blacklisted, a kernel without it, an ASUS board
+/// that has no notebook WMI to bind — is a host where installing asusctl buys
+/// nothing. "The driver isn't bound" is the right answer here, not a false
+/// negative to engineer around.
+///
+/// The runner-up was the firmware-published GUID itself,
+/// `/sys/bus/wmi/devices/0B3CBB35-E3C2-45ED-91C2-4C5A6D195D1C-1` — the sole
+/// modalias of `asus-nb-wmi` (`modinfo asus-nb-wmi`), created by the WMI bus
+/// core out of the ACPI `_WDG` table before any driver claims it, and so the
+/// closest thing on this bus to the pre-driver PCI enumeration `npu_pack`
+/// leans on. It loses on the same ground: a GUID sitting there with nothing
+/// bound to it is exactly the case where the pack does nothing, so the extra
+/// purity would only buy false `Install`s.
+fn asus_pack(platform_devices: &[String]) -> AsusPack {
+    if platform_devices.iter().any(|d| d == ASUS_PLATFORM_DEVICE) {
+        AsusPack::Install
+    } else {
+        AsusPack::Skip
+    }
+}
+
+/// Every device name on the platform bus.
+///
+/// `/sys/bus/platform/devices` rather than `/sys/devices/platform`: the bus
+/// directory is exactly the set udev's `match_subsystem("platform")` walks, so
+/// it is the same view asusd has, and it also carries platform devices parented
+/// elsewhere in the device tree, which the `/sys/devices/platform` listing does
+/// not — 50 entries against 36 on this machine.
+///
+/// An unreadable bus yields an empty list, which reads as "no ASUS platform" —
+/// the safe direction, the same one [`pci_devices`] takes: forgo an optional
+/// vendor pack rather than install a system daemon on a guess.
+fn platform_devices() -> Vec<String> {
+    let Ok(entries) = fs::read_dir("/sys/bus/platform/devices") else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect()
+}
+
 // ── install ───────────────────────────────────────────────────────────────────
 
 /// Whether a Python venv at `venv` is usable. The directory merely existing
@@ -1803,15 +1908,46 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     // came back: Mod+O did nothing and tablet rotation was dead until the user
     // happened to run `dotctl install` a second time. CachyOS hid it, because
     // there the first ask already succeeds from [cachyos].
+    //
+    // Neither of these two is gated the way the ASUS pack below is, and neither
+    // should be. wvkbd is a plain wlroots on-screen keyboard — no vendor, no
+    // driver, no daemon, ~200 KB that sits on disk until Mod+O spawns it — and
+    // it is as useful on any touchscreen or pen device as it is here.
+    // iio-niri is the narrower of the two (it is inert without an IIO
+    // accelerometer, which `/sys/bus/iio/devices` would report), but it ships a
+    // single binary, no unit and no service, its dependencies are dbus,
+    // iio-sensor-proxy and niri — all already installed by this point — and its
+    // idle cost on a host with no sensor is zero. Gating buys nothing there;
+    // the ASUS pack is gated because it pulls a vendor daemon that a udev rule
+    // then starts.
     ensure_aur_pkg(helper, "iio-niri", "iio-niri")?;
     ensure_aur_pkg(helper, "wvkbd", "wvkbd")?;
     // The Armoury Crate key (XF86Launch1) is bound to `rog-control-center` in
     // config.kdl and nothing installed it — missing from PATH here too, so that
-    // key has never done anything. AUR-only on both distros: it resolves from
-    // `pacman -Si` on this box purely because chaotic-aur was configured here,
-    // and dotctl deliberately skips chaotic-aur on CachyOS. Pulls in asusctl,
-    // the daemon it drives.
-    ensure_aur_pkg(helper, "rog-control-center", "rog-control-center")?;
+    // key has never done anything.
+    //
+    // Gated on the ASUS platform device, because it was not: this pulls in
+    // `asusctl`, an ASUS vendor daemon that the package's own udev rule starts
+    // at boot, and the ungated call installed it on every host the README
+    // invites in — the same bug the NPU pack above was fixed for one commit
+    // later. See [`asus_pack`] for why the gate is the platform device rather
+    // than DMI.
+    //
+    // `ensure_aur_pkg` rather than `optional_pacman_pkg` because the AUR is the
+    // only source guaranteed to be reachable — but NOT for the reason the note
+    // here used to give. It is not AUR-only on either distro: [cachyos] carries
+    // asusctl/rog-control-center 6.4.0-1 and chaotic-aur carries 6.3.8-1. What
+    // is true is that no Arch official repo carries either, and on stock Arch
+    // chaotic-aur is configured a few lines above by a step that only warns on
+    // failure. A helper takes a repo build wherever one exists and falls back
+    // to the AUR (pkgbase `asusctl`, which splits both names) where none does.
+    match asus_pack(&platform_devices()) {
+        AsusPack::Install => ensure_aur_pkg(helper, "rog-control-center", "rog-control-center")?,
+        AsusPack::Skip => info(
+            "No ASUS notebook WMI platform device on this host — skipping rog-control-center \
+             and the asusctl daemon it depends on (the XF86Launch1 bind stays dead)",
+        ),
+    }
 
     // BlackArch (2800+ offensive-security tools, paired with HexStrike AI)
     if let Err(e) = setup_blackarch() {
@@ -2691,17 +2827,18 @@ fn copy_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        amdxdna_memlock_conf, aur_failure_marker_in, aur_helper_hint, chaotic_aur_policy,
-        chaotic_state, command_exists, copy_item, git_has_conflicts, git_pull,
+        amdxdna_memlock_conf, asus_pack, aur_failure_marker_in, aur_helper_hint,
+        chaotic_aur_policy, chaotic_state, command_exists, copy_item, git_has_conflicts, git_pull,
         gitconfig_lacks_include, greetd_is_replaceable, greetd_session_command, link_dotfiles,
         link_item, login_action, marker_still_valid_at, memlock_user, noctalia_plan, npu_pack,
         os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
-        patch_hexstrike_bind, patch_pkgbuild_unistd, pci_devices, preferred_aur_helper,
-        refresh_aur_clone, refuse_conflicted_tree, sddm_theme_conf_body, sddm_theme_is_ours,
-        setup_gitconfig, sync_db_path, venv_ready, BindState, ChaoticAur, ChaoticState, Distro,
-        LoginAction, NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, AUR_HELPERS,
-        BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, CURSOR_THEME_NAME, GITCONFIG_STUB,
-        GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML, XDNA_PCI_DEVICE_IDS,
+        patch_hexstrike_bind, patch_pkgbuild_unistd, pci_devices, platform_devices,
+        preferred_aur_helper, refresh_aur_clone, refuse_conflicted_tree, sddm_theme_conf_body,
+        sddm_theme_is_ours, setup_gitconfig, sync_db_path, venv_ready, AsusPack, BindState,
+        ChaoticAur, ChaoticState, Distro, LoginAction, NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS,
+        AMD_PCI_VENDOR, ASUS_PLATFORM_DEVICE, AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER,
+        CURSOR_THEME_NAME, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS,
+        REGREET_TOML, XDNA_PCI_DEVICE_IDS,
     };
     use std::env;
     use std::fs;
@@ -4798,6 +4935,126 @@ LOGO=cachyos
             .expect("read /sys/bus/pci/devices")
             .count();
         assert_eq!(pci_devices().len(), enumerated);
+    }
+
+    // ── ASUS ROG platform detection ──────────────────────────────────────
+
+    /// The device names `/sys/bus/platform/devices` reports on the ROG Flow Z13
+    /// GZ302EA this pack was written for, in listing order. `asus-nb-wmi` sits
+    /// in the middle of it, so a test over this list also proves the scan does
+    /// not just look at the head of the bus. Trimmed to a representative slice
+    /// of the 50 entries; every name here is one this machine really publishes.
+    const GZ302EA_PLATFORM_BUS: [&str; 10] = [
+        "acp_asoc_acp70.0",
+        "acpi-cpufreq",
+        "ACPI0011:00",
+        "AMDI0010:03",
+        "asus-nb-wmi",
+        "ASUS2018:00",
+        "ASUS9001:00",
+        "i8042",
+        "PNP0C0C:00",
+        "serial8250",
+    ];
+
+    /// `asus_pack` takes owned names because that is what a sysfs listing
+    /// yields; the tests would rather write string literals.
+    fn platform_bus(names: &[&str]) -> Vec<String> {
+        names.iter().map(|n| (*n).to_string()).collect()
+    }
+
+    #[test]
+    fn asus_pack_installs_on_the_machine_this_pack_was_written_for() {
+        // Pins the detection against the real GZ302EA platform bus, including
+        // that asus-nb-wmi is found in the middle of the listing.
+        assert_eq!(
+            asus_pack(&platform_bus(&GZ302EA_PLATFORM_BUS)),
+            AsusPack::Install
+        );
+    }
+
+    #[test]
+    fn asus_pack_skips_a_host_with_no_asus_notebook_wmi_device() {
+        // The case this gate exists for: every other platform device present,
+        // asus-nb-wmi absent, so asusd would start and immediately fail with
+        // MissingFunction("asus-nb-wmi not found").
+        let bus: Vec<String> = platform_bus(&GZ302EA_PLATFORM_BUS)
+            .into_iter()
+            .filter(|d| d != ASUS_PLATFORM_DEVICE)
+            .collect();
+        assert_eq!(asus_pack(&bus), AsusPack::Skip);
+    }
+
+    #[test]
+    fn asus_pack_skips_an_asus_built_desktop_that_publishes_only_sensor_devices() {
+        // Why the gate is not DMI: this host's sys_vendor and chassis_vendor
+        // are the same "ASUSTeK COMPUTER INC." string a desktop board reports.
+        // What a desktop board does not have is the notebook WMI interface —
+        // it publishes the hwmon drivers instead — so asusctl there is a daemon
+        // with nothing to drive.
+        assert_eq!(
+            asus_pack(&platform_bus(&[
+                "asus_wmi_sensors",
+                "asus-ec-sensors",
+                "i8042"
+            ])),
+            AsusPack::Skip
+        );
+    }
+
+    #[test]
+    fn asus_pack_skips_an_asus_laptop_whose_wmi_is_claimed_by_a_different_driver() {
+        // eeepc-wmi binds the same ASUS management GUID asus-nb-wmi does and
+        // registers its own platform device instead. asusctl looks for exactly
+        // one sysname and would find nothing, so Skip is the honest answer even
+        // though the box is an ASUS laptop with ASUS WMI firmware.
+        assert_eq!(
+            asus_pack(&platform_bus(&["eeepc-wmi", "eeepc-laptop"])),
+            AsusPack::Skip
+        );
+    }
+
+    #[test]
+    fn asus_pack_matches_the_platform_device_name_exactly() {
+        // Not a substring or prefix match. `asus_nb_wmi` in particular is the
+        // *module* name (underscores, as /proc/modules and lsmod print it); the
+        // device sysname asusctl queries is hyphenated, and matching either
+        // spelling would let a module-loaded proxy back in through the door
+        // this gate deliberately closes.
+        for name in [
+            "asus_nb_wmi",
+            "asus-nb-wmi:00",
+            "asus-nb-wmi.0",
+            "xasus-nb-wmi",
+            "asus-wmi",
+        ] {
+            assert_eq!(asus_pack(&platform_bus(&[name])), AsusPack::Skip, "{name}");
+        }
+    }
+
+    #[test]
+    fn asus_pack_skips_when_the_platform_bus_could_not_be_read_at_all() {
+        // `platform_devices()` answers with an empty Vec when /sys/bus/platform
+        // is unreadable. Skip is the safe direction: forgo an optional vendor
+        // pack rather than install a system daemon on a guess.
+        assert_eq!(asus_pack(&[]), AsusPack::Skip);
+    }
+
+    #[test]
+    fn the_real_platform_bus_scan_names_every_device_the_kernel_enumerated() {
+        // The impure half against real sysfs, mirroring the PCI scan test
+        // above: a count short of the directory listing means a name was
+        // silently dropped, and a dropped name is exactly how a ROG laptop
+        // would get told it is not one. Skipped where /sys/bus/platform is
+        // absent (containers, some CI), which the empty-bus test already covers.
+        let dir = Path::new("/sys/bus/platform/devices");
+        if !dir.is_dir() {
+            return;
+        }
+        let enumerated = fs::read_dir(dir)
+            .expect("read /sys/bus/platform/devices")
+            .count();
+        assert_eq!(platform_devices().len(), enumerated);
     }
 
     #[test]
