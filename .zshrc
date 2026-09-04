@@ -461,4 +461,12 @@ fi
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
-. "$HOME/.local/share/../bin/env"
+# uv writes ~/.local/bin/env and appends a source line for it to shell rc
+# files. Nothing here creates that file -- no uv on PATH, no writer anywhere
+# in this repo -- so on this machine the unguarded form was the last thing
+# every interactive shell did, and it failed: "no such file or directory",
+# printed right under the fastfetch greeting. Guarded rather than deleted,
+# because this .zshrc is deployed to other machines by dotctl and a box that
+# does have uv should still source it. (The `.local/share/../bin` uv writes is
+# just `.local/bin`; spelled directly here.)
+[ -f "$HOME/.local/bin/env" ] && . "$HOME/.local/bin/env"
