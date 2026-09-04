@@ -21,7 +21,11 @@ local servers = {
   -- Python
   "pyright", "ruff",
   -- JS / TS / web frameworks
-  "ts_ls", "vue_ls", "svelte", "astro", "html", "cssls", "tailwindcss",
+  -- ts_ls is deliberately absent: typescript-tools.nvim (plugins/coding.lua)
+  -- is a REPLACEMENT for typescript-language-server, not a companion, and
+  -- claims the same four filetypes -- listing both attached two
+  -- tsserver-backed clients to every TS/JS buffer.
+  "vue_ls", "svelte", "astro", "html", "cssls", "tailwindcss",
   "emmet_ls", "jsonls", "prismals", "graphql",
   -- Markup / docs
   "marksman", "texlab",
@@ -63,9 +67,12 @@ return {
     dependencies = { "williamboman/mason.nvim", "neovim/nvim-lspconfig" },
     opts = {
       ensure_installed = servers,
-      -- rustaceanvim owns rust_analyzer startup; let it stay out of the
-      -- auto-enable list so nvim-navic doesn't try to attach twice.
-      automatic_enable = { exclude = { "rust_analyzer" } },
+      -- automatic_enable walks the *installed* mason packages, not
+      -- ensure_installed, so dropping a server from `servers` above is not
+      -- enough on a box where mason already has it: name it here too.
+      --   rust_analyzer -- rustaceanvim owns its startup
+      --   ts_ls        -- typescript-tools.nvim replaces it
+      automatic_enable = { exclude = { "rust_analyzer", "ts_ls" } },
     },
   },
 

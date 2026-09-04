@@ -107,7 +107,9 @@ return {
       "nvim-treesitter/nvim-treesitter",
       "nvim-neotest/neotest-python",
       "nvim-neotest/neotest-go",
-      "rouge8/neotest-rust",
+      -- rustaceanvim ships the rust adapter and its docs say not to add
+      -- neotest-rust alongside it; rouge8/neotest-rust is archived read-only.
+      "mrcjkb/rustaceanvim",
       "nvim-neotest/neotest-jest",
       "marilari88/neotest-vitest",
       "nvim-neotest/neotest-plenary",
@@ -126,7 +128,7 @@ return {
         adapters = {
           require("neotest-python")({ runner = "pytest" }),
           require("neotest-go"),
-          require("neotest-rust"),
+          require("rustaceanvim.neotest"),
           require("neotest-jest"),
           require("neotest-vitest"),
           require("neotest-plenary"),
