@@ -242,7 +242,12 @@ return {
     opts  = {},
     keys = {
       { "s", function() require("flash").jump() end,         mode = { "n", "x", "o" }, desc = "Flash jump" },
-      { "S", function() require("flash").treesitter() end,    mode = { "n", "x", "o" }, desc = "Flash treesitter" },
+      -- No "x" here: nvim-surround maps x S unconditionally from its own
+      -- plugin/ file, and whichever of the two loads last silently wins --
+      -- surround after `nvim`, flash after `nvim <file>`, because lazy's
+      -- Keys handler deletes the existing mapping when it installs its own.
+      -- Visual S is surround's headline mapping; flash keeps R (x, o) there.
+      { "S", function() require("flash").treesitter() end,    mode = { "n", "o" },      desc = "Flash treesitter" },
       { "r", function() require("flash").remote() end,        mode = "o",               desc = "Flash remote" },
       { "R", function() require("flash").treesitter_search() end, mode = { "o", "x" },   desc = "Flash ts search" },
     },
