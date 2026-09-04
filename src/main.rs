@@ -1746,6 +1746,72 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         &["ttf-jetbrains-mono-nerd"],
         "fontconfig substitutes a font with no powerline/Nerd glyphs",
     );
+    // The rest of the theme names the tracked configs hand to GTK, Qt and
+    // fuzzel. Same silent-fallback class as the font above and the cursor
+    // below, and just as invisible: fontconfig, GTK and Qt every one substitute
+    // without a word on stdout or in any log.
+    //   Papirus-Dark   `gtk-icon-theme-name` in .config/gtk-3.0/settings.ini and
+    //                  .config/gtk-4.0/settings.ini, `icon_theme` in
+    //                  .config/qt5ct/qt5ct.conf and .config/qt6ct/qt6ct.conf,
+    //                  `icon-theme` in .config/fuzzel/fuzzel.ini — five tracked
+    //                  files. /usr/share/icons on this box holds only Adwaita,
+    //                  AdwaitaLegacy, capitaine-cursors, default, hicolor and
+    //                  locolor, so all five have been falling back. Shipped by
+    //                  extra/papirus-icon-theme, whose payload is exactly
+    //                  Papirus, Papirus-Dark and Papirus-Light.
+    //   Cantarell      `gtk-font-name` in both settings.ini and the `general`
+    //                  font in both qt*ct.conf. extra/cantarell-fonts. Present
+    //                  on this machine only because someone installed it by
+    //                  hand — `pactree -r cantarell-fonts` names nothing but
+    //                  itself, so no dependency chain brings it to a fresh box.
+    //   qt5ct / qt6ct  .config/niri/config.kdl exports QT_QPA_PLATFORMTHEME and
+    //                  this repo tracks a config file for each, but neither
+    //                  package was installed — so the platformtheme plugin Qt
+    //                  would load (libqt5ct.so / libqt6ct.so) does not exist
+    //                  and both tracked files are dead text. They also own the
+    //                  palettes both files point `color_scheme_path` at,
+    //                  /usr/share/qt{5,6}ct/colors/darker.conf.
+    //   Kvantum        `style=kvantum-dark` in both qt*ct.conf. That style key
+    //                  is registered by the Kvantum plugin and by nothing else
+    //                  — `strings libkvantum.so` lists exactly `kvantum` and
+    //                  `kvantum-dark` — with the Qt6 plugin in `kvantum` and
+    //                  the Qt5 one in `kvantum-qt5`, so both are needed to
+    //                  cover both config files.
+    // All of these are plain repo packages: Arch `extra` with
+    // cachyos-extra-znver4 rebuilds, no helper and no distro branch. Gated by
+    // package rather than binary wherever the package ships no command of its
+    // own — an icon theme and a font ship none at all, and Kvantum's binaries
+    // (kvantummanager, kvantumpreview) are named after neither package.
+    optional_pacman_pkg(
+        "Papirus icon theme",
+        "papirus-icon-theme",
+        &["papirus-icon-theme"],
+        "GTK, Qt and fuzzel fall back to Adwaita/hicolor icons",
+    );
+    optional_pacman_pkg(
+        "Cantarell",
+        "cantarell-fonts",
+        &["cantarell-fonts"],
+        "fontconfig substitutes the GTK and Qt interface font",
+    );
+    optional_pacman(
+        "qt5ct",
+        "qt5ct",
+        &["qt5ct"],
+        "QT_QPA_PLATFORMTHEME names a plugin that is not installed, so qt5ct.conf is ignored",
+    );
+    optional_pacman(
+        "qt6ct",
+        "qt6ct",
+        &["qt6ct"],
+        "qt6ct.conf is ignored and Qt6 apps keep the default palette",
+    );
+    optional_pacman_pkg(
+        "Kvantum",
+        "kvantum",
+        &["kvantum", "kvantum-qt5"],
+        "`style=kvantum-dark` in qt5ct.conf and qt6ct.conf resolves to nothing and Qt keeps Fusion",
+    );
 
     // Spawned at startup by config.kdl and in exactly the same boat as
     // wl-clipboard: Arch `extra`, never installed here, present on this box only
@@ -2001,6 +2067,31 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         &["starship"],
         "the `command -v` guard in .zshrc leaves you on the bare zsh prompt",
     );
+    // The other two `command -v`-guarded eval-inits in the same .zshrc, and
+    // silent in exactly the same way starship was: neither binary is on PATH
+    // here and nothing in dotctl ever installed either, so the guard turns a
+    // missing tool into a feature that simply never existed.
+    //   zoxide — `eval "$(zoxide init zsh)"` never runs, so `z` is never
+    //            defined; the fzf-tab preview zstyle .zshrc registers against
+    //            `__zoxide_z` is dead with it.
+    //   direnv — `eval "$(direnv hook zsh)"` never installs the chpwd hook, so
+    //            every .envrc in every project is ignored without a word.
+    // Both are plain repo packages on both distros — extra/zoxide 0.10.0-1 and
+    // extra/direnv 2.37.1-1, with cachyos-extra-znver4 rebuilds at 0.10.0-1.1
+    // and 2.37.1-1.1 — so no AUR helper and no distro branch, and both ship a
+    // binary of their own name, so `command_exists` is the right gate.
+    optional_pacman(
+        "zoxide",
+        "zoxide",
+        &["zoxide"],
+        "the `command -v` guard in .zshrc leaves `z` undefined, along with its fzf-tab preview",
+    );
+    optional_pacman(
+        "direnv",
+        "direnv",
+        &["direnv"],
+        "the `command -v` guard in .zshrc means every .envrc is silently ignored",
+    );
     optional_pacman(
         "Neovim",
         "nvim",
@@ -2076,6 +2167,25 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     // not; `ensure_aur_pkg` detects it via `pacman -Q` (a cursor theme ships
     // no binary, so a `command_exists` gate would miss it forever).
     ensure_aur_pkg(helper, "Bibata cursor theme", CURSOR_THEME_PKG)?;
+    // The GTK theme both settings.ini files name, in the same boat as the
+    // cursor and installed by nobody: /usr/share/themes on this box holds only
+    // adw-gtk3, adw-gtk3-dark, Default and Emacs, so GTK has been silently
+    // falling back to Adwaita for every application in the session. AUR (and
+    // chaotic-aur) only — `pacman -Ss tokyonight` over every synced db here
+    // returns exactly one hit, chaotic-aur/tokyonight-gtk-theme-git — so the
+    // same `ensure_aur_pkg` reasoning as Bibata above applies unchanged.
+    //
+    // Note the name mismatch this does NOT fix: the package installs
+    // Tokyonight-{Dark,Light} plus -hdpi/-xhdpi variants, and no
+    // `Tokyonight-Dark-BL`. Upstream shipped prebuilt `Tokyonight-*-BL`
+    // directories until commit 58a04f1d (2024-03-18) replaced them with a
+    // generator that emits neither the -BL nor the -BL-LB suffix, so the name
+    // the two settings.ini files ask for has not existed in any package for
+    // over a year. `Tokyonight-Dark` — what .config/niri/config.kdl already
+    // exports as GTK_THEME, and what GTK3 apps therefore actually get — is the
+    // installable spelling; the two settings.ini files want their `-BL`
+    // dropped to agree with it.
+    ensure_aur_pkg(helper, "Tokyonight GTK theme", "tokyonight-gtk-theme-git")?;
 
     // AUR add-ons for the full Noctalia ecosystem.
     // sddm-theme-noctalia-git (AUR): login-screen theme matched to the shell;
