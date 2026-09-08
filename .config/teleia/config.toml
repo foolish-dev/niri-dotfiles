@@ -76,3 +76,23 @@ command = "opencode"
 args    = ["x", "@h1deya/mcp-server-weather@0.1.3"]
     env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
+
+# ── Language servers ────────────────────────────────────────────────────
+# Spawned at startup and exposed to the agent as lsp_diagnostics,
+# lsp_hover, lsp_definition, lsp_references and lsp_symbols.
+#
+# `root_patterns` gates the spawn: a server only starts when one of them
+# exists in the launch directory or an ancestor, so rust-analyzer does not
+# boot in a Python checkout and clangd does not boot here. Shell globs
+# work; omit the key to start the server everywhere.
+
+# Needs `sudo pacman -S rust-analyzer` — until then /lsps reports this one
+# as failed to start, and only inside a Cargo project.
+[lsps.rust]
+command       = "rust-analyzer"
+root_patterns = ["Cargo.toml"]
+
+[lsps.c]
+command       = "clangd"
+args          = ["--background-index"]
+root_patterns = ["compile_commands.json", "compile_flags.txt", "CMakeLists.txt", ".clangd"]
