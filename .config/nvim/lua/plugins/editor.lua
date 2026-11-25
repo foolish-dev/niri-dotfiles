@@ -10,7 +10,6 @@ return {
     dependencies = {
       "nvim-lua/plenary.nvim",
       { "nvim-telescope/telescope-fzf-native.nvim", build = "make" },
-      "nvim-telescope/telescope-ui-select.nvim",
       "nvim-telescope/telescope-file-browser.nvim",
       "nvim-telescope/telescope-live-grep-args.nvim",
     },
@@ -56,11 +55,9 @@ return {
         },
         extensions = {
           fzf = { fuzzy = true, override_generic_sorter = true, override_file_sorter = true },
-          ["ui-select"] = { require("telescope.themes").get_dropdown() },
         },
       })
       telescope.load_extension("fzf")
-      telescope.load_extension("ui-select")
       telescope.load_extension("file_browser")
       telescope.load_extension("live_grep_args")
     end,

@@ -4,7 +4,7 @@
 return {
   -- ── opencode.nvim: built-in Teleia-companion popup ─────────────────────
   {
-    "NickvanDyke/opencode.nvim",
+    "nickjvandyke/opencode.nvim",
     version = "*",
     init = function()
       ---@type opencode.Opts
@@ -56,7 +56,7 @@ return {
 
   -- ── Avante: Cursor-style inline AI assist ──────────────────────────────
   {
-    "yetone/avante.nvim",
+    "avante-corp/avante.nvim",
     event = "VeryLazy",
     version = false,
     opts = {

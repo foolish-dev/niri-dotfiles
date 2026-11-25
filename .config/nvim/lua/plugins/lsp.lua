@@ -353,35 +353,6 @@ return {
     },
   },
 
-  -- ── lsp_signature: live signature help in insert mode ──────────────────
-  {
-    "ray-x/lsp_signature.nvim",
-    event = "LspAttach",
-    opts = {
-      bind            = true,
-      handler_opts    = { border = "rounded" },
-      hint_enable     = false,
-      floating_window = false,
-    },
-  },
-
-  -- ── nvim-navic: breadcrumbs (powers barbecue winbar) ───────────────────
-  {
-    "SmiteshP/nvim-navic",
-    dependencies = { "neovim/nvim-lspconfig" },
-    opts = { highlight = true, separator = "  ", depth_limit = 5 },
-    init = function()
-      vim.api.nvim_create_autocmd("LspAttach", {
-        callback = function(ev)
-          local client = vim.lsp.get_client_by_id(ev.data.client_id)
-          if client and client.server_capabilities.documentSymbolProvider then
-            require("nvim-navic").attach(client, ev.buf)
-          end
-        end,
-      })
-    end,
-  },
-
   -- ── aerial.nvim: code outline ──────────────────────────────────────────
   {
     "stevearc/aerial.nvim",

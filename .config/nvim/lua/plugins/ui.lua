@@ -53,8 +53,7 @@ return {
   -- tag (v1.2.0, 2023-04) three commits behind its own main -- and `version =
   -- "*"` pinned us to that tag. It had never installed here either: no barbecue
   -- key in lazy-lock.json and no clone under ~/.local/share/nvim/lazy, so this
-  -- winbar was not actually running. dropbar carries its own symbol sources, so
-  -- nvim-navic (plugins/lsp.lua) no longer feeds the winbar.
+  -- winbar was not actually running. dropbar carries its own symbol sources.
   {
     "Bekaboo/dropbar.nvim",
     event = "BufReadPost",
@@ -117,6 +116,9 @@ return {
     dependencies = { "MunifTanjim/nui.nvim", "rcarriga/nvim-notify" },
     opts = {
       lsp = {
+        -- fidget (plugins/lsp.lua) draws LSP progress; noice's own mini view
+        -- would draw it a second time in the same corner.
+        progress = { enabled = false },
         override = {
           -- vim.lsp.util.convert_input_to_markdown_lines and stylize_markdown
           -- were removed in Neovim 0.11 — only override cmp's entry docs.

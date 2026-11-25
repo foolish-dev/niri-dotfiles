@@ -103,7 +103,6 @@ return {
     "nvim-neotest/neotest",
     dependencies = {
       "nvim-lua/plenary.nvim",
-      "antoinemadec/FixCursorHold.nvim",
       "nvim-treesitter/nvim-treesitter",
       "nvim-neotest/neotest-python",
       "nvim-neotest/neotest-go",
@@ -200,7 +199,7 @@ return {
   -- ── HTTP client (API testing) ──────────────────────────────────────────
   -- kulala.nvim: pure-Lua successor to rest.nvim; no luarocks bootstrap.
   {
-    "mistweaverco/kulala.nvim",
+    "dont-be-evil-company/kulala.nvim",
     ft   = { "http", "rest" },
     keys = {
       { "<leader>rr", function() require("kulala").run() end,     ft = { "http", "rest" }, desc = "Run HTTP request" },
