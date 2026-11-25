@@ -38,15 +38,27 @@ mkdir -p "$LOG_DIR"
 log() { printf '%s\n' "$*" >>"$LOG"; }
 
 # notify-send is not guaranteed: nothing else here depends on libnotify, and it
-# needs a notification daemon that a Persistent=true timer can beat to the
-# session after a cold boot. Fall back to the log rather than spraying
+# needs a notification daemon. Fall back to the log rather than spraying
 # "command not found" into the journal.
+#
+# Nor is the daemon there on the first try. A Persistent=true timer whose run
+# was missed fires as soon as the user manager starts -- at login, before niri
+# has spawned noctalia, whose notification server is not D-Bus-activatable.
+# One attempt is how a High-urgency Secure Boot dbx update found on 2026-11-25
+# reached nobody: "The name is not activatable", and the log was the only
+# record. So keep trying for ten minutes. Type=oneshot has no start timeout by
+# default, so the wait holds nothing up.
 notify() {
-  if command -v notify-send >/dev/null 2>&1; then
-    notify-send "$@" || log 'notify-send failed — no notification daemon yet?'
-  else
+  if ! command -v notify-send >/dev/null 2>&1; then
     log "notify-send unavailable, would have said: $*"
+    return
   fi
+  local tries=40 i
+  for ((i = 1; i <= tries; i++)); do
+    notify-send "$@" 2>/dev/null && return
+    ((i < tries)) && sleep 15
+  done
+  log "notify-send failed for 10 minutes — no notification daemon? Would have said: $*"
 }
 
 printf '\n=== %s ===\n' "$(date -Is)" >>"$LOG"
