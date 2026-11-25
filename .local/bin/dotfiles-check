@@ -4,7 +4,9 @@
 # `dotctl deploy` creates still exists, is still a symlink, still points into
 # the dotfiles repo, and still RESOLVES. Designed to catch silent failures --
 # units that were "enabled" but fail on every session start, or links left
-# pointing at a path that has since gone away.
+# pointing at a path that has since gone away. Then what `dotctl install` sets
+# up: the programs the configs call, HexStrike's Host guard, the keyring
+# secrets and the GitHub token's expiry, the pkgfile database, the wallpapers.
 #
 # The resolve half is what was missing, and it certified dead desktops: the
 # test was `readlink -f "$path" == $DOTFILES/*`, and readlink -f prints a path
@@ -196,6 +198,108 @@ else
       ok "$path"
     fi
   done
+fi
+
+# Everything below checks what `dotctl install` sets up rather than what deploy
+# links. The tracked configs call these by name, so a missing one is a binding,
+# a language server or an MCP server that silently does nothing.
+echo "==> Programs the tracked configs call"
+TOOLS=(
+  "npx|teleia's and opencode's npx-launched MCP servers"
+  "github-mcp-server|the GitHub MCP server (~/.local/bin/github-mcp)"
+  "secret-tool|the keyring lookups for the GitHub token and avante's key"
+  "lazygit|Neovim's <leader>gG and tmux's C-a g"
+  "clangd|teleia's C/C++ language server"
+  "pkgfile|zsh's command-not-found package hints"
+)
+for entry in "${TOOLS[@]}"; do
+  tool="${entry%%|*}"
+  if command -v "$tool" >/dev/null 2>&1; then
+    ok "$tool"
+  else
+    bad "$tool not installed -- ${entry#*|} (run \`dotctl install\`)"
+  fi
+done
+# rustup's rust-analyzer proxy is on PATH whether or not the component is
+# installed, so ask it to run rather than whether it exists.
+if rust-analyzer --version >/dev/null 2>&1; then
+  ok "rust-analyzer"
+else
+  bad "rust-analyzer does not run -- teleia's Rust language server (run \`dotctl install\`)"
+fi
+
+echo "==> HexStrike answers only loopback names"
+# The bind itself is verified where it matters, at every start, by
+# hexstrike-assert-loopback; a failure there surfaces as a failed unit above.
+# Nothing at runtime checks the Host guard, so it is checked here, by the same
+# sentinel patch_hexstrike_host_guard() uses (src/main.rs HOST_GUARD_SENTINEL).
+HEX_SERVER="$HOME/tools/hexstrike-ai/hexstrike_server.py"
+if [[ ! -f "$HEX_SERVER" ]]; then
+  skip "HexStrike not installed ($HEX_SERVER absent)"
+elif [[ "$(<"$HEX_SERVER")" == *"# dotctl: loopback-Host guard."* ]]; then
+  ok "Host guard present in $HEX_SERVER"
+else
+  bad "no loopback-Host guard in $HEX_SERVER -- a web page that DNS-rebinds to 127.0.0.1 could drive /api/command (run \`dotctl install\`)"
+fi
+
+echo "==> Keyring secrets"
+if ! command -v secret-tool >/dev/null 2>&1; then
+  skip "secret-tool not installed (reported above)"
+else
+  for svc in github-mcp-server anthropic; do
+    if secret-tool lookup service "$svc" >/dev/null 2>&1; then
+      ok "something is stored under service $svc"
+    else
+      # A choice, not a fault: without it one feature has no key.
+      warn "nothing stored under service $svc -- see the README's Secrets section"
+    fi
+  done
+  # GitHub reports a fine-grained token's expiry in a response header. Ask once,
+  # with the token piped into a header -- never in argv, never printed.
+  if secret-tool lookup service github-mcp-server >/dev/null 2>&1; then
+    headers="$({ printf 'Authorization: Bearer '; secret-tool lookup service github-mcp-server; } |
+      curl -s --max-time 10 -o /dev/null -D - -H @- https://api.github.com/user 2>/dev/null)"
+    status="" expiry=""
+    while IFS= read -r line; do
+      line="${line%$'\r'}"
+      case "$line" in
+        HTTP/*) status="${line#* }"; status="${status%% *}" ;;
+        [Gg]ithub-[Aa]uthentication-[Tt]oken-[Ee]xpiration:*) expiry="${line#*: }" ;;
+      esac
+    done <<<"$headers"
+    if [[ -z "$status" ]]; then
+      skip "could not reach api.github.com to check the GitHub token"
+    elif [[ "$status" == 401 ]]; then
+      bad "GitHub rejects the stored token (expired or revoked) -- regenerate it and store it again"
+    elif [[ "$status" != 200 ]]; then
+      warn "GitHub answered HTTP $status for the stored token"
+    elif [[ -z "$expiry" ]]; then
+      ok "GitHub accepts the stored token (no expiry)"
+    else
+      left=$(( ($(date -d "$expiry" +%s) - $(date +%s)) / 86400 ))
+      if (( left < 14 )); then
+        warn "the GitHub token expires in $left day(s), on $expiry -- regenerate it and store it again"
+      else
+        ok "GitHub accepts the stored token, valid until $expiry"
+      fi
+    fi
+  fi
+fi
+
+echo "==> pkgfile database"
+if ! command -v pkgfile >/dev/null 2>&1; then
+  skip "pkgfile not installed (reported above)"
+elif pkgfile -b pkgfile >/dev/null 2>&1; then
+  ok "present -- command-not-found can name packages"
+else
+  warn "no database yet -- pkgfile-update.timer builds it daily; \`sudo pkgfile -u\` builds it now"
+fi
+
+echo "==> Wallpapers"
+if [[ -d "$DOTFILES/wallpapers/.git" ]]; then
+  ok "private wallpapers clone present ($DOTFILES/wallpapers)"
+else
+  skip "no wallpapers clone (owner-only: \`dotctl all\` clones foolish-dev/niri-wallpapers)"
 fi
 
 echo

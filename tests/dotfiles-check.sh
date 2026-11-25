@@ -75,6 +75,59 @@ mkdir -p "$NOSYSTEMD_BIN"
 ln -sf "$(command -v readlink)" "$NOSYSTEMD_BIN/readlink"
 
 # ---------------------------------------------------------------------------
+# Stand-ins for what `dotctl install` provides, so the install sections are
+# decided by each case's fixtures, never by what the developer or the runner
+# happens to have. Each reads its state from a file under the case's fake HOME.
+# They go into STUB_BIN and NOSYSTEMD_BIN alike: the cases that strip PATH down
+# to drop systemctl are about systemctl, not about these.
+# ---------------------------------------------------------------------------
+stub() {  # stub <name> <line>... -- a bash script in STUB_BIN
+  local name=$1
+  shift
+  { printf '#!%s\n' "$BASH_BIN"; printf '%s\n' "$@"; } >"$STUB_BIN/$name"
+  chmod +x "$STUB_BIN/$name"
+}
+for t in npx github-mcp-server lazygit clangd; do stub "$t" 'exit 0'; done
+# rustup's proxy answers on PATH even without the component; ~/.fake-ra-broken
+# makes this one behave like that proxy.
+# shellcheck disable=SC2016  # the stubs' $vars expand when they run
+stub rust-analyzer \
+  '[[ -e "$HOME/.fake-ra-broken" ]] && { echo "error: Unknown binary rust-analyzer" >&2; exit 1; }' \
+  'echo "rust-analyzer 1.0.0"'
+# `lookup service NAME` prints NAME's value from ~/.fake-keyring ("NAME VALUE"
+# lines) with no newline, as the real one does, or exits 1 when nothing is stored.
+# shellcheck disable=SC2016
+stub secret-tool \
+  '[[ "$1 $2" == "lookup service" ]] || exit 2' \
+  'while read -r svc val; do [[ "$svc" == "$3" ]] && { printf "%s" "$val"; exit 0; }; done 2>/dev/null <"$HOME/.fake-keyring"' \
+  'exit 1'
+# shellcheck disable=SC2016
+stub pkgfile \
+  '[[ -e "$HOME/.fake-pkgfile-db" ]] && exit 0' \
+  'echo "error: Database version file not found" >&2; exit 1'
+# Records what it was handed -- argv and the header on stdin -- so a case can
+# prove the token travels only on stdin, then replays ~/.fake-github as the
+# response headers. No such file means "could not connect", curl's exit 7.
+# Builtins only: the stripped-PATH cases have no cat to lean on.
+# shellcheck disable=SC2016
+stub curl \
+  'IFS= read -r -d "" hdr || true' \
+  'printf "%s" "$hdr" >"$HOME/.curl-stdin"' \
+  'printf "%s\n" "$*" >"$HOME/.curl-argv"' \
+  '[[ -f "$HOME/.fake-github" ]] || exit 7' \
+  'printf "%s\n" "$(<"$HOME/.fake-github")"'
+for t in npx github-mcp-server lazygit clangd rust-analyzer secret-tool pkgfile curl; do
+  ln -sf "$STUB_BIN/$t" "$NOSYSTEMD_BIN/$t"
+done
+
+# For the cases that take one stand-in away: the stand-ins plus only the real
+# tools the check itself runs (readlink, awk for the units section, date for the
+# token's expiry), so nothing on the developer's PATH can fill the gap.
+BASE_BIN="$WORK/base-bin"
+mkdir -p "$BASE_BIN"
+for t in readlink awk date; do ln -sf "$(command -v "$t")" "$BASE_BIN/$t"; done
+
+# ---------------------------------------------------------------------------
 # Case machinery. A failing case records why and keeps going: the point is the
 # whole picture, not the first thing that broke.
 # ---------------------------------------------------------------------------
@@ -136,6 +189,19 @@ seed_home() {
     "$FHOME/.config/systemd/user/awww.service"
   ln -sfn "$FREPO/.local/bin/wallpaper" "$FHOME/.local/bin/wallpaper"
   printf '[include]\n\tpath = ~/.config/git/dotfiles.config\n' >"$FHOME/.gitconfig"
+}
+
+# seed_installed -- what a completed `dotctl install` leaves: HexStrike with its
+# Host guard, both secrets in the keyring, a token GitHub accepts (no expiry
+# header, so the date arithmetic is not reached on a stripped PATH), a pkgfile
+# database and the wallpapers clone.
+seed_installed() {
+  mkdir -p "$FHOME/tools/hexstrike-ai" "$FREPO/wallpapers/.git"
+  printf 'app = Flask(__name__)\n\n# dotctl: loopback-Host guard. inserted\n' \
+    >"$FHOME/tools/hexstrike-ai/hexstrike_server.py"
+  printf 'github-mcp-server github_pat_FAKE\nanthropic sk-ant-FAKE\n' >"$FHOME/.fake-keyring"
+  printf 'HTTP/2 200\r\n\r\n' >"$FHOME/.fake-github"
+  : >"$FHOME/.fake-pkgfile-db"
 }
 
 # run_check [DOTFILES-override] -- run the subject against this case's fixtures
@@ -407,6 +473,7 @@ end_case
 start_case "a_healthy_run_that_skipped_something_says_how_much_it_skipped"
 seed_repo
 seed_home
+seed_installed # so the systemctl skip is the only one, and the count is exact
 CHECK_PATH="$NOSYSTEMD_BIN"
 run_check
 expect_rc 0
@@ -502,6 +569,167 @@ run_check_repovar DOTFILES_REPO="$FREPO" DOTFILES="$WORK/stale-dotfiles.$CASES"
 expect_rc 0
 expect_out "OK: all checks passed"
 expect_no_out "does not exist"
+end_case
+
+# =============================================================================
+# The install sections: what `dotctl install` sets up, checked by name.
+# =============================================================================
+# path_without <tool> -- every stand-in except <tool>, plus only the real tools
+# the check runs, so a missing program cannot be found anywhere else on PATH.
+path_without() {
+  local dir="$WORK/bin-without.$CASES" f
+  mkdir -p "$dir"
+  for f in "$STUB_BIN"/*; do
+    [[ "${f##*/}" == "$1" ]] || ln -sf "$f" "$dir/${f##*/}"
+  done
+  CHECK_PATH="$dir:$BASE_BIN"
+}
+
+start_case "a_machine_dotctl_install_has_finished_is_green_in_every_install_section"
+seed_repo
+seed_home
+seed_installed
+run_check
+expect_rc 0
+expect_out "OK: all checks passed"
+expect_no_out "FAIL"
+expect_no_out "WARN"
+for t in npx github-mcp-server secret-tool lazygit clangd pkgfile rust-analyzer; do
+  expect_healthy_line "$t"
+done
+expect_out "Host guard present"
+expect_out "something is stored under service github-mcp-server"
+expect_out "something is stored under service anthropic"
+expect_out "GitHub accepts the stored token"
+expect_out "command-not-found can name packages"
+expect_out "private wallpapers clone present"
+end_case
+
+start_case "a_program_the_configs_call_that_is_missing_fails_by_name"
+seed_repo
+seed_home
+seed_installed
+path_without lazygit
+run_check
+expect_rc 1
+expect_out "FAIL lazygit not installed"
+expect_fail_count 1
+end_case
+
+start_case "a_rust_analyzer_proxy_without_its_component_fails"
+seed_repo
+seed_home
+seed_installed
+: >"$FHOME/.fake-ra-broken"
+run_check
+expect_rc 1
+expect_out "rust-analyzer does not run"
+expect_fail_count 1
+end_case
+
+start_case "hexstrike_without_the_host_guard_fails"
+seed_repo
+seed_home
+seed_installed
+printf 'app = Flask(__name__)\n' >"$FHOME/tools/hexstrike-ai/hexstrike_server.py"
+run_check
+expect_rc 1
+expect_out "no loopback-Host guard"
+expect_fail_count 1
+end_case
+
+start_case "a_secret_nobody_stored_warns_and_does_not_fail"
+seed_repo
+seed_home
+seed_installed
+printf 'github-mcp-server github_pat_FAKE\n' >"$FHOME/.fake-keyring"
+run_check
+expect_rc 0
+expect_out "WARN nothing stored under service anthropic"
+expect_no_out "FAIL"
+end_case
+
+start_case "a_github_token_close_to_expiry_warns"
+seed_repo
+seed_home
+seed_installed
+printf 'HTTP/2 200\r\ngithub-authentication-token-expiration: %s\r\n\r\n' \
+  "$(date -u -d '+5 days' '+%Y-%m-%d %H:%M:%S UTC')" >"$FHOME/.fake-github"
+run_check
+expect_rc 0
+expect_out "WARN the GitHub token expires in"
+expect_no_out "FAIL"
+end_case
+
+start_case "a_github_token_far_from_expiry_is_reported_with_its_date"
+seed_repo
+seed_home
+seed_installed
+EXP="$(date -u -d '+60 days' '+%Y-%m-%d %H:%M:%S UTC')"
+printf 'HTTP/2 200\r\ngithub-authentication-token-expiration: %s\r\n\r\n' "$EXP" >"$FHOME/.fake-github"
+run_check
+expect_rc 0
+expect_out "valid until $EXP"
+expect_no_out "WARN"
+end_case
+
+start_case "a_github_token_github_rejects_fails"
+seed_repo
+seed_home
+seed_installed
+printf 'HTTP/2 401\r\n\r\n' >"$FHOME/.fake-github"
+run_check
+expect_rc 1
+expect_out "GitHub rejects the stored token"
+expect_fail_count 1
+end_case
+
+start_case "the_github_token_travels_only_on_stdin_and_is_never_printed"
+seed_repo
+seed_home
+seed_installed
+printf 'github-mcp-server github_pat_SHOULDNOTLEAK\nanthropic sk-ant-FAKE\n' >"$FHOME/.fake-keyring"
+run_check
+expect_rc 0
+expect_no_out "SHOULDNOTLEAK"
+if grep -q SHOULDNOTLEAK "$FHOME/.curl-argv" 2>/dev/null; then
+  note "the token reached curl's argv"
+fi
+if [[ "$(cat "$FHOME/.curl-stdin" 2>/dev/null)" != "Authorization: Bearer github_pat_SHOULDNOTLEAK" ]]; then
+  note "curl was not handed exactly the Authorization header on stdin"
+fi
+end_case
+
+start_case "github_out_of_reach_skips_the_token_check_instead_of_failing"
+seed_repo
+seed_home
+seed_installed
+rm -f "$FHOME/.fake-github"
+run_check
+expect_rc 0
+expect_out "could not reach api.github.com"
+expect_no_out "FAIL"
+end_case
+
+start_case "no_pkgfile_database_warns_and_does_not_fail"
+seed_repo
+seed_home
+seed_installed
+rm -f "$FHOME/.fake-pkgfile-db"
+run_check
+expect_rc 0
+expect_out "WARN no database yet"
+expect_no_out "FAIL"
+end_case
+
+start_case "the_guard_sentinel_checked_is_the_one_dotctl_writes"
+# bash cannot share the Rust const, so the two spellings are diffed here.
+WANT="$(sed -n 's/^const HOST_GUARD_SENTINEL: &str = "\(.*\)";$/\1/p' "$REPO_ROOT/src/main.rs")"
+if [[ -z "$WANT" ]]; then
+  note "HOST_GUARD_SENTINEL not found in src/main.rs"
+elif ! grep -qF "*\"$WANT\"*" "$CHECK"; then
+  note "dotfiles-check does not test for the sentinel dotctl writes: $WANT"
+fi
 end_case
 
 printf '\n%s case(s), %s failed\n' "$CASES" "$FAILED"
