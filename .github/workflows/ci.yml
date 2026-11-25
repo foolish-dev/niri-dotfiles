@@ -92,21 +92,6 @@ jobs:
       # is deleting one they meant to keep. Hermetic: every case runs with
       # PROJ_DIR inside a mktemp -d, and the suite refuses to start otherwise.
       - run: tests/mkproj.sh
-      # The tracked configs ARE the live desktop — ~/.config/* symlinks into
-      # this repo — so a malformed one is a broken session, not a failed build.
-      # Nothing else in CI opens any of them. json and tomllib are stdlib, so
-      # this needs no install.
-      # LuaJIT, not luac: neovim runs LuaJIT, and Lua 5.4/5.5 disagrees with it
-      # on syntax in both directions — `local x = 1 //2` compiles under luac and
-      # not under luajit. A checker that disagrees with the runtime is worse
-      # than none. niri is not packaged for Ubuntu, so the KDL half skips here
-      # and runs on the author's machine, which the suite says out loud.
-      - run: command -v luajit >/dev/null || { sudo apt-get update && sudo apt-get install -y luajit; }
-      # PyYAML is the one non-stdlib parser the suite wants, and the files it
-      # checks include this one — a malformed workflow fails silently by simply
-      # not running, which is the failure mode least likely to be noticed.
-      - run: python3 -c 'import yaml' 2>/dev/null || sudo apt-get install -y python3-yaml
-      - run: tests/config-syntax.sh
       - run: tests/dotfiles-check.sh
       # The GitHub launcher holds a token for one moment: it must never start
       # the server without one, nor print it. Fakes for secret-tool and server.
@@ -126,3 +111,32 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/guard-venv"
           "$RUNNER_TEMP/guard-venv/bin/pip" install --quiet flask==3.0.3
           REQUIRE_FLASK=1 "$RUNNER_TEMP/guard-venv/bin/python" tests/hexstrike-host-guard.py
+
+  configs:
+    # The tracked configs ARE the live desktop — ~/.config/* symlinks into this
+    # repo — so a malformed one is a broken session, not a failed build. They
+    # are checked where they deploy: niri is packaged for Arch and not for
+    # Ubuntu, and Ubuntu's kitty trails the one these configs target, so its
+    # parser would call a newer option unknown. LuaJIT, not luac, because
+    # neovim runs LuaJIT and the two disagree on syntax in both directions.
+    # PyYAML because the files include this workflow, and a malformed workflow
+    # fails silently by not running. REQUIRE_PARSERS turns every "tool missing"
+    # SKIP into a FAIL, so a parser gone from the image fails the job rather
+    # than quietly checking nothing.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    # Pinned by digest, like the actions: a tag can be repointed. pacman -Syu
+    # brings the packages current whatever the image's age; bump the digest
+    # by hand now and then (registry-1.docker.io/v2/library/archlinux).
+    container: archlinux:latest@sha256:375a401bb3c6376b37f40b6dfa25067db37ec78d0b7af67ae6315f43a0184a9d
+    steps:
+      # git before checkout, or actions/checkout fetches a tarball and the
+      # suite's `git ls-files` has no repo. zsh because tmux.conf names it as
+      # the default shell, which tmux checks when the file is sourced.
+      - run: pacman -Syu --noconfirm --needed git niri kitty tmux zsh luajit python python-yaml systemd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The workspace belongs to the runner's user; the container runs as root.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: REQUIRE_PARSERS=1 tests/config-syntax.sh

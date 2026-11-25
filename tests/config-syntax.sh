@@ -13,11 +13,12 @@
 # JSON, JSONC, TOML and INI need nothing but python3's standard library, so
 # they are always parsed. The rest need a tool this suite will not install and
 # so gates on: `niri validate` for KDL, LuaJIT -- standalone or the copy inside
-# nvim -- for Lua, `systemd-analyze verify` for units and PyYAML for YAML.
-# Where the tool is missing the files are named in an explicit SKIP giving the
-# reason, because
-# the failure this file exists to prevent is a green run that quietly checked
-# nothing.
+# nvim -- for Lua, `systemd-analyze verify` for units, PyYAML for YAML, and
+# kitty's and tmux's own parsers for their configs. Where the tool is missing
+# the files are named in an explicit SKIP giving the reason, because the
+# failure this file exists to prevent is a green run that quietly checked
+# nothing. REQUIRE_PARSERS=1 makes each such SKIP a FAIL: CI sets it in an
+# image that has every tool, so a parser that vanishes fails the job.
 #
 # For the same reason the two gated-on parsers that could plausibly load and
 # then check nothing -- systemd-analyze and PyYAML -- are probed against a
@@ -61,6 +62,15 @@ bad()  {
   CHECKED=$((CHECKED + 1)); FAILED=$((FAILED + 1))
 }
 skip() { printf 'SKIP  %-46s %s\n' "$1" "$2"; SKIPPED=$((SKIPPED + 1)); }
+# A SKIP because a parser is not installed, as opposed to one a file earns by
+# what it is. Under REQUIRE_PARSERS it fails instead.
+missing_tool() {  # missing_tool <what> <reason>
+  if [[ -n "${REQUIRE_PARSERS:-}" ]]; then
+    bad "$1" "$2 (REQUIRE_PARSERS is set)"
+  else
+    skip "$1" "$2"
+  fi
+}
 
 # git ls-files reports what the index holds, which is not always what the
 # worktree has -- a file that was `rm`'d, or `git rm`'d without a commit, is
@@ -272,6 +282,41 @@ unit_check() {  # unit_check <path>
   fi
 }
 
+# kitty's own loader, without a window: `kitty +runpy` imports its config
+# module, which parses the file as kitty would and logs each line it rejects
+# ("Ignoring unknown config key: ...") while still exiting 0, so what it prints
+# is the verdict. The one expected line is the include of grogu.conf, which
+# grogu generates and git ignores.
+check_kitty() {  # check_kitty <path>
+  local out
+  present "$1" || return 0
+  out="$(kitty +runpy 'import sys; from kitty.config import load_config; load_config(sys.argv[-1])' "$1" 2>&1 |
+    grep -v -E 'Could not find included config file: .*/grogu\.conf' || true)"
+  if [[ -z "$out" ]]; then
+    ok "$1"
+  else
+    bad "$1" "$out"
+  fi
+}
+
+# tmux, executed rather than only parsed: parsing alone cannot tell a real
+# option from a typo. A throwaway server on its own socket starts with no
+# config, then the file is sourced into it as a command, and errors from a
+# command-line source-file come back to this client (rc 1, a line each), where
+# a startup config's errors would wait for an attach that never comes.
+check_tmux() {  # check_tmux <path>
+  local out sock="config-syntax-$$"
+  present "$1" || return 0
+  if out="$(env -u TMUX tmux -L "$sock" -f /dev/null new-session -d -s check "sleep 30" \; \
+    source-file "$1" 2>&1)"; then
+    ok "$1"
+  else
+    bad "$1" "$out"
+  fi
+  env -u TMUX tmux -L "$sock" kill-server 2>/dev/null || true
+  rm -f "${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)/$sock"
+}
+
 # PyYAML, probed the same way and for the same reason. It is not stdlib, and
 # this suite installs nothing, so a runner without it gets a SKIP naming the
 # files rather than a silent pass.
@@ -321,7 +366,7 @@ if command -v niri >/dev/null 2>&1; then
     esac
   done < <(git ls-files -z '*.kdl')
 else
-  skip "$(git ls-files '*.kdl' | tr '\n' ' ')" \
+  missing_tool "$(git ls-files '*.kdl' | tr '\n' ' ')" \
     "niri not installed; niri validate is the only KDL parser here"
 fi
 
@@ -338,7 +383,7 @@ if [[ -n "$LUA_TOOL" ]]; then
     esac
   done < <(git ls-files -z '*.lua')
 else
-  skip ".config/nvim/**.lua ($(git ls-files '*.lua' | wc -l) files)" \
+  missing_tool ".config/nvim/**.lua ($(git ls-files '*.lua' | wc -l) files)" \
     "no luajit and no nvim; luac 5.4/5.5 is the wrong dialect"
 fi
 
@@ -355,7 +400,7 @@ if [[ -n "$UNIT_TOOL" ]]; then
     esac
   done < <(git ls-files -z '*.service' '*.timer' '*.socket' '*.path' '*.target')
 else
-  skip "$(git ls-files '*.service' '*.timer' '*.socket' '*.path' '*.target' | wc -l) unit file(s)" \
+  missing_tool "$(git ls-files '*.service' '*.timer' '*.socket' '*.path' '*.target' | wc -l) unit file(s)" \
     "systemd-analyze verify absent or not diagnosing; it is the only unit parser here"
 fi
 
@@ -375,21 +420,31 @@ if [[ -n "$YAML_TOOL" ]]; then
   # is well-formed.
   while IFS= read -r -d '' f; do check yaml "$f"; done < <(git ls-files -z '*.yml' '*.yaml')
 else
-  skip "$(git ls-files '*.yml' '*.yaml' | wc -l) yml file(s)" \
+  missing_tool "$(git ls-files '*.yml' '*.yaml' | wc -l) yml file(s)" \
     "python3 has no stdlib YAML and PyYAML is not importable here"
 fi
 
 echo
 echo "==> INI and .conf"
-# One .conf extension, three formats behind it. Each is dispatched by name and
-# the ones with no offline parser are named individually rather than summed,
-# so the reason travels with the file.
+# One .conf extension, three formats behind it, each dispatched by name to
+# its own parser; a file whose parser is missing is named individually
+# rather than summed, so the reason travels with the file.
 while IFS= read -r -d '' f; do
   case "$f" in
     .config/kitty/*)
-      skip "$f" "kitty's own space-separated dialect; its parser needs a running kitty" ;;
+      if command -v kitty >/dev/null 2>&1; then
+        check_kitty "$f"
+      else
+        missing_tool "$f" "kitty not installed; its own loader is the only parser for its dialect"
+      fi
+      ;;
     .config/tmux/*)
-      skip "$f" "tmux's own dialect; parsing it means starting a server" ;;
+      if command -v tmux >/dev/null 2>&1; then
+        check_tmux "$f"
+      else
+        missing_tool "$f" "tmux not installed; only tmux can execute its config"
+      fi
+      ;;
     *)
       # gtk-3.0/gtk-4.0 settings.ini, qt5ct/qt6ct .conf and fuzzel.ini are all
       # section-and-key INI, and all five parse under configparser (checked).
