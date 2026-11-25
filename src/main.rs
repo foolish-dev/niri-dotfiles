@@ -927,6 +927,61 @@ fn patch_hexstrike_bind(src: &str) -> BindState {
     BindState::Unrecognized
 }
 
+/// The DNS-rebinding guard [`patch_hexstrike_host_guard`] inserts. It lives in
+/// a real Python file so tests/config-syntax.sh can parse it and it can be run
+/// against Flask on its own.
+const HEXSTRIKE_HOST_GUARD: &str = include_str!("../assets/hexstrike-host-guard.py");
+
+/// The guard's first line. Its presence is what "already guarded" means.
+const HOST_GUARD_SENTINEL: &str = "# dotctl: loopback-Host guard.";
+
+/// The guard decorates `app`, so it goes after the line that creates it.
+const HOST_GUARD_ANCHOR: &str = "app = Flask(__name__)\n";
+
+/// What [`patch_hexstrike_host_guard`] concluded about a `hexstrike_server.py`.
+#[derive(Debug, PartialEq, Eq)]
+enum HostGuardState {
+    /// The guard was inserted; the payload is the new file contents.
+    Inserted(String),
+    /// The guard is already in the file.
+    Present,
+    /// No `app = Flask(__name__)` line to put it after: upstream drifted.
+    NoAnchor,
+}
+
+/// Insert [`HEXSTRIKE_HOST_GUARD`] after the line that creates the Flask app.
+///
+/// [`patch_hexstrike_bind`] keeps other machines off the API; this keeps web
+/// pages off it. `/api/command` runs any shell command it is sent, with no
+/// token, and a loopback bind does nothing about the browser on the same box:
+/// a page that DNS-rebinds its own hostname to 127.0.0.1 reaches the port
+/// same-origin, so there is no CORS preflight to fail. The Host header still
+/// carries the page's own name, so the guard answers only loopback names.
+/// Flask's own TRUSTED_HOSTS setting would do this in one line, but it arrived
+/// in Flask 3.1 and the HexStrike venv runs 3.0.
+fn patch_hexstrike_host_guard(src: &str) -> HostGuardState {
+    if src.contains(HOST_GUARD_SENTINEL) {
+        return HostGuardState::Present;
+    }
+    let at_line_start = |i: &usize| *i == 0 || src.as_bytes()[i - 1] == b'\n';
+    match src
+        .match_indices(HOST_GUARD_ANCHOR)
+        .map(|(i, _)| i)
+        .find(at_line_start)
+    {
+        Some(i) => {
+            let end = i + HOST_GUARD_ANCHOR.len();
+            HostGuardState::Inserted(format!(
+                "{}\n{}\n{}",
+                &src[..end],
+                HEXSTRIKE_HOST_GUARD,
+                &src[end..]
+            ))
+        }
+        None => HostGuardState::NoAnchor,
+    }
+}
+
 /// Force-include `<unistd.h>` into a PKGBUILD's `build()` step. GCC 16
 /// stopped leaking `<unistd.h>` through unrelated headers, so sources that
 /// call `getpid()`/`read()`/etc. without including it no longer compile;
@@ -2354,37 +2409,7 @@ fn setup_hexstrike() -> Result<()> {
                     ));
                 }
                 ok("HexStrike bind pinned to $HEXSTRIKE_HOST (default 127.0.0.1)");
-                // The file is fixed, but a server that is *already running* keeps
-                // its old socket until it restarts, and the `enable --now` that
-                // deploy() runs later is a no-op on an active unit.
-                //
-                // Only restart when the unit is genuinely active. On a fresh
-                // machine deploy() has not symlinked hexstrike-server.service
-                // yet, and `try-restart` on an unknown unit exits 5 — which
-                // would print "may still be serving on 0.0.0.0" on every first
-                // install, when nothing was ever running. A scary warning that
-                // cries wolf on the common path teaches people to ignore the
-                // one case where it is real. `is-active` also answers no when
-                // there is no user bus at all (SSH without lingering), where
-                // nothing can be running either.
-                let running = Command::new("systemctl")
-                    .args(["--user", "is-active", "--quiet", "hexstrike-server.service"])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status()
-                    .map(|s| s.success())
-                    .unwrap_or(false);
-                if running {
-                    if let Err(e) = run(
-                        "systemctl",
-                        &["--user", "try-restart", "hexstrike-server.service"],
-                    ) {
-                        warn(&format!(
-                            "hexstrike-server.service did not restart, so it may still be \
-                             serving the old bind until you restart it by hand: {e}"
-                        ));
-                    }
-                }
+                restart_hexstrike_if_running("bind");
             }
             BindState::AlreadySafe => ok("HexStrike bind already loopback-only"),
             BindState::Unrecognized => {
@@ -2399,6 +2424,30 @@ fn setup_hexstrike() -> Result<()> {
         },
         Err(e) => warn(&format!(
             "could not read {} to check its bind address: {e}",
+            server_py.display()
+        )),
+    }
+
+    // The Host guard, re-applied on every run for the same reason as the bind.
+    // A missing anchor warns rather than failing the run: the API is still
+    // loopback-only, and deploy() will not *enable* a unit without the guard.
+    match fs::read_to_string(&server_py).map(|src| patch_hexstrike_host_guard(&src)) {
+        Ok(HostGuardState::Inserted(patched)) => {
+            fs::write(&server_py, patched).with_context(|| {
+                format!("inserting the Host guard into {}", server_py.display())
+            })?;
+            ok("HexStrike now answers only requests addressed to a loopback name");
+            restart_hexstrike_if_running("Host guard");
+        }
+        Ok(HostGuardState::Present) => ok("HexStrike Host guard already in place"),
+        Ok(HostGuardState::NoAnchor) => warn(&format!(
+            "no `app = Flask(__name__)` line in {} to put the Host guard after — upstream \
+             changed shape, so any web page that DNS-rebinds its name to 127.0.0.1 could \
+             drive /api/command. Teach `patch_hexstrike_host_guard` the new spelling.",
+            server_py.display()
+        )),
+        Err(e) => warn(&format!(
+            "could not read {} to add its Host guard: {e}",
             server_py.display()
         )),
     }
@@ -2419,6 +2468,39 @@ fn setup_hexstrike() -> Result<()> {
     ok("HexStrike ready (loopback :8888 via hexstrike-server.service)");
 
     Ok(())
+}
+
+/// Called after `hexstrike_server.py` was patched (`what` names the patch).
+/// The file is fixed, but a server that is *already running* keeps its old
+/// code until it restarts, and the `enable --now` that deploy() runs later is a
+/// no-op on an active unit.
+///
+/// Only restart when the unit is genuinely active. On a fresh machine deploy()
+/// has not symlinked hexstrike-server.service yet, and `try-restart` on an
+/// unknown unit exits 5 — which would print "may still be serving on 0.0.0.0"
+/// on every first install, when nothing was ever running. A scary warning that
+/// cries wolf on the common path teaches people to ignore the one case where it
+/// is real. `is-active` also answers no when there is no user bus at all (SSH
+/// without lingering), where nothing can be running either.
+fn restart_hexstrike_if_running(what: &str) {
+    let running = Command::new("systemctl")
+        .args(["--user", "is-active", "--quiet", "hexstrike-server.service"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if running {
+        if let Err(e) = run(
+            "systemctl",
+            &["--user", "try-restart", "hexstrike-server.service"],
+        ) {
+            warn(&format!(
+                "hexstrike-server.service did not restart, so it may still be serving \
+                 without the new {what} until you restart it by hand: {e}"
+            ));
+        }
+    }
 }
 
 // ── deploy ────────────────────────────────────────────────────────────────────
@@ -2874,23 +2956,35 @@ fn deploy(repo: &Path, home: &Path) -> Result<()> {
     // instead of trusting it. An unreadable/absent server.py means there is no
     // server to expose; enable_user_unit's own prereq check reports that case.
     let hex_server_py = h.join("tools/hexstrike-ai/hexstrike_server.py");
-    let bind_safe = match fs::read_to_string(&hex_server_py) {
-        Ok(src) => patch_hexstrike_bind(&src) == BindState::AlreadySafe,
-        Err(_) => true,
+    // Same re-verification for the Host guard: without it any web page that
+    // DNS-rebinds its name to 127.0.0.1 can drive the API.
+    let (bind_safe, host_guarded) = match fs::read_to_string(&hex_server_py) {
+        Ok(src) => (
+            patch_hexstrike_bind(&src) == BindState::AlreadySafe,
+            patch_hexstrike_host_guard(&src) == HostGuardState::Present,
+        ),
+        Err(_) => (true, true),
     };
-    if bind_safe {
-        enable_user_unit(
-            "hexstrike-server.service",
-            &h.join("tools/hexstrike-ai/hexstrike-env/bin/python3"),
-            "run `dotctl install` first to clone + venv hexstrike-ai",
-        );
-    } else {
+    if !bind_safe {
         warn(&format!(
             "hexstrike-server.service NOT enabled — {} is not bound to loopback. \
              Starting it would put an unauthenticated command API on every interface. \
              Run `dotctl install` to re-pin the bind.",
             hex_server_py.display()
         ));
+    } else if !host_guarded {
+        warn(&format!(
+            "hexstrike-server.service NOT enabled — {} lacks the loopback-Host guard, so \
+             any web page that DNS-rebinds its name to 127.0.0.1 could run commands \
+             through it. Run `dotctl install` to insert the guard.",
+            hex_server_py.display()
+        ));
+    } else {
+        enable_user_unit(
+            "hexstrike-server.service",
+            &h.join("tools/hexstrike-ai/hexstrike-env/bin/python3"),
+            "run `dotctl install` first to clone + venv hexstrike-ai",
+        );
     }
     enable_user_unit(
         "bb-auth.service",
@@ -3027,13 +3121,14 @@ mod tests {
         greetd_session_command, link_dotfiles, link_item, login_action, marker_still_valid_at,
         memlock_user, noctalia_plan, npu_pack, os_release_value, pacman_conf_has_repo,
         pacman_pkg_installed, parse_distro, parse_pci_id, patch_hexstrike_bind,
-        patch_pkgbuild_unistd, pci_devices, platform_devices, preferred_aur_helper,
-        refresh_aur_clone, refuse_conflicted_tree, sddm_theme_conf_body, sddm_theme_is_ours,
-        setup_gitconfig, sync_db_path, venv_ready, AsusPack, BindState, ChaoticAur, ChaoticState,
-        Distro, LoginAction, NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR,
-        ASUS_PLATFORM_DEVICE, AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER,
-        CURSOR_THEME_NAME, GITCONFIG_STUB, GREETD_CONFIG_BODY, LOOPBACK_BINDS, REGREET_CSS,
-        REGREET_TOML, XDNA_PCI_DEVICE_IDS,
+        patch_hexstrike_host_guard, patch_pkgbuild_unistd, pci_devices, platform_devices,
+        preferred_aur_helper, refresh_aur_clone, refuse_conflicted_tree, sddm_theme_conf_body,
+        sddm_theme_is_ours, setup_gitconfig, sync_db_path, venv_ready, AsusPack, BindState,
+        ChaoticAur, ChaoticState, Distro, HostGuardState, LoginAction, NoctaliaPlan, NpuPack,
+        ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, ASUS_PLATFORM_DEVICE, AUR_HELPERS, BASE_DESKTOP_HINT,
+        BASE_DESKTOP_MARKER, CURSOR_THEME_NAME, GITCONFIG_STUB, GREETD_CONFIG_BODY,
+        HEXSTRIKE_HOST_GUARD, HOST_GUARD_SENTINEL, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML,
+        XDNA_PCI_DEVICE_IDS,
     };
     use std::env;
     use std::fs;
@@ -3476,6 +3571,64 @@ mod tests {
             BindState::AlreadySafe,
             "second pass is a no-op"
         );
+    }
+
+    #[test]
+    fn host_guard_goes_right_after_the_app_and_only_once() {
+        // Upstream's import and its lines 94-95, verbatim.
+        let src = "from flask import Flask, request, jsonify\n\n\
+                   app = Flask(__name__)\n\
+                   app.config['JSON_SORT_KEYS'] = False\n";
+        let HostGuardState::Inserted(out) = patch_hexstrike_host_guard(src) else {
+            panic!("the guard must be inserted after `app = Flask(__name__)`");
+        };
+        let app = out.find("app = Flask(__name__)\n").unwrap();
+        let guard = out.find(HOST_GUARD_SENTINEL).unwrap();
+        let next = out.find("app.config['JSON_SORT_KEYS']").unwrap();
+        assert!(
+            app < guard && guard < next,
+            "guard must follow the app line: {out}"
+        );
+        assert_eq!(
+            out.replacen(&format!("\n{HEXSTRIKE_HOST_GUARD}\n"), "", 1),
+            src,
+            "nothing but the guard may change"
+        );
+        assert_eq!(
+            patch_hexstrike_host_guard(&out),
+            HostGuardState::Present,
+            "second pass is a no-op"
+        );
+    }
+
+    #[test]
+    fn host_guard_anchors_only_on_a_real_app_line() {
+        assert_eq!(
+            patch_hexstrike_host_guard("app = create_app()\n"),
+            HostGuardState::NoAnchor
+        );
+        // A comment quoting the line is not the line...
+        assert_eq!(
+            patch_hexstrike_host_guard("# app = Flask(__name__)\n"),
+            HostGuardState::NoAnchor
+        );
+        // ...but the real line after such a comment is, as is a first line.
+        for src in [
+            "# app = Flask(__name__)\napp = Flask(__name__)\n",
+            "app = Flask(__name__)\n",
+        ] {
+            assert!(
+                matches!(patch_hexstrike_host_guard(src), HostGuardState::Inserted(_)),
+                "{src:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn host_guard_sentinel_is_the_guards_own_first_line() {
+        // `Present` is decided by the sentinel. If the asset's first line drifted
+        // from it, every run would insert the guard again.
+        assert!(HEXSTRIKE_HOST_GUARD.starts_with(HOST_GUARD_SENTINEL));
     }
 
     #[test]

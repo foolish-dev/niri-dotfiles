@@ -130,6 +130,11 @@ try:
         cp = configparser.ConfigParser(strict=True, interpolation=None)
         with open(path, encoding="utf-8") as fh:
             cp.read_file(fh)
+    elif kind == "python":
+        # ast.parse, not py_compile: compiling writes __pycache__ into the repo.
+        import ast
+        with open(path, encoding="utf-8") as fh:
+            ast.parse(fh.read(), path)
     else:
         text = open(path, encoding="utf-8").read()
         json.loads(strip_jsonc(text) if kind == "jsonc" else text)
@@ -314,6 +319,12 @@ while IFS= read -r -d '' f; do check jsonc "$f"; done < <(git ls-files -z '*.jso
 echo
 echo "==> TOML"
 while IFS= read -r -d '' f; do check toml "$f"; done < <(git ls-files -z '*.toml')
+
+# Python that dotctl compiles in and pastes into a live server: a syntax error
+# there would take the HexStrike API down on the next `dotctl install`.
+echo
+echo "==> Python"
+while IFS= read -r -d '' f; do check python "$f"; done < <(git ls-files -z '*.py')
 
 echo
 echo "==> KDL"
