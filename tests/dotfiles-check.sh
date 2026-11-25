@@ -126,7 +126,14 @@ stub noctalia \
   '[[ -e "$HOME/.fake-noctalia-wedged" ]] && exec sleep 60' \
   '[[ -e "$HOME/.fake-noctalia-down" ]] && { echo "error: noctalia is not running" >&2; exit 1; }' \
   'echo "{}"'
-for t in npx github-mcp-server lazygit clangd rust-analyzer secret-tool pkgfile curl noctalia; do
+# grogu reports the version in ~/.fake-grogu-version, or 0.2.0 -- the first that
+# writes Noctalia v5's palette.
+# shellcheck disable=SC2016
+stub grogu \
+  '[[ "${1:-}" == --version ]] || exit 0' \
+  'v=0.2.0; [[ -f "$HOME/.fake-grogu-version" ]] && v="$(<"$HOME/.fake-grogu-version")"' \
+  'echo "grogu $v"'
+for t in npx github-mcp-server lazygit clangd rust-analyzer secret-tool pkgfile curl noctalia grogu; do
   ln -sf "$STUB_BIN/$t" "$NOSYSTEMD_BIN/$t"
 done
 
@@ -151,6 +158,7 @@ OUT=""
 PROBLEMS=()
 FREPO=""
 FHOME=""
+FROOT=""
 CHECK_PATH=""
 CHECK_WAYLAND=""
 
@@ -163,6 +171,7 @@ start_case() {
   OUT=""
   FREPO="$WORK/repo.$CASES"
   FHOME="$WORK/home.$CASES"
+  FROOT="$WORK/root.$CASES"  # the /etc and /usr the check reads
   CHECK_PATH="$STUB_BIN:$PATH"
   # Every case is "inside a Wayland session" unless it says otherwise: the
   # developer's WAYLAND_DISPLAY and CI's lack of one must not decide a case.
@@ -209,7 +218,8 @@ seed_home() {
 # seed_installed -- what a completed `dotctl install` leaves: HexStrike with its
 # Host guard, both secrets in the keyring, a token GitHub accepts (no expiry
 # header, so the date arithmetic is not reached on a stripped PATH), a pkgfile
-# database and the wallpapers clone.
+# database, grogu's palette, the SDDM theme and ReGreet background dotctl names,
+# and the wallpapers clone.
 seed_installed() {
   mkdir -p "$FHOME/tools/hexstrike-ai" "$FREPO/wallpapers/.git"
   printf 'app = Flask(__name__)\n\n# dotctl: loopback-Host guard. inserted\n' \
@@ -217,6 +227,13 @@ seed_installed() {
   printf 'github-mcp-server github_pat_FAKE\nanthropic sk-ant-FAKE\n' >"$FHOME/.fake-keyring"
   printf 'HTTP/2 200\r\n\r\n' >"$FHOME/.fake-github"
   : >"$FHOME/.fake-pkgfile-db"
+  mkdir -p "$FREPO/.config/noctalia/palettes" "$FROOT/etc/sddm.conf.d" "$FROOT/etc/greetd" \
+    "$FROOT/usr/share/sddm/themes/noctalia" "$FROOT/usr/share/noctalia/assets"
+  printf '{"dark": {}, "light": {}}\n' >"$FREPO/.config/noctalia/palettes/Grogu.json"
+  printf '[Theme]\nCurrent=noctalia\n' >"$FROOT/etc/sddm.conf.d/10-noctalia-theme.conf"
+  printf '[background]\npath = "/usr/share/noctalia/assets/noctalia-wallpaper.png"\n' \
+    >"$FROOT/etc/greetd/regreet.toml"
+  : >"$FROOT/usr/share/noctalia/assets/noctalia-wallpaper.png"
 }
 
 # run_check [DOTFILES-override] -- run the subject against this case's fixtures
@@ -226,6 +243,7 @@ run_check() {
   RAN=1
   RC=0
   OUT="$(env PATH="$CHECK_PATH" HOME="$FHOME" DOTFILES="${1:-$FREPO}" WAYLAND_DISPLAY="$CHECK_WAYLAND" \
+    DOTFILES_CHECK_ROOT="$FROOT" \
     "$BASH_BIN" "$CHECK" 2>&1)" || RC=$?
   OUT="$(printf '%s\n' "$OUT" | sed "s/$(printf '\033')\[[0-9;]*m//g")"
 }
@@ -238,7 +256,7 @@ run_check() {
 run_check_repovar() {
   RAN=1
   RC=0
-  OUT="$(env -u DOTFILES -u DOTFILES_REPO PATH="$CHECK_PATH" HOME="$FHOME" WAYLAND_DISPLAY="$CHECK_WAYLAND" "$@" \
+  OUT="$(env -u DOTFILES -u DOTFILES_REPO PATH="$CHECK_PATH" HOME="$FHOME" WAYLAND_DISPLAY="$CHECK_WAYLAND" DOTFILES_CHECK_ROOT="$FROOT" "$@" \
     "$BASH_BIN" "$CHECK" 2>&1)" || RC=$?
   OUT="$(printf '%s\n' "$OUT" | sed "s/$(printf '\033')\[[0-9;]*m//g")"
 }
@@ -618,6 +636,10 @@ expect_out "something is stored under service anthropic"
 expect_out "GitHub accepts the stored token"
 expect_out "command-not-found can name packages"
 expect_out "private wallpapers clone present"
+expect_out "OK   grogu 0.2.0"
+expect_out "Noctalia's Grogu palette present"
+expect_out "SDDM theme noctalia installed"
+expect_out "ReGreet background present"
 end_case
 
 start_case "a_program_the_configs_call_that_is_missing_fails_by_name"
@@ -807,6 +829,122 @@ ELAPSED=$((SECONDS - STARTED))
 expect_rc 1
 expect_out "FAIL Noctalia is installed but not answering"
 ((ELAPSED < 30)) || note "the check waited ${ELAPSED}s on a shell that never answered"
+end_case
+
+# =============================================================================
+# The theme pipeline and the login screens.
+# =============================================================================
+start_case "a_grogu_older_than_0_2_fails"
+seed_repo
+seed_home
+seed_installed
+printf '0.1.0\n' >"$FHOME/.fake-grogu-version"
+run_check
+expect_rc 1
+expect_out "FAIL grogu 0.1.0 predates 0.2.0"
+expect_fail_count 1
+end_case
+
+# Numeric, not lexical: as strings, "0.10.0" sorts before "0.2.0".
+start_case "grogu_0_10_is_not_older_than_0_2"
+seed_repo
+seed_home
+seed_installed
+printf '0.10.0\n' >"$FHOME/.fake-grogu-version"
+run_check
+expect_rc 0
+expect_out "OK   grogu 0.10.0"
+end_case
+
+start_case "a_grogu_that_reports_no_version_fails"
+seed_repo
+seed_home
+seed_installed
+printf 'unknown\n' >"$FHOME/.fake-grogu-version"
+run_check
+expect_rc 1
+expect_out "FAIL grogu reports no version"
+end_case
+
+start_case "grogu_not_installed_fails_by_name"
+seed_repo
+seed_home
+seed_installed
+path_without grogu
+run_check
+expect_rc 1
+expect_out "FAIL grogu not installed"
+expect_fail_count 1
+end_case
+
+# The hook names ~/.cargo/bin/grogu, which need not be on PATH.
+start_case "grogu_in_cargo_bin_counts_without_being_on_path"
+seed_repo
+seed_home
+seed_installed
+path_without grogu
+mkdir -p "$FHOME/.cargo/bin"
+ln -s "$STUB_BIN/grogu" "$FHOME/.cargo/bin/grogu"
+run_check
+expect_rc 0
+expect_out "OK   grogu 0.2.0"
+end_case
+
+start_case "no_palette_yet_warns_and_does_not_fail"
+seed_repo
+seed_home
+seed_installed
+rm "$FREPO/.config/noctalia/palettes/Grogu.json"
+run_check
+expect_rc 0
+expect_out "WARN no Grogu palette yet"
+expect_no_out "FAIL"
+end_case
+
+start_case "an_sddm_theme_that_is_not_installed_fails"
+seed_repo
+seed_home
+seed_installed
+rm -r "$FROOT/usr/share/sddm/themes/noctalia"
+run_check
+expect_rc 1
+expect_out "FAIL SDDM theme noctalia is not installed"
+expect_fail_count 1
+end_case
+
+# .local/bin/sddm-theme switches the drop-in: check the theme it names.
+start_case "the_sddm_theme_checked_is_the_one_the_drop_in_names"
+seed_repo
+seed_home
+seed_installed
+printf '[Theme]\nCurrent=maya\n' >"$FROOT/etc/sddm.conf.d/10-noctalia-theme.conf"
+run_check
+expect_rc 1
+expect_out "FAIL SDDM theme maya is not installed"
+mkdir -p "$FROOT/usr/share/sddm/themes/maya"
+run_check
+expect_rc 0
+expect_out "OK   SDDM theme maya installed"
+end_case
+
+# What the Noctalia v5 update did: the image ReGreet named was deleted.
+start_case "a_regreet_background_that_is_gone_warns"
+seed_repo
+seed_home
+seed_installed
+rm "$FROOT/usr/share/noctalia/assets/noctalia-wallpaper.png"
+run_check
+expect_rc 0
+expect_out "WARN ReGreet's background /usr/share/noctalia/assets/noctalia-wallpaper.png is gone"
+expect_no_out "FAIL"
+end_case
+
+start_case "the_regreet_path_checked_is_the_one_dotctl_ships"
+# Drift guard: the tracked asset's background must be a path this suite's
+# installed fixture provides, or the cases above test a different file.
+WANT="$(sed -n 's/^path = "\(.*\)"$/\1/p' "$REPO_ROOT/assets/greetd/regreet.toml")"
+[[ "$WANT" == /usr/share/noctalia/assets/noctalia-wallpaper.png ]] ||
+  note "assets/greetd/regreet.toml names $WANT; update seed_installed to match"
 end_case
 
 printf '\n%s case(s), %s failed\n' "$CASES" "$FAILED"

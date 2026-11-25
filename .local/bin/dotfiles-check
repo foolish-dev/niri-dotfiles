@@ -7,7 +7,7 @@
 # session start, or links left pointing at a path that has since gone away.
 # Then what `dotctl install` sets up: the programs the configs call,
 # HexStrike's Host guard, the keyring secrets and the GitHub token's expiry,
-# the pkgfile database, the wallpapers.
+# the pkgfile database, the theme pipeline, the login screens, the wallpapers.
 #
 # The resolve half is what was missing, and it certified dead desktops: the
 # test was `readlink -f "$path" == $DOTFILES/*`, and readlink -f prints a path
@@ -29,6 +29,7 @@
 # Usage: dotfiles-check          (run any time; exits 1 if anything is red)
 #        dotfiles-check --list   (repo-relative paths it expects deployed)
 # Override repo path: DOTFILES_REPO=/path/to/repo dotfiles-check  (DOTFILES also works)
+# DOTFILES_CHECK_ROOT=/path prefixes the system paths it reads (/etc, /usr); for tests.
 set -uo pipefail
 # An empty .local/bin or systemd/user must expand to nothing rather than to a
 # literal '*', and dotctl links dot-prefixed files in those dirs too.
@@ -309,6 +310,73 @@ elif pkgfile -b pkgfile >/dev/null 2>&1; then
   ok "present -- command-not-found can name packages"
 else
   warn "no database yet -- pkgfile-update.timer builds it daily; \`sudo pkgfile -u\` builds it now"
+fi
+
+echo "==> Theme"
+# grogu repaints the desktop on every wallpaper change, and since 0.2.0 it also
+# writes Noctalia's palette; an older one fails at its first step and repaints
+# nothing at all. The hook calls ~/.cargo/bin/grogu, which may not be on PATH.
+GROGU="$(command -v grogu 2>/dev/null || true)"
+[[ -z "$GROGU" && -x "$HOME/.cargo/bin/grogu" ]] && GROGU="$HOME/.cargo/bin/grogu"
+if [[ -z "$GROGU" ]]; then
+  bad "grogu not installed -- wallpaper changes repaint nothing (run \`dotctl install\`)"
+else
+  ver="$("$GROGU" --version 2>/dev/null)"
+  ver="${ver#* }"
+  if [[ ! "$ver" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+    bad "grogu reports no version -- reinstall it (run \`dotctl install\`)"
+  elif (( 10#${BASH_REMATCH[1]} == 0 && 10#${BASH_REMATCH[2]} < 2 )); then
+    bad "grogu $ver predates 0.2.0 and cannot write Noctalia v5's palette (run \`dotctl install\`)"
+  else
+    ok "grogu $ver"
+  fi
+fi
+if [[ -f "$HOME/.config/noctalia/palettes/Grogu.json" ]]; then
+  ok "Noctalia's Grogu palette present"
+else
+  warn "no Grogu palette yet -- Noctalia shows its built-in one until grogu runs (the next wallpaper change, or \`grogu apply --extract --reload\`)"
+fi
+
+echo "==> Login screens"
+# What `dotctl install` points them at. A package update can take the file
+# away: Noctalia's move to v5 deleted the image ReGreet's background named.
+ROOT="${DOTFILES_CHECK_ROOT:-}"
+SDDM_CONF="$ROOT/etc/sddm.conf.d/10-noctalia-theme.conf"
+if [[ ! -f "$SDDM_CONF" ]]; then
+  skip "no SDDM theme drop-in ($SDDM_CONF absent)"
+else
+  # Read, not assumed: .local/bin/sddm-theme switches it.
+  theme=""
+  while IFS='=' read -r key value; do
+    [[ "$key" == Current ]] && theme="$value"
+  done <"$SDDM_CONF"
+  if [[ -z "$theme" ]]; then
+    warn "$SDDM_CONF names no theme -- SDDM shows its default"
+  elif [[ -d "$ROOT/usr/share/sddm/themes/$theme" ]]; then
+    ok "SDDM theme $theme installed"
+  else
+    bad "SDDM theme $theme is not installed -- the login screen falls back to SDDM's default (run \`dotctl install\`)"
+  fi
+fi
+# The greetd fallback, disabled while SDDM runs, so its loss is a warning.
+REGREET="$ROOT/etc/greetd/regreet.toml"
+if [[ ! -f "$REGREET" ]]; then
+  skip "no ReGreet config ($REGREET absent)"
+else
+  bg=""
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^path[[:space:]]*=[[:space:]]*\"(.*)\" ]]; then
+      bg="${BASH_REMATCH[1]}"
+      break
+    fi
+  done <"$REGREET"
+  if [[ -z "$bg" ]]; then
+    warn "$REGREET names no background"
+  elif [[ -f "$ROOT$bg" ]]; then
+    ok "ReGreet background present ($bg)"
+  else
+    warn "ReGreet's background $bg is gone -- the fallback greeter shows none (run \`dotctl install\`)"
+  fi
 fi
 
 echo "==> Wallpapers"
