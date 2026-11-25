@@ -194,8 +194,7 @@ fn sudo_write_owned(path: &str, content: &str) -> Result<()> {
 /// with no readable os-release at all — keeps doing exactly what it did before.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Distro {
-    /// `ID=cachyos`. Ships the `[cachyos]` repo, which carries yay, paru,
-    /// noctalia-shell and noctalia-qs.
+    /// `ID=cachyos`. Ships the `[cachyos]` repo, which carries yay and paru.
     CachyOs,
     /// `ID=arch` — stock Arch Linux.
     Arch,
@@ -297,8 +296,7 @@ enum ChaoticAur {
     /// Add it. On stock Arch it is dotctl's only source for an AUR helper —
     /// neither yay nor paru is in any Arch official repo.
     Add,
-    /// Skip it. `[cachyos]` already carries yay and paru, and chaotic-aur
-    /// carries neither noctalia-shell nor noctalia-qs (it never did).
+    /// Skip it. `[cachyos]` already carries yay and paru.
     SkipRedundant,
 }
 
@@ -321,42 +319,6 @@ fn aur_helper_hint(distro: Distro) -> &'static str {
             "install one by hand (`git clone https://aur.archlinux.org/yay.git && cd yay && makepkg -si`), \
              or rerun `dotctl install` now that the chaotic-aur repo is configured"
         }
-    }
-}
-
-/// Noctalia's v4 quickshell package. Exists ONLY in CachyOS's `[cachyos]` repo
-/// — not Arch `extra`, not chaotic-aur, and not the AUR under this name.
-const NOCTALIA_SHELL_PKG: &str = "noctalia-shell";
-
-/// What to do about the Noctalia shell, given whether pacman can resolve it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum NoctaliaPlan {
-    /// A configured repository carries it — install it.
-    Install,
-    /// It doesn't resolve; carry the distro-appropriate way to fix that.
-    Unavailable(&'static str),
-}
-
-/// Deliberately never substitutes `extra/noctalia` (the upstream v5 rename):
-/// v5 is a different shell with a different config schema, and this repo's
-/// tracked ~/.config/noctalia plus the `qs -c noctalia-shell` spawns in
-/// .config/niri/config.kdl target the v4 quickshell shell. Silently swapping
-/// it would break the deployed configs on *both* distros.
-fn noctalia_plan(distro: Distro, in_repos: bool) -> NoctaliaPlan {
-    if in_repos {
-        return NoctaliaPlan::Install;
-    }
-    match distro {
-        Distro::CachyOs => NoctaliaPlan::Unavailable(
-            "the [cachyos] repo looks to be missing from /etc/pacman.conf — restore it with \
-             the official cachyos-repo.sh, then rerun `dotctl install`",
-        ),
-        Distro::Arch | Distro::ArchDerivative | Distro::Unknown => NoctaliaPlan::Unavailable(
-            "it is packaged only by CachyOS — add the [cachyos] repo \
-             (https://mirror.cachyos.org/cachyos-repo.tar.xz) and rerun `dotctl install`. \
-             `extra/noctalia` is the upstream v5 rename, NOT a drop-in for the v4 shell \
-             this repo's ~/.config/noctalia targets",
-        ),
     }
 }
 
@@ -586,11 +548,10 @@ fn repo_has_pkg(pkg: &str) -> bool {
 
 /// Same shape as [`ensure_pacman`] but detects already-installed state
 /// via `pacman -Q PKG` instead of `command -v BINARY`. Required for
-/// noctalia-shell, whose pacman package places QML config under
-/// /etc/xdg/quickshell/noctalia-shell/ and exposes no command of the
-/// same name — so the binary check always missed and `dotctl install`
-/// re-invoked `sudo pacman -S` (prompting for a password each run)
-/// even when the package was already up to date.
+/// packages that put no command of their own name on PATH — fonts, icon
+/// themes, the NPU stack — where the binary check always missed and
+/// `dotctl install` re-invoked `sudo pacman -S` (prompting for a password
+/// each run) even when the package was already up to date.
 fn ensure_pacman_pkg(label: &str, pkg: &str, packages: &[&str]) -> Result<()> {
     if pacman_pkg_installed(pkg) {
         ok(&format!("{label} already installed"));
@@ -601,8 +562,8 @@ fn ensure_pacman_pkg(label: &str, pkg: &str, packages: &[&str]) -> Result<()> {
 }
 
 /// [`optional_pacman`] with the `pacman -Q` gate of [`ensure_pacman_pkg`], for
-/// the optional packages that ship no binary of their own (a font, a QML
-/// shell). Same warn-and-continue contract, same `lost` fragment.
+/// the optional packages that ship no binary of their own (a font, an icon
+/// theme). Same warn-and-continue contract, same `lost` fragment.
 fn optional_pacman_pkg(label: &str, pkg: &str, packages: &[&str], lost: &str) {
     if let Err(e) = ensure_pacman_pkg(label, pkg, packages) {
         warn(&format!("{label} not installed: {e} — {lost}"));
@@ -674,12 +635,6 @@ fn ensure_aur_helper(distro: Distro) -> Option<&'static str> {
 /// helper binary (see [`ensure_aur_helper`]). Used for the packages that are
 /// genuinely in no binary repo on either distro: `sddm-theme-noctalia-git`,
 /// `wvkbd`, `iio-niri`, `noctalia-unofficial-auth-agent-git`.
-///
-/// (An earlier version of this comment claimed the chaotic-aur setup covered
-/// noctalia-shell + noctalia-qs, and that it ran earlier in `install()`. Both
-/// halves were false — chaotic-aur carries neither package, neither name
-/// exists in the AUR, and `setup_chaotic_aur` ran *after* these calls. See
-/// [`noctalia_plan`].)
 ///
 /// Best-effort: an AUR build failure (e.g. an upstream PKGBUILD broken against
 /// the current toolchain) warns and returns Ok(()). AUR packages are optional
@@ -2310,12 +2265,10 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     // bootstrap below — see the note there.
 
     // Chaotic AUR. On stock Arch this is dotctl's only source for an AUR
-    // helper — neither yay nor paru is in any Arch official repo. It is NOT a
-    // source for noctalia-shell/noctalia-qs; the comment that used to claim so
-    // was wrong (chaotic-aur carries neither, and neither name exists in the
-    // AUR). Skipped on CachyOS, where [cachyos] already carries yay and paru
-    // and where adding a lower-priority third-party repo only widens the
-    // versioned-dependency fallthrough surface for nothing.
+    // helper — neither yay nor paru is in any Arch official repo. Skipped on
+    // CachyOS, where [cachyos] already carries yay and paru and where adding a
+    // lower-priority third-party repo only widens the versioned-dependency
+    // fallthrough surface for nothing.
     // Warn-and-continue, not `?`. Both of these reach the network for a
     // third-party key and CDN, and neither is a dependency of anything below:
     // chaotic-aur exists only as an AUR-helper source (and `ensure_aur_helper`
@@ -2565,38 +2518,17 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         &["fwupd"],
         "`dotctl deploy` will skip fwupd-check.timer",
     );
-    // Noctalia: the v4 quickshell shell plus its quickshell fork. Both
-    // packages exist ONLY in CachyOS's [cachyos] repo — not Arch `extra`, not
-    // chaotic-aur, not the AUR — so `pacman -Si` is the honest gate. On
-    // CachyOS it resolves and nothing changes; elsewhere we warn with a fix
-    // instead of taking down the rest of install() (and, under `dotctl all`,
-    // the whole deploy) with a hard `?`.
-    //
-    // Do NOT substitute `extra/noctalia` (the v5 rename): different shell,
-    // different config schema, and the tracked ~/.config/noctalia plus the
-    // `qs -c noctalia-shell` spawns in .config/niri/config.kdl target v4. Do
-    // NOT add `quickshell` either — noctalia-qs both provides *and* conflicts
-    // with it, so naming it is a hard conflict on CachyOS.
-    if pacman_pkg_installed(NOCTALIA_SHELL_PKG) {
-        ok("Noctalia already installed");
-    } else {
-        match noctalia_plan(distro, repo_has_pkg(NOCTALIA_SHELL_PKG)) {
-            // Warn on failure, exactly as the sibling arm below already does
-            // when the package is in no repo at all: "the download broke" and
-            // "the package does not exist here" cost the user the same thing,
-            // so it would be incoherent for one to abort the run and the other
-            // to print a line.
-            NoctaliaPlan::Install => optional_pacman_pkg(
-                "Noctalia",
-                NOCTALIA_SHELL_PKG,
-                &[NOCTALIA_SHELL_PKG, "noctalia-qs"],
-                "you get bare niri — no bar, no notifications, no shell",
-            ),
-            NoctaliaPlan::Unavailable(hint) => warn(&format!(
-                "Noctalia ({NOCTALIA_SHELL_PKG}) is in no configured repository — {hint}"
-            )),
-        }
-    }
+    // Noctalia v5 (`noctalia`), the shell niri starts. It replaced the
+    // Quickshell-based v4 (noctalia-shell + noctalia-qs, packaged only by
+    // CachyOS): from noctalia-shell 5.6.0 on, that package no longer holds the
+    // v4 shell, so `qs -c noctalia-shell` has nothing to start. v5 is in Arch
+    // `extra`, so every distro installs it the same way.
+    optional_pacman(
+        "Noctalia",
+        "noctalia",
+        &["noctalia"],
+        "you get bare niri — no bar, no notifications, no shell",
+    );
     // The cursor theme every config in this repo names (see
     // [`CURSOR_THEME_NAME`]) and that nothing installed. Placed here, just
     // ahead of the greeter setup that writes `CursorTheme=` into
@@ -3463,17 +3395,17 @@ mod tests {
         chaotic_aur_policy, chaotic_state, checkout_fingerprint, command_exists, copy_item, fnv1a,
         git_has_conflicts, git_pull, gitconfig_identity_is_placeholder, gitconfig_lacks_include,
         greetd_is_replaceable, greetd_session_command, is_wallpaper_image, link_dotfiles,
-        link_item, login_action, marker_still_valid_at, memlock_user, noctalia_plan, npu_pack,
-        os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
+        link_item, login_action, marker_still_valid_at, memlock_user, npu_pack, os_release_value,
+        pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
         patch_hexstrike_bind, patch_hexstrike_host_guard, patch_pkgbuild_unistd, pci_devices,
         pkgfile_db_present, platform_devices, preferred_aur_helper, refresh_aur_clone,
         refuse_conflicted_tree, sddm_theme_conf_body, sddm_theme_is_ours, setup_gitconfig,
         sync_db_path, venv_ready, wallpaper_plan, AsusPack, BindState, ChaoticAur, ChaoticState,
-        Distro, HostGuardState, LoginAction, NoctaliaPlan, NpuPack, WallpaperPlan,
-        ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, ASUS_PLATFORM_DEVICE, AUR_HELPERS, BASE_DESKTOP_HINT,
-        BASE_DESKTOP_MARKER, BUILT_FROM, CURSOR_THEME_NAME, FNV_OFFSET, GITCONFIG_STUB,
-        GREETD_CONFIG_BODY, HEXSTRIKE_HOST_GUARD, HOST_GUARD_SENTINEL, LOOPBACK_BINDS, REGREET_CSS,
-        REGREET_TOML, SELF_SOURCE, XDNA_PCI_DEVICE_IDS,
+        Distro, HostGuardState, LoginAction, NpuPack, WallpaperPlan, ALL_INTERFACE_BINDS,
+        AMD_PCI_VENDOR, ASUS_PLATFORM_DEVICE, AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER,
+        BUILT_FROM, CURSOR_THEME_NAME, FNV_OFFSET, GITCONFIG_STUB, GREETD_CONFIG_BODY,
+        HEXSTRIKE_HOST_GUARD, HOST_GUARD_SENTINEL, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML,
+        SELF_SOURCE, XDNA_PCI_DEVICE_IDS,
     };
     use std::env;
     use std::fs;
@@ -5660,39 +5592,6 @@ LOGO=cachyos
         assert_eq!(preferred_aur_helper(|h| h == "paru"), Some("paru"));
         assert_eq!(preferred_aur_helper(|h| h == "yay"), Some("yay"));
         assert_eq!(preferred_aur_helper(|_| false), None);
-    }
-
-    #[test]
-    fn noctalia_plan_installs_whenever_the_package_resolves() {
-        // Availability-driven, not distro-driven: CachyOS is bit-for-bit
-        // unchanged, and an Arch box that added [cachyos] works identically.
-        for d in [
-            Distro::CachyOs,
-            Distro::Arch,
-            Distro::ArchDerivative,
-            Distro::Unknown,
-        ] {
-            assert_eq!(noctalia_plan(d, true), NoctaliaPlan::Install, "{d:?}");
-        }
-    }
-
-    #[test]
-    fn noctalia_plan_hints_at_the_cachyos_repo_and_warns_off_the_v5_substitution() {
-        // Keeps the anti-substitution warning in the binary, guarding the
-        // single most damaging "fix" available at that call site.
-        for d in [Distro::Arch, Distro::ArchDerivative, Distro::Unknown] {
-            match noctalia_plan(d, false) {
-                NoctaliaPlan::Unavailable(h) => {
-                    assert!(h.contains("[cachyos]"), "{d:?} should name the repo");
-                    assert!(h.contains("v5"), "{d:?} should warn off extra/noctalia");
-                }
-                other => panic!("{d:?} expected Unavailable, got {other:?}"),
-            }
-        }
-        match noctalia_plan(Distro::CachyOs, false) {
-            NoctaliaPlan::Unavailable(h) => assert!(h.contains("/etc/pacman.conf")),
-            other => panic!("expected Unavailable, got {other:?}"),
-        }
     }
 
     // ── AMD XDNA NPU detection ───────────────────────────────────────────
