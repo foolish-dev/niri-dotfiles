@@ -53,11 +53,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # ShellCheck ships on the runner image today. Installing it when absent
-      # costs one line and stops a green run from depending on that staying
-      # true.
-      - run: command -v shellcheck >/dev/null || { sudo apt-get update && sudo apt-get install -y shellcheck; }
-      - run: shellcheck .local/bin/* tests/*.sh .config/tmux/scripts/*.sh
+      # Pinned, not the runner's copy: ubuntu-24.04 ships ShellCheck 0.9.0, which
+      # flags trap-only cleanup functions as unreachable (SC2317) and
+      # `cmd && var=1 || true` (SC2015) where 0.11.0 -- what Arch packages and
+      # what these scripts are linted with locally -- flags neither. With the
+      # runner's copy this step failed on every push from the day it was added.
+      # The sha256 is GitHub's published digest for the release asset.
+      - run: |
+          curl -fsSLo "$RUNNER_TEMP/shellcheck.tar.xz" https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  $RUNNER_TEMP/shellcheck.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/shellcheck.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/shellcheck-v0.11.0" >> "$GITHUB_PATH"
+      - run: shellcheck --version && shellcheck .local/bin/* tests/*.sh .config/tmux/scripts/*.sh
       # `hexstrike-assert-loopback` is the one script whose failure mode is an
       # unauthenticated command API left reachable, so its behaviour is pinned
       # rather than only linted. The suite is hermetic — a fake `ss` first on
