@@ -29,11 +29,16 @@ jobs:
     env:
       RUSTFLAGS: -D warnings
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      # Actions are pinned to commit SHAs, not tags: a tag can be repointed at
+      # different code, a SHA cannot. Dependabot bumps a SHA and its version
+      # comment together. rust-toolchain has no release tags -- its branch name
+      # picks the toolchain, and this is the tip of `stable` -- so expect to
+      # bump that one by hand; the Rust it installs is still current stable.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo build --all-targets --locked
@@ -52,7 +57,7 @@ jobs:
       github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Pinned, not the runner's copy: ubuntu-24.04 ships ShellCheck 0.9.0, which
       # flags trap-only cleanup functions as unreachable (SC2317) and
       # `cmd && var=1 || true` (SC2015) where 0.11.0 -- what Arch packages and
