@@ -158,6 +158,13 @@ else
   if [[ -e "$DOTFILES/.gitconfig" ]] || aims_into_repo "$HOME/$GITCONFIG_DEST"; then
     want "$HOME/$GITCONFIG_DEST" "$DOTFILES/.gitconfig"
   fi
+  # Any other link into the repo at the top of ~/.config or ~: a config or a
+  # dotfile the repo has since dropped, left by an older deploy. The lists above
+  # name only what the repo still deploys, so these would go unchecked, while
+  # deploy sweeps exactly these directories and clears them.
+  for p in "$HOME"/.config/* "$HOME"/*; do
+    aims_into_repo "$p" && want "$p" "$DOTFILES${p#"$HOME"}"
+  done
 
   # Units and scripts are linked file by file, not as whole directories. Repo
   # side first (skipping symlinks, as read_dir()/is_file() does), then whatever

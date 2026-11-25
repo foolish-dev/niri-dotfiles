@@ -831,6 +831,23 @@ expect_out "FAIL Noctalia is installed but not answering"
 ((ELAPSED < 30)) || note "the check waited ${ELAPSED}s on a shell that never answered"
 end_case
 
+# What retiring a config leaves behind: the repo drops .config/wal, and the
+# link an older deploy made dangles under a name no list holds any more.
+start_case "a_dangling_link_for_a_config_the_repo_dropped_is_reported"
+seed_repo
+seed_home
+seed_installed
+ln -s "$FREPO/.config/wal" "$FHOME/.config/wal"
+ln -s "$FREPO/.retired-dotfile" "$FHOME/.retired-dotfile"
+ln -s "$WORK/nowhere" "$FHOME/.config/their-own"   # not into the repo: not ours
+run_check
+expect_rc 1
+expect_out "$FHOME/.config/wal -> $FREPO/.config/wal (dangling"
+expect_out "$FHOME/.retired-dotfile -> $FREPO/.retired-dotfile (dangling"
+expect_no_out "their-own"
+expect_fail_count 2
+end_case
+
 # =============================================================================
 # The theme pipeline and the login screens.
 # =============================================================================
