@@ -760,6 +760,54 @@ fn ensure_rust_analyzer() {
     }
 }
 
+/// pkgfile keeps one `<repo>.files` database per sync repo in `dir`
+/// (`/var/cache/pkgfile` by default) once it has run at all. Until then the
+/// command-not-found handler has nothing to search.
+fn pkgfile_db_present(dir: &Path) -> bool {
+    fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .any(|e| e.file_name().to_string_lossy().ends_with(".files"))
+        })
+        .unwrap_or(false)
+}
+
+/// Enable pkgfile's daily update timer, and start a first build in the
+/// background when there is no database yet. `--no-block` because the download
+/// need not hold up the rest of the install. Warn-and-continue throughout: a
+/// missing database costs a hint, not the deploy.
+fn ensure_pkgfile_db() {
+    let lost = "zsh's command-not-found cannot name the package a command is in";
+    let enabled = Command::new("systemctl")
+        .args(["is-enabled", "--quiet", "pkgfile-update.timer"])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if enabled {
+        ok("pkgfile-update.timer already enabled");
+    } else if let Err(e) = run(
+        "sudo",
+        &["systemctl", "enable", "--now", "pkgfile-update.timer"],
+    ) {
+        warn(&format!("pkgfile-update.timer not enabled: {e} — {lost}"));
+        return;
+    } else {
+        ok("pkgfile-update.timer enabled (daily)");
+    }
+    if !pkgfile_db_present(Path::new("/var/cache/pkgfile")) {
+        info("Building the pkgfile database in the background ...");
+        if let Err(e) = run(
+            "sudo",
+            &["systemctl", "start", "--no-block", "pkgfile-update.service"],
+        ) {
+            warn(&format!(
+                "pkgfile-update.service did not start: {e} — {lost}"
+            ));
+        }
+    }
+}
+
 fn cache_dir() -> PathBuf {
     std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
@@ -2358,6 +2406,19 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         &["direnv"],
         "the `command -v` guard in .zshrc means every .envrc is silently ignored",
     );
+    // pkgfile's command-not-found handler, which .zshrc sources, names the
+    // package a missing command lives in -- from a database that
+    // pkgfile-update.timer builds, and the timer ships disabled. Nothing enabled
+    // it, so the handler always fell back to zsh's bare "command not found".
+    optional_pacman(
+        "pkgfile",
+        "pkgfile",
+        &["pkgfile"],
+        "zsh's command-not-found stays a bare error instead of naming the package",
+    );
+    if command_exists("pkgfile") {
+        ensure_pkgfile_db();
+    }
     optional_pacman(
         "Neovim",
         "nvim",
@@ -3285,13 +3346,14 @@ mod tests {
         marker_still_valid_at, memlock_user, noctalia_plan, npu_pack, os_release_value,
         pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
         patch_hexstrike_bind, patch_hexstrike_host_guard, patch_pkgbuild_unistd, pci_devices,
-        platform_devices, preferred_aur_helper, refresh_aur_clone, refuse_conflicted_tree,
-        sddm_theme_conf_body, sddm_theme_is_ours, setup_gitconfig, sync_db_path, venv_ready,
-        AsusPack, BindState, ChaoticAur, ChaoticState, Distro, HostGuardState, LoginAction,
-        NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, ASUS_PLATFORM_DEVICE,
-        AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, BUILT_FROM, CURSOR_THEME_NAME,
-        FNV_OFFSET, GITCONFIG_STUB, GREETD_CONFIG_BODY, HEXSTRIKE_HOST_GUARD, HOST_GUARD_SENTINEL,
-        LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML, SELF_SOURCE, XDNA_PCI_DEVICE_IDS,
+        pkgfile_db_present, platform_devices, preferred_aur_helper, refresh_aur_clone,
+        refuse_conflicted_tree, sddm_theme_conf_body, sddm_theme_is_ours, setup_gitconfig,
+        sync_db_path, venv_ready, AsusPack, BindState, ChaoticAur, ChaoticState, Distro,
+        HostGuardState, LoginAction, NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR,
+        ASUS_PLATFORM_DEVICE, AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, BUILT_FROM,
+        CURSOR_THEME_NAME, FNV_OFFSET, GITCONFIG_STUB, GREETD_CONFIG_BODY, HEXSTRIKE_HOST_GUARD,
+        HOST_GUARD_SENTINEL, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML, SELF_SOURCE,
+        XDNA_PCI_DEVICE_IDS,
     };
     use std::env;
     use std::fs;
@@ -3792,6 +3854,26 @@ mod tests {
         // `Present` is decided by the sentinel. If the asset's first line drifted
         // from it, every run would insert the guard again.
         assert!(HEXSTRIKE_HOST_GUARD.starts_with(HOST_GUARD_SENTINEL));
+    }
+
+    #[test]
+    fn pkgfile_db_counts_only_repo_databases() {
+        let tmp = TempDir::new().expect("tempdir");
+        let dir = tmp.path().join("pkgfile");
+        assert!(
+            !pkgfile_db_present(&dir),
+            "a missing cache dir is no database"
+        );
+        fs::create_dir(&dir).unwrap();
+        assert!(
+            !pkgfile_db_present(&dir),
+            "an empty cache dir is no database"
+        );
+        fs::write(dir.join("core.files.lock"), "").unwrap();
+        fs::write(dir.join("README"), "").unwrap();
+        assert!(!pkgfile_db_present(&dir), "only <repo>.files counts");
+        fs::write(dir.join("extra.files"), "").unwrap();
+        assert!(pkgfile_db_present(&dir));
     }
 
     #[test]
