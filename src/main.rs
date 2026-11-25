@@ -69,6 +69,7 @@ fn main() -> Result<()> {
                     rebuild_and_reexec(&repo);
                 }
             }
+            ensure_wallpapers(&repo);
             install(distro, no_aur_helper)?;
             deploy(&repo, &home())
         }
@@ -1673,6 +1674,105 @@ fn warn_if_stale(repo: &Path) {
     }
 }
 
+// ── Wallpapers ────────────────────────────────────────────────────────────────
+//
+// The wallpapers moved to a private repository: their redistribution was never
+// cleared (its README carries the provenance), so they left this public one.
+// `dotctl all` clones it into `<repo>/wallpapers` -- gitignored here, and the
+// directory deploy has always copied from. For the owner that just works over
+// SSH; for anyone else the repository does not exist, and deploy has nothing to
+// copy.
+
+const WALLPAPERS_REMOTE: &str = "git@github.com:foolish-dev/niri-wallpapers.git";
+
+/// What [`ensure_wallpapers`] should do with `<repo>/wallpapers`.
+#[derive(Debug, PartialEq, Eq)]
+enum WallpaperPlan {
+    /// Already the private clone: fast-forward it.
+    Pull,
+    /// Nothing there, or an empty directory: clone into it.
+    Clone,
+    /// Something else is there: leave it alone rather than clone over it.
+    LeaveAlone,
+}
+
+fn wallpaper_plan(dir: &Path) -> WallpaperPlan {
+    if dir.join(".git").exists() {
+        return WallpaperPlan::Pull;
+    }
+    match fs::read_dir(dir) {
+        Err(_) => WallpaperPlan::Clone,
+        Ok(mut entries) => match entries.next() {
+            None => WallpaperPlan::Clone,
+            Some(_) => WallpaperPlan::LeaveAlone,
+        },
+    }
+}
+
+/// Clone or fast-forward the private wallpapers repo. Best-effort throughout:
+/// wallpapers are decoration, and their absence must not cost the deploy.
+fn ensure_wallpapers(repo: &Path) {
+    let dir = repo.join("wallpapers");
+    let dir_str = dir.to_string_lossy().into_owned();
+    // Non-interactive, so no passphrase or host-key prompt can stall the run;
+    // accept-new trusts github.com's key only the first time it is seen.
+    let git = |args: &[&str]| {
+        Command::new("git")
+            .args(args)
+            .env(
+                "GIT_SSH_COMMAND",
+                "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
+            )
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    };
+    match wallpaper_plan(&dir) {
+        WallpaperPlan::Pull => {
+            if !git(&["-C", &dir_str, "pull", "--ff-only", "--quiet"]) {
+                warn("wallpapers: could not update the private clone — keeping the set it has");
+            }
+        }
+        WallpaperPlan::Clone => {
+            info("Cloning the private wallpapers repo ...");
+            if git(&[
+                "clone",
+                "--depth",
+                "1",
+                "--quiet",
+                WALLPAPERS_REMOTE,
+                &dir_str,
+            ]) {
+                ok(&format!("wallpapers cloned -> {dir_str}"));
+            } else {
+                info(
+                    "wallpapers: the private repo is not reachable from here (it is the \
+                     owner's) — put your own in ~/Pictures/Wallpapers",
+                );
+            }
+        }
+        WallpaperPlan::LeaveAlone => warn(&format!(
+            "{dir_str} exists but is not the wallpapers clone — leaving it alone"
+        )),
+    }
+}
+
+/// What deploy copies out of `wallpapers/`: images only. The private clone also
+/// holds its README (and `.git`, which the is_file check already skips), and
+/// noctalia's picker offers whatever lands in ~/Pictures/Wallpapers.
+fn is_wallpaper_image(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| {
+            matches!(
+                e.to_ascii_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "webp" | "avif" | "gif" | "bmp"
+            )
+        })
+        .unwrap_or(false)
+}
+
 // ── NPU (AMD XDNA) detection ──────────────────────────────────────────────────
 
 /// AMD's PCI vendor id.
@@ -3173,7 +3273,7 @@ fn link_dotfiles(repo: &Path, home: &Path) -> Result<()> {
         fs::create_dir_all(&wall_dest)?;
         for entry in fs::read_dir(&wall_src)? {
             let entry = entry?;
-            if entry.file_type()?.is_file() {
+            if entry.file_type()?.is_file() && is_wallpaper_image(&entry.path()) {
                 let dst = wall_dest.join(entry.file_name());
                 copy_item(&entry.path(), &dst, &backup_dir, &h)?;
             }
@@ -3362,18 +3462,18 @@ mod tests {
         amdxdna_memlock_conf, asus_pack, aur_failure_marker_in, aur_helper_hint, binary_is_stale,
         chaotic_aur_policy, chaotic_state, checkout_fingerprint, command_exists, copy_item, fnv1a,
         git_has_conflicts, git_pull, gitconfig_identity_is_placeholder, gitconfig_lacks_include,
-        greetd_is_replaceable, greetd_session_command, link_dotfiles, link_item, login_action,
-        marker_still_valid_at, memlock_user, noctalia_plan, npu_pack, os_release_value,
-        pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
+        greetd_is_replaceable, greetd_session_command, is_wallpaper_image, link_dotfiles,
+        link_item, login_action, marker_still_valid_at, memlock_user, noctalia_plan, npu_pack,
+        os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
         patch_hexstrike_bind, patch_hexstrike_host_guard, patch_pkgbuild_unistd, pci_devices,
         pkgfile_db_present, platform_devices, preferred_aur_helper, refresh_aur_clone,
         refuse_conflicted_tree, sddm_theme_conf_body, sddm_theme_is_ours, setup_gitconfig,
-        sync_db_path, venv_ready, AsusPack, BindState, ChaoticAur, ChaoticState, Distro,
-        HostGuardState, LoginAction, NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR,
-        ASUS_PLATFORM_DEVICE, AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, BUILT_FROM,
-        CURSOR_THEME_NAME, FNV_OFFSET, GITCONFIG_STUB, GREETD_CONFIG_BODY, HEXSTRIKE_HOST_GUARD,
-        HOST_GUARD_SENTINEL, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML, SELF_SOURCE,
-        XDNA_PCI_DEVICE_IDS,
+        sync_db_path, venv_ready, wallpaper_plan, AsusPack, BindState, ChaoticAur, ChaoticState,
+        Distro, HostGuardState, LoginAction, NoctaliaPlan, NpuPack, WallpaperPlan,
+        ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, ASUS_PLATFORM_DEVICE, AUR_HELPERS, BASE_DESKTOP_HINT,
+        BASE_DESKTOP_MARKER, BUILT_FROM, CURSOR_THEME_NAME, FNV_OFFSET, GITCONFIG_STUB,
+        GREETD_CONFIG_BODY, HEXSTRIKE_HOST_GUARD, HOST_GUARD_SENTINEL, LOOPBACK_BINDS, REGREET_CSS,
+        REGREET_TOML, SELF_SOURCE, XDNA_PCI_DEVICE_IDS,
     };
     use std::env;
     use std::fs;
@@ -3874,6 +3974,70 @@ mod tests {
         // `Present` is decided by the sentinel. If the asset's first line drifted
         // from it, every run would insert the guard again.
         assert!(HEXSTRIKE_HOST_GUARD.starts_with(HOST_GUARD_SENTINEL));
+    }
+
+    #[test]
+    fn only_images_count_as_wallpapers() {
+        for yes in ["a.png", "b.PNG", "c.jpg", "d.jpeg", "e.webp", "f.avif"] {
+            assert!(is_wallpaper_image(Path::new(yes)), "{yes}");
+        }
+        for no in [
+            "README.md",
+            ".gitattributes",
+            "LICENSE",
+            "x.png.txt",
+            "noext",
+        ] {
+            assert!(!is_wallpaper_image(Path::new(no)), "{no}");
+        }
+    }
+
+    #[test]
+    fn wallpaper_plan_clones_only_into_nothing() {
+        let tmp = TempDir::new().expect("tempdir");
+        let dir = tmp.path().join("wallpapers");
+        assert_eq!(wallpaper_plan(&dir), WallpaperPlan::Clone, "missing");
+        fs::create_dir(&dir).unwrap();
+        assert_eq!(wallpaper_plan(&dir), WallpaperPlan::Clone, "empty");
+        fs::write(dir.join("left-behind.png"), "").unwrap();
+        assert_eq!(
+            wallpaper_plan(&dir),
+            WallpaperPlan::LeaveAlone,
+            "never clone over files that are already there"
+        );
+        fs::create_dir(dir.join(".git")).unwrap();
+        assert_eq!(
+            wallpaper_plan(&dir),
+            WallpaperPlan::Pull,
+            "the clone itself"
+        );
+    }
+
+    #[test]
+    fn deploy_copies_only_the_images_out_of_the_wallpapers_clone() {
+        // The private clone carries a README and a .git next to the images;
+        // neither belongs in ~/Pictures/Wallpapers, where noctalia's picker
+        // offers everything it finds.
+        let tmp = TempDir::new().expect("tempdir");
+        let repo = tmp.path().join("repo");
+        let home = tmp.path().join("home");
+        let walls = repo.join("wallpapers");
+        fs::create_dir_all(walls.join(".git")).expect("mkdir clone");
+        fs::write(walls.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        fs::write(walls.join("README.md"), "# provenance\n").unwrap();
+        fs::write(walls.join("dune.png"), "png").unwrap();
+        fs::write(walls.join("road.JPG"), "jpg").unwrap();
+        fs::create_dir_all(&home).expect("mkdir home");
+
+        link_dotfiles(&repo, &home).expect("link_dotfiles");
+
+        let dest = home.join("Pictures/Wallpapers");
+        let mut got: Vec<String> = fs::read_dir(&dest)
+            .expect("wallpapers dir")
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        got.sort();
+        assert_eq!(got, ["dune.png", "road.JPG"]);
     }
 
     #[test]

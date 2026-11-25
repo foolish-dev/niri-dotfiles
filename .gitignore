@@ -1,6 +1,10 @@
 # Rust build artifacts (Cargo.lock IS committed for the binary)
 /target/
 
+# The owner's private wallpapers clone (foolish-dev/niri-wallpapers), which
+# `dotctl all` puts here and `dotctl deploy` copies from. Not redistributable.
+/wallpapers/
+
 # Nvim — generated at runtime
 .config/nvim/plugin/
 .config/nvim/.luarc.json
