@@ -160,9 +160,11 @@
       "type": "local",
       "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem@2026.8.31", "{env:HOME}"]
     },
+    // GitHub's own server (AUR github-mcp-server-bin, via dotctl install);
+    // @modelcontextprotocol/server-github is archived and unmaintained.
     "github": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-github@2025.4.8"],
+      "command": ["github-mcp-server", "stdio"],
       "environment": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "{env:GITHUB_PERSONAL_ACCESS_TOKEN}"
       }

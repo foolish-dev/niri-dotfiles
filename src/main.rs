@@ -2157,6 +2157,17 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         &["nodejs", "npm"],
         "every npx-launched MCP server in the teleia and opencode configs fails to start",
     );
+    // The GitHub MCP server, the one that holds GITHUB_PERSONAL_ACCESS_TOKEN.
+    // It used to be the npm `@modelcontextprotocol/server-github`, which
+    // upstream archived as unmaintained with "no security guarantees"; GitHub's
+    // own server replaced it. The -bin package installs GitHub's release binary
+    // against a pinned checksum. Gated on the binary, so a copy installed any
+    // other way is left alone rather than fought over with a conflicting package.
+    if command_exists("github-mcp-server") {
+        ok("github-mcp-server already installed");
+    } else {
+        ensure_aur_pkg(helper, "GitHub MCP server", "github-mcp-server-bin")?;
+    }
 
     optional_pacman(
         "tmux",

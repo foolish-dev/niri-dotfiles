@@ -30,9 +30,13 @@ command = "npx"
 args    = ["-y", "@modelcontextprotocol/server-filesystem@2026.8.31", "/home/fool"]
     env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
+# GitHub's own MCP server; `dotctl install` gets it from the AUR as
+# github-mcp-server-bin. It replaced @modelcontextprotocol/server-github, which
+# upstream archived as unmaintained with "no security guarantees" -- and this
+# is the one server that holds the PAT.
 [mcps.github]
-command = "npx"
-args    = ["-y", "@modelcontextprotocol/server-github@2025.4.8"]
+command = "github-mcp-server"
+args    = ["stdio"]
 
 [mcps.fetch]
 command = "npx"
