@@ -9,18 +9,20 @@ set -euo pipefail
 # and reached `sudo sed`/`sudo tee`.
 shopt -s nullglob
 
-SDDM_THEMES="/usr/share/sddm/themes"
+# Every path below sits under this prefix, which only tests/bin-helpers.sh sets.
+ROOT="${SDDM_THEME_ROOT:-}"
+SDDM_THEMES="$ROOT/usr/share/sddm/themes"
 
 # The drop-in dotctl owns (SDDM_THEME_CONF, src/main.rs). Verified against
 # sddm 0.21.0 -- man 5 sddm.conf, plus stracing the order it opens them --
 # SDDM reads every *file* in /etc/sddm.conf.d, not just *.conf, in name order,
 # then /etc/sddm.conf, and the last value read wins. A second drop-in of our
 # own would just be arbitrated by a filename sort, so write dotctl's file.
-SDDM_DROPIN="/etc/sddm.conf.d/10-noctalia-theme.conf"
+SDDM_DROPIN="$ROOT/etc/sddm.conf.d/10-noctalia-theme.conf"
 # What this script used to write. It sorts after the drop-in above, so a
 # leftover keeps shadowing every later choice -- including dotctl's, which
 # went on reporting success while its setting never reached the greeter.
-SDDM_STALE_DROPIN="/etc/sddm.conf.d/theme.conf"
+SDDM_STALE_DROPIN="$ROOT/etc/sddm.conf.d/theme.conf"
 
 RED='\033[0;31m'
 GRN='\033[0;32m'

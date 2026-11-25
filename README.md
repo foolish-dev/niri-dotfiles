@@ -166,6 +166,7 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── dotfiles-check.sh                    # cases over the health check
 │   ├── github-mcp.sh                        # the launcher never starts tokenless, never prints it
 │   ├── fwupd-check.sh                       # the firmware notice retries until delivered
+│   ├── bin-helpers.sh                       # sddm-theme, gclone, proj, dev, cheat and the rest
 │   ├── hexstrike-host-guard.py              # the Host guard against a real Flask
 │   └── dotctl-selfupdate.sh                 # dotctl's self-rebuild, on the built binary
 ├── .github/workflows/ci.yml                 # rust job + shell job (shellcheck, then the suites)

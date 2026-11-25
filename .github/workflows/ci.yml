@@ -114,6 +114,11 @@ jobs:
       # The firmware notice must survive a login that beats the notification
       # server. The shipped notify() against a fake notify-send.
       - run: tests/fwupd-check.sh
+      # The small .local/bin helpers: sddm-theme writes the login screen's config
+      # through sudo, gclone/proj/dev drive git, fzf and tmux, hexstrike-mcp is
+      # the bridge two MCP clients start, cheat documents keybinds that can drift.
+      # Stand-ins for every tool; nothing reaches /etc, tmux or the network.
+      - run: tests/bin-helpers.sh
       # The HexStrike Host guard against a real Flask, the version HexStrike's
       # venv runs. A venv because ubuntu's system Python is externally managed;
       # REQUIRE_FLASK so a failed install fails the step instead of skipping it.
