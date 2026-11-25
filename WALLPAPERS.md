@@ -7,13 +7,13 @@ provenance was never recorded.
 
 What is actually known, from the files themselves:
 
-- 106 images, ~286 MB — the large majority of this repository by size.
+- 105 images, ~283 MiB — the large majority of this repository by size.
 - Two carry creator metadata that survived: `abstract-lock.png` names an
   individual artist in its XMP `Author` field, and `tanjiro-kamado-gruv.jpg`
   carries creator metadata for art derived from a copyrighted series.
 - Six are named `gruv-wallhaven-*`, i.e. sourced from wallhaven.cc, where
   individual uploads carry their own separate terms.
-- The remaining 104 carry no author or copyright metadata at all — stripped,
+- The remaining 103 carry no author or copyright metadata at all — stripped,
   or never present. Absence of a marker is not evidence of permission.
 
 So: redistributing this directory has not been cleared, and `dotctl deploy`
