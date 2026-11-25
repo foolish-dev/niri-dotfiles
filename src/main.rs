@@ -2358,6 +2358,16 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
     } else {
         ensure_aur_pkg(helper, "GitHub MCP server", "github-mcp-server-bin")?;
     }
+    // secret-tool reads keys from the keyring at launch: the GitHub token for
+    // ~/.local/bin/github-mcp, and avante's Anthropic key (plugins/ai.lua). It
+    // ships in libsecret; answering it is the session's Secret Service
+    // (gnome-keyring here).
+    optional_pacman(
+        "secret-tool (libsecret)",
+        "secret-tool",
+        &["libsecret"],
+        "the GitHub MCP server and avante cannot read their keys from the keyring",
+    );
 
     optional_pacman(
         "tmux",

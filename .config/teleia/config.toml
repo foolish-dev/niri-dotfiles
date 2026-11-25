@@ -34,9 +34,14 @@ args    = ["-y", "@modelcontextprotocol/server-filesystem@2.4.0", "/home/fool"]
 # github-mcp-server-bin. It replaced @modelcontextprotocol/server-github, which
 # upstream archived as unmaintained with "no security guarantees" -- and this
 # is the one server that holds the PAT.
+#
+# Started through ~/.local/bin/github-mcp, which reads the token from the
+# keyring at launch for this one process: nothing exported it, and Mod+T starts
+# teleia with no shell, so the environment was never a way to deliver it.
+# Store it once with
+#   secret-tool store --label='GitHub token (github-mcp-server)' service github-mcp-server
 [mcps.github]
-command = "github-mcp-server"
-args    = ["stdio"]
+command = "github-mcp"
 
 [mcps.fetch]
 command = "npx"

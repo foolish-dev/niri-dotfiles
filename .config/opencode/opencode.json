@@ -162,12 +162,11 @@
     },
     // GitHub's own server (AUR github-mcp-server-bin, via dotctl install);
     // @modelcontextprotocol/server-github is archived and unmaintained.
+    // ~/.local/bin/github-mcp starts it with the token from the keyring (or an
+    // exported GITHUB_PERSONAL_ACCESS_TOKEN, which still wins).
     "github": {
       "type": "local",
-      "command": ["github-mcp-server", "stdio"],
-      "environment": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "{env:GITHUB_PERSONAL_ACCESS_TOKEN}"
-      }
+      "command": ["github-mcp"]
     },
     "fetch": {
       "type": "local",

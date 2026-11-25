@@ -49,6 +49,19 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
 | `dotctl deploy` | Symlink the full `.config` set (`teleia, nvim, noctalia, fastfetch, tmux, fuzzel, gtk-3.0/4.0, kitty, lazygit, neofetch, niri, opencode, qt5ct/6ct, wal, starship.toml`), home dotfiles (`.zshrc, .editorconfig, .gitignore_global`), and every `.local/bin/*`. Copy the curated `wallpapers/*` into `~/Pictures/Wallpapers` as real files (applied on all monitors; copies, not symlinks, so a stray wallpaper `cp` — e.g. the greeter background-sync — can't write back into the repo). Deploy the tracked `.gitconfig` via an untracked `~/.gitconfig` include-stub + seed `~/.gitconfig.local` identity. Symlink the user systemd units (real dir), `daemon-reload`, then `enable --now` hexstrike-server, `bb-auth.service` and `fwupd-check.timer` (each skipped, with a hint, when its prerequisite binary is absent). Back up displaced files. |
 | `dotctl all` | Clone or pull the repo; if that left `dotctl`'s own source different from the running binary, rebuild it (`cargo install --path`) and continue as the new one; then `install` and `deploy`. `install` and `deploy` on their own only warn about a stale binary. |
 
+### Secrets
+
+Two keys are read from the login keyring (gnome-keyring's Secret Service) by the program that needs them, when it starts. They are never in a tracked file, and never exported into the session environment, where every process would inherit them. Store each once:
+
+```bash
+# teleia's / opencode's GitHub MCP server, via ~/.local/bin/github-mcp
+secret-tool store --label='GitHub token (github-mcp-server)' service github-mcp-server
+# avante in Neovim
+secret-tool store --label='Anthropic API key (avante)' service anthropic
+```
+
+For GitHub, a fine-grained token limited to the repos the agent may touch is safer than `gh`'s own, which has `repo` and `workflow` on everything. An exported `GITHUB_PERSONAL_ACCESS_TOKEN` still takes precedence.
+
 ## Supported distros
 
 Arch Linux and CachyOS. `dotctl` reads `/etc/os-release` and branches on `ID`:
@@ -142,6 +155,7 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │       └── fwupd-check.timer                # monthly, armed by dotctl deploy
 ├── .local/bin/
 │   ├── hexstrike-mcp                        # stdio bridge for MCP clients
+│   ├── github-mcp                           # GitHub's MCP server, token from the keyring
 │   ├── hexstrike-assert-loopback            # ExecStartPost= bind check, fails closed
 │   └── dotfiles-check                       # post-deploy health check
 ├── src/main.rs                              # dotctl — Rust installer/deployer

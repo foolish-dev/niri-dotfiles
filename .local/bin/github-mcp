@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# github-mcp -- start GitHub's MCP server with its token from the keyring.
+#
+# The token is never in a tracked config, and never in the session
+# environment, where every process the session starts would inherit it. It
+# lives in the login keyring (gnome-keyring's Secret Service) and is read here,
+# at launch, for this one process. Store it once:
+#
+#   secret-tool store --label='GitHub token (github-mcp-server)' service github-mcp-server
+#
+# A fine-grained token limited to the repos the agent may touch is the safer
+# choice than gh's own (repo + workflow on everything). A token already
+# exported as GITHUB_PERSONAL_ACCESS_TOKEN still wins.
+#
+# Errors go to stderr: stdout is the MCP protocol stream.
+set -euo pipefail
+
+if [[ -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]]; then
+  if ! command -v secret-tool >/dev/null 2>&1; then
+    echo "github-mcp: secret-tool not found (pacman -S libsecret), and GITHUB_PERSONAL_ACCESS_TOKEN is unset" >&2
+    exit 1
+  fi
+  if ! token="$(secret-tool lookup service github-mcp-server)" || [[ -z "$token" ]]; then
+    echo "github-mcp: no GitHub token in the keyring. Store one with:" >&2
+    echo "  secret-tool store --label='GitHub token (github-mcp-server)' service github-mcp-server" >&2
+    exit 1
+  fi
+  export GITHUB_PERSONAL_ACCESS_TOKEN="$token"
+fi
+
+exec github-mcp-server stdio "$@"

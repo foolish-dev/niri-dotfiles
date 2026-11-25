@@ -63,6 +63,11 @@ return {
       provider = "claude",
       providers = {
         claude = {
+          -- From the keyring when avante first needs it, not from an env var:
+          -- nothing exported ANTHROPIC_API_KEY, and a key in the session
+          -- environment would reach every process. Store it once with
+          --   secret-tool store --label='Anthropic API key (avante)' service anthropic
+          api_key_name = "cmd:secret-tool lookup service anthropic",
           endpoint = "https://api.anthropic.com",
           model    = "claude-sonnet-4-6",
           timeout  = 30000,
