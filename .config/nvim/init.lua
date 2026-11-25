@@ -36,6 +36,11 @@ require("lazy").setup("plugins", {
   -- only thing here that touches the network on a plain start. Versions are
   -- pinned in the committed lazy-lock.json, so :Lazy check on demand is enough.
   checker = { enabled = false },
+  -- Off: luarocks support exists for plugins whose rockspec pulls in Lua
+  -- dependencies, and none here does -- ten ship rockspecs, none lists a
+  -- dependency beyond lua. On, it reported itself broken in :checkhealth
+  -- (no luarocks, no hererocks) and would try to bootstrap them on an update.
+  rocks = { enabled = false },
   change_detection = { notify = false },
   performance = {
     rtp = {
