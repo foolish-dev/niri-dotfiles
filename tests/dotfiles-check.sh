@@ -73,6 +73,8 @@ chmod +x "$STUB_BIN/systemctl"
 NOSYSTEMD_BIN="$WORK/nosystemd-bin"
 mkdir -p "$NOSYSTEMD_BIN"
 ln -sf "$(command -v readlink)" "$NOSYSTEMD_BIN/readlink"
+# timeout wraps the Noctalia probe, which these cases are not about either.
+ln -sf "$(command -v timeout)" "$NOSYSTEMD_BIN/timeout"
 
 # ---------------------------------------------------------------------------
 # Stand-ins for what `dotctl install` provides, so the install sections are
@@ -116,16 +118,25 @@ stub curl \
   'printf "%s\n" "$*" >"$HOME/.curl-argv"' \
   '[[ -f "$HOME/.fake-github" ]] || exit 7' \
   'printf "%s\n" "$(<"$HOME/.fake-github")"'
-for t in npx github-mcp-server lazygit clangd rust-analyzer secret-tool pkgfile curl; do
+# The shell answers `msg status` unless ~/.fake-noctalia-down says it is not
+# running, or ~/.fake-noctalia-wedged makes it hang the way a stuck one would.
+# shellcheck disable=SC2016
+stub noctalia \
+  '[[ "$1 $2" == "msg status" ]] || exit 2' \
+  '[[ -e "$HOME/.fake-noctalia-wedged" ]] && exec sleep 60' \
+  '[[ -e "$HOME/.fake-noctalia-down" ]] && { echo "error: noctalia is not running" >&2; exit 1; }' \
+  'echo "{}"'
+for t in npx github-mcp-server lazygit clangd rust-analyzer secret-tool pkgfile curl noctalia; do
   ln -sf "$STUB_BIN/$t" "$NOSYSTEMD_BIN/$t"
 done
 
 # For the cases that take one stand-in away: the stand-ins plus only the real
-# tools the check itself runs (readlink, awk for the units section, date for the
-# token's expiry), so nothing on the developer's PATH can fill the gap.
+# tools the check itself runs (readlink, awk for the units section, timeout for
+# the shell probe, date for the token's expiry), so nothing on the developer's
+# PATH can fill the gap.
 BASE_BIN="$WORK/base-bin"
 mkdir -p "$BASE_BIN"
-for t in readlink awk date; do ln -sf "$(command -v "$t")" "$BASE_BIN/$t"; done
+for t in readlink awk timeout date; do ln -sf "$(command -v "$t")" "$BASE_BIN/$t"; done
 
 # ---------------------------------------------------------------------------
 # Case machinery. A failing case records why and keeps going: the point is the
@@ -141,6 +152,7 @@ PROBLEMS=()
 FREPO=""
 FHOME=""
 CHECK_PATH=""
+CHECK_WAYLAND=""
 
 start_case() {
   CASES=$((CASES + 1))
@@ -152,6 +164,9 @@ start_case() {
   FREPO="$WORK/repo.$CASES"
   FHOME="$WORK/home.$CASES"
   CHECK_PATH="$STUB_BIN:$PATH"
+  # Every case is "inside a Wayland session" unless it says otherwise: the
+  # developer's WAYLAND_DISPLAY and CI's lack of one must not decide a case.
+  CHECK_WAYLAND="wayland-test"
 }
 
 note() { PROBLEMS+=("$1"); }
@@ -210,7 +225,7 @@ seed_installed() {
 run_check() {
   RAN=1
   RC=0
-  OUT="$(env PATH="$CHECK_PATH" HOME="$FHOME" DOTFILES="${1:-$FREPO}" \
+  OUT="$(env PATH="$CHECK_PATH" HOME="$FHOME" DOTFILES="${1:-$FREPO}" WAYLAND_DISPLAY="$CHECK_WAYLAND" \
     "$BASH_BIN" "$CHECK" 2>&1)" || RC=$?
   OUT="$(printf '%s\n' "$OUT" | sed "s/$(printf '\033')\[[0-9;]*m//g")"
 }
@@ -223,7 +238,7 @@ run_check() {
 run_check_repovar() {
   RAN=1
   RC=0
-  OUT="$(env -u DOTFILES -u DOTFILES_REPO PATH="$CHECK_PATH" HOME="$FHOME" "$@" \
+  OUT="$(env -u DOTFILES -u DOTFILES_REPO PATH="$CHECK_PATH" HOME="$FHOME" WAYLAND_DISPLAY="$CHECK_WAYLAND" "$@" \
     "$BASH_BIN" "$CHECK" 2>&1)" || RC=$?
   OUT="$(printf '%s\n' "$OUT" | sed "s/$(printf '\033')\[[0-9;]*m//g")"
 }
@@ -730,6 +745,68 @@ if [[ -z "$WANT" ]]; then
 elif ! grep -qF "*\"$WANT\"*" "$CHECK"; then
   note "dotfiles-check does not test for the sentinel dotctl writes: $WANT"
 fi
+end_case
+
+# =============================================================================
+# The Noctalia shell. niri spawning a shell that does not run is a session
+# with no notifications and no lock screen, and nothing else reports it.
+# =============================================================================
+start_case "a_running_noctalia_is_reported_ok"
+seed_repo
+seed_home
+seed_installed
+run_check
+expect_rc 0
+expect_out "OK   Noctalia is running"
+end_case
+
+start_case "a_noctalia_that_does_not_answer_fails"
+seed_repo
+seed_home
+seed_installed
+: >"$FHOME/.fake-noctalia-down"
+run_check
+expect_rc 1
+expect_out "FAIL Noctalia is installed but not answering"
+expect_fail_count 1
+end_case
+
+start_case "noctalia_not_installed_fails_by_name"
+seed_repo
+seed_home
+seed_installed
+path_without noctalia
+run_check
+expect_rc 1
+expect_out "FAIL noctalia not installed"
+expect_fail_count 1
+end_case
+
+# Over ssh there is no session to ask. The shell is down in the fixtures, so a
+# check that asked anyway would go red: the skip has to come first.
+start_case "outside_a_wayland_session_the_shell_check_skips"
+seed_repo
+seed_home
+seed_installed
+: >"$FHOME/.fake-noctalia-down"
+CHECK_WAYLAND=""
+run_check
+expect_rc 0
+expect_out "SKIP not in a Wayland session"
+expect_no_out "FAIL"
+end_case
+
+start_case "a_wedged_noctalia_cannot_hang_the_check"
+seed_repo
+seed_home
+seed_installed
+: >"$FHOME/.fake-noctalia-wedged"
+STARTED=$SECONDS
+run_check
+ELAPSED=$((SECONDS - STARTED))
+expect_rc 1
+expect_out "FAIL Noctalia is installed but not answering"
+((ELAPSED < 30)) || note "the check waited ${ELAPSED}s on a shell that never answered"
 end_case
 
 printf '\n%s case(s), %s failed\n' "$CASES" "$FAILED"

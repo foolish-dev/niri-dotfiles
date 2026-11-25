@@ -157,7 +157,7 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── hexstrike-mcp                        # stdio bridge for MCP clients
 │   ├── github-mcp                           # GitHub's MCP server, token from the keyring
 │   ├── hexstrike-assert-loopback            # ExecStartPost= bind check, fails closed
-│   └── dotfiles-check                       # health check: links, units, and what dotctl install set up
+│   └── dotfiles-check                       # health check: links, units, the shell, and what dotctl install set up
 ├── src/main.rs                              # dotctl — Rust installer/deployer
 ├── tests/                                   # hermetic suites (bash, one Python), all run in CI
 │   ├── hexstrike-assert-loopback.sh         # cases over the bind check
