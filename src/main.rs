@@ -707,6 +707,43 @@ fn ensure_cargo_git(label: &str, bin: &str, url: &str, lost: &str) {
     ok(&format!("{bin} installed -> ~/.cargo/bin/{bin}"));
 }
 
+/// rust-analyzer for teleia's `[lsps.rust]`, plus the standard-library source
+/// it loads std from: without `rust-src` the server starts but cannot load the
+/// sysroot, so no std type resolves. Who provides the pair depends on where
+/// rustc comes from:
+///   rust   — the `rust-analyzer` and `rust-src` repo packages. The sysroot is
+///            /usr, which is where `rust-src` puts the source.
+///   rustup — the components of the same names. The sysroot is the toolchain
+///            under ~/.rustup, so the repo `rust-src` would land where nothing
+///            reads it. rustup also puts a rust-analyzer proxy on PATH (Arch's
+///            package appends /usr/lib/rustup/bin via profile.d; rustup-init
+///            uses ~/.cargo/bin) that exists whether or not the component
+///            does, so a `command -v` gate would pass on the proxy alone.
+///            `component add` is idempotent and needs no sudo, so it just runs.
+/// Warn-and-continue either way, per [`optional_pacman`]: a missing language
+/// server costs one LSP, not the deploy.
+fn ensure_rust_analyzer() {
+    let lost = "teleia's `rust` language server fails to start in Cargo projects";
+    if command_exists("rustup") {
+        info("Installing rust-analyzer + rust-src (rustup components) ...");
+        match run("rustup", &["component", "add", "rust-analyzer", "rust-src"]) {
+            Ok(()) => ok("rust-analyzer + rust-src installed (rustup components)"),
+            Err(e) => warn(&format!("rust-analyzer not installed: {e} — {lost}")),
+        }
+        return;
+    }
+    if command_exists("rust-analyzer") && pacman_pkg_installed("rust-src") {
+        ok("rust-analyzer + rust-src already installed");
+        return;
+    }
+    if let Err(e) = pacman_install(
+        "rust-analyzer + rust-src (teleia's Rust language server)",
+        &["rust-analyzer", "rust-src"],
+    ) {
+        warn(&format!("rust-analyzer not installed: {e} — {lost}"));
+    }
+}
+
 fn cache_dir() -> PathBuf {
     std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
@@ -2044,6 +2081,17 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         "https://github.com/foolish-dev/teleia",
         "Mod+T opens a kitty window that closes again until you rerun `dotctl install`",
     );
+    // The language servers the tracked config's `[lsps.*]` tables name. teleia
+    // spawns each only where its root_patterns match and reports a missing
+    // binary through `/lsps`, so neither is worth stopping the run for.
+    // clangd ships in `clang` (extra on Arch, cachyos-znver4 on CachyOS).
+    optional_pacman(
+        "clangd (teleia's C/C++ language server)",
+        "clangd",
+        &["clang"],
+        "teleia's `c` language server fails to start in C/C++ projects",
+    );
+    ensure_rust_analyzer();
 
     optional_pacman(
         "tmux",

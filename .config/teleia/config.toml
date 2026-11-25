@@ -86,8 +86,10 @@ args    = ["x", "@h1deya/mcp-server-weather@0.1.3"]
 # boot in a Python checkout and clangd does not boot here. Shell globs
 # work; omit the key to start the server everywhere.
 
-# Needs `sudo pacman -S rust-analyzer` — until then /lsps reports this one
-# as failed to start, and only inside a Cargo project.
+# `dotctl install` provides both: clangd from `clang`, and rust-analyzer
+# with the rust-src it reads std from (rustup components under rustup, repo
+# packages otherwise). Without one, /lsps reports it as failed to start, and
+# only inside a project its root_patterns match.
 [lsps.rust]
 command       = "rust-analyzer"
 root_patterns = ["Cargo.toml"]
