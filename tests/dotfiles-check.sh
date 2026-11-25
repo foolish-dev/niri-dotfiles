@@ -179,7 +179,7 @@ seed_repo() {
   mkdir -p "$FREPO/.config/niri" "$FREPO/.config/noctalia" "$FREPO/.config/kitty" \
     "$FREPO/.config/systemd/user" "$FREPO/.local/bin"
   printf 'output "eDP-1" {}\n' >"$FREPO/.config/niri/config.kdl"
-  printf '{}\n' >"$FREPO/.config/noctalia/settings.json"
+  printf '[theme]\nsource = "custom"\n' >"$FREPO/.config/noctalia/config.toml"
   printf 'font_size 12\n' >"$FREPO/.config/kitty/kitty.conf"
   printf 'add_newline = false\n' >"$FREPO/.config/starship.toml"
   printf 'export EDITOR=nvim\n' >"$FREPO/.zshrc"

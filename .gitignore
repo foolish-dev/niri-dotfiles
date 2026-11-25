@@ -19,8 +19,8 @@
 # Go — local telemetry counters, per-machine
 .config/go/
 
-# noctalia — grogu's live-paint colour cache (Grogu.json IS tracked; this isn't)
-.config/noctalia/colors.json
+# noctalia — grogu writes the palette at runtime (config.toml selects it)
+.config/noctalia/palettes/Grogu.json
 
 # niri — grogu writes the focus-ring/palette fragment at runtime
 .config/niri/grogu.kdl

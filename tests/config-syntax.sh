@@ -6,10 +6,9 @@
 # are symlinks into this repo, so a malformed file is not a failed build, it is
 # a broken session on the next login. Nothing else in CI opens any of them.
 #
-# The sharp edge is self-inflicted. .config/noctalia/settings.json is rewritten
-# by the noctalia shell on every settings change, so it is committed as its own
-# chore() commit without being normalised -- i.e. committed without being read.
-# This is what reads it.
+# The sharp edge is self-inflicted. Apps save their own settings straight into
+# these files (qt5ct, any GUI settings page), and that lands in a commit as it
+# was written -- i.e. committed without being read. This is what reads it.
 #
 # JSON, JSONC, TOML and INI need nothing but python3's standard library, so
 # they are always parsed. The rest need a tool this suite will not install and

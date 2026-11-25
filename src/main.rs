@@ -663,20 +663,73 @@ fn aur_install(helper: &str, label: &str, packages: &[&str]) -> Result<()> {
 /// landed. Warning here is what keeps a bad day at foolish-dev/grogu from
 /// costing the user their whole deploy. See [`optional_pacman`] for the
 /// invariant this protects.
-fn ensure_cargo_git(label: &str, bin: &str, url: &str, lost: &str) {
+///
+/// `min` is the oldest version this repo's configs work with. An installed
+/// binary older than that, or one whose version cannot be read, is rebuilt
+/// from the branch tip; any other installed one is left alone, so a
+/// hand-installed development build is never replaced behind the user's back.
+fn ensure_cargo_git(label: &str, bin: &str, url: &str, lost: &str, min: Option<Version>) {
+    let mut args = vec!["install", "--git", url, "--branch", "main", "--locked"];
     if command_exists(bin) {
-        ok(&format!("{bin} already installed"));
-        return;
+        let have = installed_version(bin);
+        match min {
+            Some(want) if needs_update(have, want) => {
+                let have = have.map_or_else(|| "of unreadable version".to_string(), version_string);
+                info(&format!(
+                    "{bin} {have} predates {}, the first this repo's configs work with — updating ...",
+                    version_string(want)
+                ));
+                args.push("--force");
+            }
+            _ => {
+                ok(&format!("{bin} already installed"));
+                return;
+            }
+        }
+    } else {
+        info(&format!("Installing {label} ..."));
     }
-    info(&format!("Installing {label} ..."));
-    if let Err(e) = run(
-        "cargo",
-        &["install", "--git", url, "--branch", "main", "--locked"],
-    ) {
+    if let Err(e) = run("cargo", &args) {
         warn(&format!("{label} install failed: {e} — {lost}"));
         return;
     }
     ok(&format!("{bin} installed -> ~/.cargo/bin/{bin}"));
+}
+
+/// A crate version as (major, minor, patch): tuples order the way versions do.
+type Version = (u32, u32, u32);
+
+/// The oldest grogu the tracked Noctalia config works with. 0.2.0 is the first
+/// to write v5's palettes/Grogu.json, which .config/noctalia/config.toml
+/// selects. 0.1.x writes only v4's files, and its first step fails without
+/// v4's settings.json, taking every other theme target down with it.
+const GROGU_MIN_VERSION: Version = (0, 2, 0);
+
+/// The version `<bin> --version` reports, or None when it will not say.
+fn installed_version(bin: &str) -> Option<Version> {
+    let out = Command::new(bin)
+        .arg("--version")
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    parse_version_line(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// clap's `--version` line: `<name> <major>.<minor>.<patch>`.
+fn parse_version_line(line: &str) -> Option<Version> {
+    let mut parts = line.split_whitespace().nth(1)?.split('.');
+    let mut next = || -> Option<u32> { parts.next()?.parse().ok() };
+    Some((next()?, next()?, next()?))
+}
+
+/// An unreadable version is treated as too old: rebuilding costs a minute,
+/// keeping a binary that breaks the theme costs every wallpaper change.
+fn needs_update(have: Option<Version>, want: Version) -> bool {
+    have.is_none_or(|h| h < want)
+}
+
+fn version_string((major, minor, patch): Version) -> String {
+    format!("{major}.{minor}.{patch}")
 }
 
 /// rust-analyzer for teleia's `[lsps.rust]`, plus the standard-library source
@@ -1422,24 +1475,20 @@ fn setup_noctalia_login() -> Result<()> {
 }
 
 /// `git -C <repo> pull --ff-only --autostash`. The `--autostash` matters:
-/// `dotctl deploy` symlinks `~/.config/noctalia` straight at this repo, and
-/// grogu rewrites the tracked `colorschemes/Grogu/Grogu.json` in place on
-/// every wallpaper change (live theme repaint). A plain
-/// `git pull --ff-only` then bails on the dirty tree, so re-running
-/// `dotctl all` to update would silently skip the pull once the theme had
-/// ever been repainted. Autostash shelves the repaint, fast-forwards, then
-/// restores it — updates keep flowing and the user keeps their colors.
-/// (`Grogu.json` can't just be gitignored away like the nvim/tmux grogu
-/// fragments: settings.json pins `predefinedScheme=Grogu`, so the committed
-/// scheme is the required first-boot default.)
+/// `dotctl deploy` symlinks `~/.config/*` straight at this repo, so an app
+/// that saves its own settings (qt5ct, a GUI settings page) rewrites a
+/// tracked file in place. A plain `git pull --ff-only` then bails on the
+/// dirty tree, so re-running `dotctl all` to update would silently skip the
+/// pull from then on. Autostash shelves the change, fast-forwards, then
+/// restores it — updates keep flowing and the user keeps their settings.
 fn git_pull(repo_str: &str) -> Result<()> {
     run("git", &["-C", repo_str, "pull", "--ff-only", "--autostash"])?;
-    // `--autostash` re-applies the shelved repaint after the fast-forward — but
+    // `--autostash` re-applies the shelved change after the fast-forward — but
     // `git pull` exits 0 even when that apply CONFLICTS. It prints a notice,
     // leaves conflict markers in the working tree, and keeps the stash. Since
-    // `deploy()` symlinks ~/.config/noctalia straight at this repo, a
-    // conflicted Grogu.json would be handed to noctalia as its live config
-    // while `dotctl all` reported success. Refuse rather than deploy that.
+    // `deploy()` symlinks ~/.config/* straight at this repo, a conflicted
+    // file would be handed to the live desktop as its config while
+    // `dotctl all` reported success. Refuse rather than deploy that.
     if git_has_conflicts(repo_str) {
         return Err(anyhow!(
             "`git pull --ff-only --autostash` fast-forwarded {repo_str}, but re-applying your \
@@ -2364,6 +2413,7 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         "grogu",
         "https://github.com/foolish-dev/grogu",
         "wallpaper changes will not repaint the theme until you rerun `dotctl install`",
+        Some(GROGU_MIN_VERSION),
     );
 
     // teleia — the TUI agent Mod+T spawns, and the owner of the tracked
@@ -2378,6 +2428,7 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         "teleia",
         "https://github.com/foolish-dev/teleia",
         "Mod+T opens a kitty window that closes again until you rerun `dotctl install`",
+        None,
     );
     // The language servers the tracked config's `[lsps.*]` tables name. teleia
     // spawns each only where its root_patterns match and reports a missing
@@ -3395,17 +3446,18 @@ mod tests {
         chaotic_aur_policy, chaotic_state, checkout_fingerprint, command_exists, copy_item, fnv1a,
         git_has_conflicts, git_pull, gitconfig_identity_is_placeholder, gitconfig_lacks_include,
         greetd_is_replaceable, greetd_session_command, is_wallpaper_image, link_dotfiles,
-        link_item, login_action, marker_still_valid_at, memlock_user, npu_pack, os_release_value,
-        pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
-        patch_hexstrike_bind, patch_hexstrike_host_guard, patch_pkgbuild_unistd, pci_devices,
-        pkgfile_db_present, platform_devices, preferred_aur_helper, refresh_aur_clone,
-        refuse_conflicted_tree, sddm_theme_conf_body, sddm_theme_is_ours, setup_gitconfig,
-        sync_db_path, venv_ready, wallpaper_plan, AsusPack, BindState, ChaoticAur, ChaoticState,
-        Distro, HostGuardState, LoginAction, NpuPack, WallpaperPlan, ALL_INTERFACE_BINDS,
-        AMD_PCI_VENDOR, ASUS_PLATFORM_DEVICE, AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER,
-        BUILT_FROM, CURSOR_THEME_NAME, FNV_OFFSET, GITCONFIG_STUB, GREETD_CONFIG_BODY,
-        HEXSTRIKE_HOST_GUARD, HOST_GUARD_SENTINEL, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML,
-        SELF_SOURCE, XDNA_PCI_DEVICE_IDS,
+        link_item, login_action, marker_still_valid_at, memlock_user, needs_update, npu_pack,
+        os_release_value, pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
+        parse_version_line, patch_hexstrike_bind, patch_hexstrike_host_guard,
+        patch_pkgbuild_unistd, pci_devices, pkgfile_db_present, platform_devices,
+        preferred_aur_helper, refresh_aur_clone, refuse_conflicted_tree, sddm_theme_conf_body,
+        sddm_theme_is_ours, setup_gitconfig, sync_db_path, venv_ready, wallpaper_plan, AsusPack,
+        BindState, ChaoticAur, ChaoticState, Distro, HostGuardState, LoginAction, NpuPack,
+        WallpaperPlan, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, ASUS_PLATFORM_DEVICE, AUR_HELPERS,
+        BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, BUILT_FROM, CURSOR_THEME_NAME, FNV_OFFSET,
+        GITCONFIG_STUB, GREETD_CONFIG_BODY, GROGU_MIN_VERSION, HEXSTRIKE_HOST_GUARD,
+        HOST_GUARD_SENTINEL, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML, SELF_SOURCE,
+        XDNA_PCI_DEVICE_IDS,
     };
     use std::env;
     use std::fs;
@@ -3458,8 +3510,8 @@ mod tests {
     fn git_pull_refuses_when_the_autostash_reapply_conflicts() {
         // `git pull --ff-only --autostash` exits 0 even when re-applying the
         // stash conflicts — it just prints a notice and leaves conflict
-        // markers behind. deploy() symlinks ~/.config/noctalia at this repo,
-        // so without this guard `dotctl all` would hand noctalia a JSON file
+        // markers behind. deploy() symlinks ~/.config/* at this repo, so
+        // without this guard `dotctl all` would hand the live desktop a config
         // full of `<<<<<<<` and report success.
         if !command_exists("git") {
             return; // git-less host; nothing to exercise
@@ -3472,7 +3524,7 @@ mod tests {
         git(&upstream, &["init", "-q", "-b", "main"]);
         git(&upstream, &["config", "user.email", "t@t"]);
         git(&upstream, &["config", "user.name", "t"]);
-        fs::write(upstream.join("Grogu.json"), "{\"mPrimary\":\"#000\"}\n").expect("seed");
+        fs::write(upstream.join("qt5ct.conf"), "[Appearance]\nstyle=Fusion\n").expect("seed");
         git(&upstream, &["add", "-A"]);
         git(&upstream, &["commit", "-qm", "init"]);
 
@@ -3488,11 +3540,12 @@ mod tests {
         git(&clone, &["config", "user.email", "t@t"]);
         git(&clone, &["config", "user.name", "t"]);
 
-        // Upstream and the local repaint touch THE SAME line — the one case
+        // Upstream and the local save touch THE SAME line — the one case
         // autostash cannot resolve.
-        fs::write(upstream.join("Grogu.json"), "{\"mPrimary\":\"#fff\"}\n").expect("upstream edit");
-        git(&upstream, &["commit", "-qam", "upstream repaint"]);
-        fs::write(clone.join("Grogu.json"), "{\"mPrimary\":\"#61c3cf\"}\n").expect("local repaint");
+        fs::write(upstream.join("qt5ct.conf"), "[Appearance]\nstyle=kvantum\n")
+            .expect("upstream edit");
+        git(&upstream, &["commit", "-qam", "upstream edit"]);
+        fs::write(clone.join("qt5ct.conf"), "[Appearance]\nstyle=Breeze\n").expect("local save");
 
         let err = git_pull(clone.to_str().unwrap())
             .expect_err("a conflicted autostash re-apply must not be reported as success");
@@ -5367,11 +5420,11 @@ mod tests {
 
     // ── git_pull ───────────────────────────────────────────────────────────
     //
-    // `dotctl deploy` symlinks ~/.config/noctalia at the repo, and grogu
-    // rewrites the tracked colors.json / Grogu.json in place on every
-    // wallpaper change. Without --autostash the ff-only pull would bail on
-    // that dirty tree and `dotctl all` would silently stop updating. Pin
-    // that the pull fast-forwards anyway and keeps the local repaint.
+    // `dotctl deploy` symlinks ~/.config/* at the repo, so an app that saves
+    // its own settings rewrites a tracked file in place. Without --autostash
+    // the ff-only pull would bail on that dirty tree and `dotctl all` would
+    // silently stop updating. Pin that the pull fast-forwards anyway and
+    // keeps the local change.
 
     /// Run git in `dir` with a deterministic identity (CI configures none)
     /// and assert success.
@@ -5388,7 +5441,7 @@ mod tests {
     }
 
     #[test]
-    fn git_pull_fast_forwards_over_a_grogu_dirtied_tracked_file() {
+    fn git_pull_fast_forwards_over_a_locally_saved_tracked_file() {
         if !command_exists("git") {
             return; // git-less host; nothing to exercise
         }
@@ -5397,12 +5450,12 @@ mod tests {
         let clone = tmp.path().join("clone");
         fs::create_dir_all(&upstream).expect("mkdir upstream");
 
-        // Seed upstream with the two files dotctl cares about: a generated
-        // theme file (colors.json) and an unrelated tracked file (README).
+        // Seed upstream with two tracked files: a config an app saves into
+        // (qt5ct.conf) and an unrelated one (README).
         git(&upstream, &["init", "-q", "-b", "main"]);
         git(&upstream, &["config", "user.email", "t@t"]);
         git(&upstream, &["config", "user.name", "t"]);
-        fs::write(upstream.join("colors.json"), "{\"mPrimary\":\"#000\"}\n").expect("seed colors");
+        fs::write(upstream.join("qt5ct.conf"), "[Appearance]\nstyle=Fusion\n").expect("seed qt5ct");
         fs::write(upstream.join("README.md"), "v1\n").expect("seed readme");
         git(&upstream, &["add", "-A"]);
         git(&upstream, &["commit", "-qm", "init"]);
@@ -5423,9 +5476,9 @@ mod tests {
         fs::write(upstream.join("README.md"), "v2\n").expect("bump readme");
         git(&upstream, &["commit", "-qam", "update readme"]);
 
-        // ...while grogu has repainted the tracked colors.json in the clone.
-        let repaint = "{\"mPrimary\":\"#61c3cf\"}\n";
-        fs::write(clone.join("colors.json"), repaint).expect("repaint colors");
+        // ...while qt5ct has saved a setting into its tracked config here.
+        let saved = "[Appearance]\nstyle=Breeze\n";
+        fs::write(clone.join("qt5ct.conf"), saved).expect("save qt5ct");
 
         git_pull(clone.to_str().unwrap()).expect("autostash pull should fast-forward");
 
@@ -5435,9 +5488,9 @@ mod tests {
             "the upstream update must land despite the dirty tree"
         );
         assert_eq!(
-            fs::read_to_string(clone.join("colors.json")).expect("read colors"),
-            repaint,
-            "the local grogu repaint must survive the pull (autostash restores it)"
+            fs::read_to_string(clone.join("qt5ct.conf")).expect("read qt5ct"),
+            saved,
+            "the local save must survive the pull (autostash restores it)"
         );
     }
 
@@ -5580,6 +5633,24 @@ LOGO=cachyos
                 "{d:?} has no official-repo yay/paru to pacman -S"
             );
         }
+    }
+
+    #[test]
+    fn parse_version_line_reads_what_clap_prints() {
+        assert_eq!(parse_version_line("grogu 0.2.0\n"), Some((0, 2, 0)));
+        assert_eq!(parse_version_line("grogu 0.10.3"), Some((0, 10, 3)));
+        assert_eq!(parse_version_line("grogu"), None);
+        assert_eq!(parse_version_line("grogu 0.2"), None);
+        assert_eq!(parse_version_line("error: unexpected argument"), None);
+    }
+
+    #[test]
+    fn needs_update_compares_numerically_and_distrusts_an_unreadable_version() {
+        assert!(needs_update(Some((0, 1, 0)), GROGU_MIN_VERSION));
+        assert!(!needs_update(Some((0, 2, 0)), GROGU_MIN_VERSION));
+        // Numeric, not lexical: as strings, "0.10.0" sorts before "0.2.0".
+        assert!(!needs_update(Some((0, 10, 0)), GROGU_MIN_VERSION));
+        assert!(needs_update(None, GROGU_MIN_VERSION));
     }
 
     #[test]

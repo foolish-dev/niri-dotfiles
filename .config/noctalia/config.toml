@@ -1,21 +1,20 @@
 # Noctalia v5 config, tracked. v5 merges every *.toml in this directory, in
 # alphabetical order; what its Settings window changes is saved to
-# ~/.local/state/noctalia/settings.toml and wins over all of them. v4's
-# settings.json, plugins.json, plugins/ and colors.json beside this file are
-# not read by v5.
+# ~/.local/state/noctalia/settings.toml and wins over all of them.
 
 [theme]
-# The palette grogu extracts from each wallpaper. v5 reads custom palettes from
-# palettes/<name>.json, in the JSON format v4 called a color scheme;
-# palettes/Grogu.json links to colorschemes/Grogu/Grogu.json, where grogu
-# writes it.
+# The palette grogu makes from each wallpaper. v5 reads custom palettes from
+# palettes/<name>.json; grogu writes palettes/Grogu.json, gitignored like the
+# rest of grogu's output. Until grogu first runs, v5 shows its built-in
+# palette -- the `started` hook below keeps that to one start.
 source         = "custom"
 custom_palette = "Grogu"
 
 [shell]
-# The tracked avatar, at the path v4's general.avatarImage named. Unset, v5
-# looks for ~/.face, which nothing here creates.
-avatar_path = "~/niri-dotfiles/assets/avatar.jpg"
+# The tracked avatar, through avatar.jpg here, a link to assets/avatar.jpg, so
+# the path holds wherever the repo is cloned. Unset, v5 looks for ~/.face,
+# which nothing here creates.
+avatar_path = "~/.config/noctalia/avatar.jpg"
 
 [wallpaper]
 # The curated set `dotctl deploy` copies. Left empty, v5 would browse all of
@@ -41,9 +40,10 @@ center = ["workspaces"]
 end    = ["tray", "notifications", "battery", "volume", "brightness", "control-center"]
 
 [hooks]
-# v4 ran grogu as hooks.wallpaperChange: repaint kitty, tmux, Neovim and the
-# rest from the new wallpaper, and rewrite the Grogu palette. The reload then
-# makes this shell read that palette; grogu's own nudge still speaks v4's IPC.
-# One command, not an array: v5 starts array entries without waiting for one
-# another, so the reload would race grogu's write.
-wallpaper_changed = '"$HOME/.cargo/bin/grogu" apply --extract="$NOCTALIA_WALLPAPER_PATH" --reload; noctalia msg config-reload'
+# Repaint the desktop from each new wallpaper: grogu (0.2+, which `dotctl
+# install` ensures) rewrites the palette and has this shell reload it, and
+# --reload repaints running kitty, tmux and teleia.
+wallpaper_changed = '"$HOME/.cargo/bin/grogu" apply --extract="$NOCTALIA_WALLPAPER_PATH" --reload'
+# A fresh clone has no palette until that first runs, so make one from the
+# wallpaper on screen; --extract with no path asks this shell for it.
+started = '[ -e "$HOME/.config/noctalia/palettes/Grogu.json" ] || "$HOME/.cargo/bin/grogu" apply --extract --reload'
