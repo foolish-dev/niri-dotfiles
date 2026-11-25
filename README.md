@@ -159,11 +159,15 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── hexstrike-assert-loopback            # ExecStartPost= bind check, fails closed
 │   └── dotfiles-check                       # health check: links, units, and what dotctl install set up
 ├── src/main.rs                              # dotctl — Rust installer/deployer
-├── tests/                                   # hermetic shell suites, all of them run in CI
+├── tests/                                   # hermetic suites (bash, one Python), all run in CI
 │   ├── hexstrike-assert-loopback.sh         # cases over the bind check
 │   ├── mkproj.sh                            # cases over the scaffolder
 │   ├── config-syntax.sh                     # parses every tracked config
-│   └── dotfiles-check.sh                    # cases over the health check
+│   ├── dotfiles-check.sh                    # cases over the health check
+│   ├── github-mcp.sh                        # the launcher never starts tokenless, never prints it
+│   ├── fwupd-check.sh                       # the firmware notice retries until delivered
+│   ├── hexstrike-host-guard.py              # the Host guard against a real Flask
+│   └── dotctl-selfupdate.sh                 # dotctl's self-rebuild, on the built binary
 ├── .github/workflows/ci.yml                 # rust job + shell job (shellcheck, then the suites)
 ├── .github/workflows/mcp-pins.yml           # weekly: is every pinned MCP server still npm's latest?
 ├── .github/scripts/check-mcp-pins.py        # what mcp-pins.yml runs
