@@ -19,14 +19,7 @@ An AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP
 
 ## Install
 
-> **The base desktop.** `dotctl install` installs the Niri base desktop (`niri`, `fuzzel`, `kitty`, the `wl-clipboard`/`wl-clip-persist`/`cliphist` clipboard stack, `xwayland-satellite`, and the `wireplumber`/`brightnessctl` the media and brightness keys call) alongside the curated tools (grogu, teleia, HexStrike, Neovim, tmux, zsh + starship, fastfetch, Noctalia, the greeter), then `dotctl deploy` lays down the dotfiles.
-
-(The rest of line 22 — "Running `dotctl deploy` on its own installs nothing …"
-onward — is unchanged and still correct: `BASE_DESKTOP_MARKER` is `niri`,
-src/main.rs:2277.)
-
-
-── Patch 2b — `dotctl install` table row (line 45), first fragment ── Running `dotctl deploy` on its own installs nothing, so it warns if `niri` is missing — run `dotctl install` (or `dotctl all`) first. For the heavier full bundle (ghostty, lazygit, GTK/Qt theming, 300+ BlackArch tools), see **[foolish-dev/distro-work](https://github.com/foolish-dev/distro-work)**.
+> **The base desktop.** `dotctl install` installs the Niri base desktop (`niri`, `fuzzel`, `kitty`, the `wl-clipboard`/`wl-clip-persist`/`cliphist` clipboard stack, `xwayland-satellite`, and the `wireplumber`/`brightnessctl` the media and brightness keys call) alongside the curated tools (grogu, teleia, HexStrike, Neovim, tmux, zsh + starship, fastfetch, Noctalia, the greeter), then `dotctl deploy` lays down the dotfiles. Running `dotctl deploy` on its own installs nothing, so it warns if `niri` is missing — run `dotctl install` (or `dotctl all`) first. For the heavier full bundle (ghostty, lazygit, GTK/Qt theming, 300+ BlackArch tools), see **[foolish-dev/distro-work](https://github.com/foolish-dev/distro-work)**.
 
 ```bash
 cargo install --git https://github.com/foolish-dev/niri-dotfiles --locked && dotctl all
@@ -49,13 +42,7 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
 
 | Subcommand | What it does |
 |---|---|
-| `dotctl install` | Wire BlackArch, plus Chaotic AUR on non-CachyOS hosts (both idempotent); ensure an AUR helper (`yay` from `[cachyos]` on CachyOS, from Chaotic-AUR on Arch, or whichever of `yay`/`paru` is already present), `cargo install` grogu and teleia, clone+venv HexStrike AI, `pacman -S` the base desktop (niri/fuzzel/kitty) plus the pieces `config.kdl` and `.zshrc` already call — wl-clipboard/wl-clip-persist/cliphist, xwayland-satellite, wireplumber, brightnessctl, zsh, starship and the JetBrainsMono Nerd font — plus tmux/fastfetch/neovim/fwupd and `noctalia-shell`+`noctalia-qs`
-
-
-── Patch 2c — same row (line 45), second fragment ── (CachyOS `[cachyos]` repo only — warns and continues elsewhere), AUR-install the Bibata cursor theme every tracked config names and `sddm-theme-noctalia-git` (via yay or paru, a themed SDDM fallback)
-
-
-── Patch 2d — teleia paragraph (line 99, final sentence) ──, `pacman -S` `greetd`/`greetd-regreet`/`cage` (then select the noctalia **SDDM** theme via `/etc/sddm.conf.d/` and enable `sddm.service` as the graphical login screen — disabling `greetd`, but never overriding a third-party display manager; greetd + a noctalia-themed ReGreet config under `/etc/greetd/` are kept as a disabled fallback), and build `noctalia-unofficial-auth-agent-git` from a locally patched PKGBUILD (GCC 16 fix). |
+| `dotctl install` | Wire BlackArch, plus Chaotic AUR on non-CachyOS hosts (both idempotent); ensure an AUR helper (`yay` from `[cachyos]` on CachyOS, from Chaotic-AUR on Arch, or whichever of `yay`/`paru` is already present), `cargo install` grogu and teleia, clone+venv HexStrike AI, `pacman -S` the base desktop (niri/fuzzel/kitty) plus the pieces `config.kdl` and `.zshrc` already call — wl-clipboard/wl-clip-persist/cliphist, xwayland-satellite, wireplumber, brightnessctl, zsh, starship and the JetBrainsMono Nerd font — plus tmux/fastfetch/neovim/fwupd and `noctalia-shell`+`noctalia-qs` (CachyOS `[cachyos]` repo only — warns and continues elsewhere), AUR-install the Bibata cursor theme every tracked config names and `sddm-theme-noctalia-git` (via yay or paru, a themed SDDM fallback), `pacman -S` `greetd`/`greetd-regreet`/`cage` (then select the noctalia **SDDM** theme via `/etc/sddm.conf.d/` and enable `sddm.service` as the graphical login screen — disabling `greetd`, but never overriding a third-party display manager; greetd + a noctalia-themed ReGreet config under `/etc/greetd/` are kept as a disabled fallback), and build `noctalia-unofficial-auth-agent-git` from a locally patched PKGBUILD (GCC 16 fix). |
 | `dotctl deploy` | Symlink the full `.config` set (`teleia, nvim, noctalia, fastfetch, tmux, fuzzel, gtk-3.0/4.0, kitty, lazygit, neofetch, niri, opencode, qt5ct/6ct, wal, starship.toml`), home dotfiles (`.zshrc, .editorconfig, .gitignore_global`), and every `.local/bin/*`. Copy the curated `wallpapers/*` into `~/Pictures/Wallpapers` as real files (applied on all monitors; copies, not symlinks, so a stray wallpaper `cp` — e.g. the greeter background-sync — can't write back into the repo). Deploy the tracked `.gitconfig` via an untracked `~/.gitconfig` include-stub + seed `~/.gitconfig.local` identity. Symlink the user systemd units (real dir), `daemon-reload`, then `enable --now` hexstrike-server, `bb-auth.service` and `fwupd-check.timer` (each skipped, with a hint, when its prerequisite binary is absent). Back up displaced files. |
 | `dotctl all` | `install` then `deploy`. |
 
@@ -110,9 +97,6 @@ instance CachyOS's `noctalia-greeter` — is left alone, config and unit both.
 **`dotctl`** is the in-tree Rust binary that replaced the old `install.sh` + `deploy.sh` pair. Clap-derive CLI, anyhow errors, no async runtime. See the subcommand table under [Install](#install).
 
 [**teleia**](https://github.com/foolish-dev/teleia) (τέλεια — "perfect") is a single-binary TUI coding agent. `.config/teleia/config.toml` wires `context7`, `filesystem`, `github`, `fetch`, `hexstrike-ai`, `playwright`, `sequential-thinking`, `memory`, `git`, and `weather` — drop-in compatible with any other MCP client. `dotctl install` cargo-installs it from upstream, the same way it installs grogu; before that it was deployed as a keybind and a config with no binary behind them.
-
-
-── Patch 2e — the whole Layout block (lines 126-147) ──
 
 [**grogu**](https://github.com/foolish-dev/grogu) extracts a palette from the current wallpaper and writes themed fragments for niri, kitty, ghostty, tmux, Neovim, teleia, Noctalia, the SDDM greeter background, and the keyboard backlight in one shot. `dotctl install` cargo-installs it from upstream.
 
