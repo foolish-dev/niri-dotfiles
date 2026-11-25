@@ -49,10 +49,26 @@ fn main() -> Result<()> {
     // parameter rather than re-probing /etc/os-release at each decision point.
     let distro = detect_distro();
     match cli.cmd {
-        Cmd::Install { no_aur_helper } => install(distro, no_aur_helper),
-        Cmd::Deploy => deploy(&repo, &home()),
+        Cmd::Install { no_aur_helper } => {
+            warn_if_stale(&repo);
+            install(distro, no_aur_helper)
+        }
+        Cmd::Deploy => {
+            warn_if_stale(&repo);
+            deploy(&repo, &home())
+        }
         Cmd::All { no_aur_helper } => {
             ensure_repo(&repo)?;
+            if binary_is_stale(&repo) {
+                if std::env::var_os(REBUILT_ENV).is_some() {
+                    warn(
+                        "dotctl was just rebuilt and still differs from the checkout — is \
+                         another dotctl ahead of cargo's on PATH? Continuing with this one.",
+                    );
+                } else {
+                    rebuild_and_reexec(&repo);
+                }
+            }
             install(distro, no_aur_helper)?;
             deploy(&repo, &home())
         }
@@ -1481,6 +1497,132 @@ fn ensure_repo(repo: &Path) -> Result<()> {
         )?;
     }
     Ok(())
+}
+
+// ── Self-update ───────────────────────────────────────────────────────────────
+//
+// `dotctl all` pulls the checkout and then runs install() and deploy() — the
+// ones compiled into the binary already running, not the ones it just pulled.
+// So a fix to dotctl reached nobody until they thought to reinstall it by
+// hand. The binary therefore carries a fingerprint of the source it was built
+// from, and compares it with the checkout's.
+
+/// Every file whose contents decide what this binary does, relative to the
+/// repo root: the source, the manifest and lockfile, and each asset compiled
+/// in with `include_str!`. `BUILT_FROM` hashes the same files in the same
+/// order; a test holds the two lists together.
+const SELF_SOURCE: [&str; 6] = [
+    "src/main.rs",
+    "Cargo.toml",
+    "Cargo.lock",
+    "assets/greetd/regreet.toml",
+    "assets/greetd/regreet.css",
+    "assets/hexstrike-host-guard.py",
+];
+
+const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+
+/// FNV-1a, 64-bit. `const` so the build can fingerprint its own source; the
+/// run-time check calls the same function on the checkout's files.
+const fn fnv1a(mut hash: u64, bytes: &[u8]) -> u64 {
+    let mut i = 0;
+    while i < bytes.len() {
+        hash ^= bytes[i] as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        i += 1;
+    }
+    hash
+}
+
+/// One file's contribution: its path, a separator, its bytes. The path is in
+/// it so that moving bytes from one file to the next still changes the hash.
+const fn fingerprint_file(hash: u64, path: &str, bytes: &[u8]) -> u64 {
+    fnv1a(fnv1a(fnv1a(hash, path.as_bytes()), &[0]), bytes)
+}
+
+/// The fingerprint of the source this binary was compiled from.
+const BUILT_FROM: u64 = {
+    let h = fingerprint_file(FNV_OFFSET, SELF_SOURCE[0], include_bytes!("main.rs"));
+    let h = fingerprint_file(h, SELF_SOURCE[1], include_bytes!("../Cargo.toml"));
+    let h = fingerprint_file(h, SELF_SOURCE[2], include_bytes!("../Cargo.lock"));
+    let h = fingerprint_file(
+        h,
+        SELF_SOURCE[3],
+        include_bytes!("../assets/greetd/regreet.toml"),
+    );
+    let h = fingerprint_file(
+        h,
+        SELF_SOURCE[4],
+        include_bytes!("../assets/greetd/regreet.css"),
+    );
+    fingerprint_file(
+        h,
+        SELF_SOURCE[5],
+        include_bytes!("../assets/hexstrike-host-guard.py"),
+    )
+};
+
+/// Set on the rebuilt dotctl that [`rebuild_and_reexec`] starts, so a binary
+/// that still differs after a rebuild warns instead of rebuilding forever.
+const REBUILT_ENV: &str = "DOTCTL_REBUILT";
+
+/// The fingerprint of the dotctl source in `repo`, or None when a file is
+/// missing — not a dotctl checkout, so nothing to compare.
+fn checkout_fingerprint(repo: &Path) -> Option<u64> {
+    let mut hash = FNV_OFFSET;
+    for rel in SELF_SOURCE {
+        hash = fingerprint_file(hash, rel, &fs::read(repo.join(rel)).ok()?);
+    }
+    Some(hash)
+}
+
+/// True when `repo` holds dotctl source other than what this binary was built
+/// from: the pull brought new code, or the binary predates the checkout.
+fn binary_is_stale(repo: &Path) -> bool {
+    checkout_fingerprint(repo).is_some_and(|h| h != BUILT_FROM)
+}
+
+/// Rebuild dotctl from `repo` and run the new binary in this one's place with
+/// the same arguments. Returns only when that could not happen, after saying
+/// why; the caller then carries on with the binary it has.
+fn rebuild_and_reexec(repo: &Path) {
+    use std::os::unix::process::CommandExt;
+    info("dotctl's source in the checkout differs from this binary — rebuilding ...");
+    let Some(repo_str) = repo.to_str() else {
+        warn("repo path is not valid utf-8 — continuing with this dotctl");
+        return;
+    };
+    if let Err(e) = run(
+        "cargo",
+        &["install", "--path", repo_str, "--locked", "--force"],
+    ) {
+        warn(&format!(
+            "could not rebuild dotctl: {e} — continuing with this binary, which predates the checkout"
+        ));
+        return;
+    }
+    // `dotctl` by name: cargo just installed the new one onto PATH, wherever
+    // this one was started from.
+    let err = Command::new("dotctl")
+        .args(std::env::args_os().skip(1))
+        .env(REBUILT_ENV, "1")
+        .exec();
+    warn(&format!(
+        "rebuilt dotctl but could not start it: {err} — continuing with this binary"
+    ));
+}
+
+/// For `install` and `deploy`, which do not pull: say so, but do not rebuild
+/// behind the user's back.
+fn warn_if_stale(repo: &Path) {
+    if binary_is_stale(repo) {
+        warn(&format!(
+            "this dotctl was built from different source than {} — `dotctl all` rebuilds \
+             it, or run `cargo install --path {} --locked --force`",
+            repo.display(),
+            repo.display()
+        ));
+    }
 }
 
 // ── NPU (AMD XDNA) detection ──────────────────────────────────────────────────
@@ -3136,20 +3278,20 @@ fn copy_item(src: &Path, dest: &Path, backup_dir: &Path, home: &Path) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        amdxdna_memlock_conf, asus_pack, aur_failure_marker_in, aur_helper_hint,
-        chaotic_aur_policy, chaotic_state, command_exists, copy_item, git_has_conflicts, git_pull,
-        gitconfig_identity_is_placeholder, gitconfig_lacks_include, greetd_is_replaceable,
-        greetd_session_command, link_dotfiles, link_item, login_action, marker_still_valid_at,
-        memlock_user, noctalia_plan, npu_pack, os_release_value, pacman_conf_has_repo,
-        pacman_pkg_installed, parse_distro, parse_pci_id, patch_hexstrike_bind,
-        patch_hexstrike_host_guard, patch_pkgbuild_unistd, pci_devices, platform_devices,
-        preferred_aur_helper, refresh_aur_clone, refuse_conflicted_tree, sddm_theme_conf_body,
-        sddm_theme_is_ours, setup_gitconfig, sync_db_path, venv_ready, AsusPack, BindState,
-        ChaoticAur, ChaoticState, Distro, HostGuardState, LoginAction, NoctaliaPlan, NpuPack,
-        ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, ASUS_PLATFORM_DEVICE, AUR_HELPERS, BASE_DESKTOP_HINT,
-        BASE_DESKTOP_MARKER, CURSOR_THEME_NAME, GITCONFIG_STUB, GREETD_CONFIG_BODY,
-        HEXSTRIKE_HOST_GUARD, HOST_GUARD_SENTINEL, LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML,
-        XDNA_PCI_DEVICE_IDS,
+        amdxdna_memlock_conf, asus_pack, aur_failure_marker_in, aur_helper_hint, binary_is_stale,
+        chaotic_aur_policy, chaotic_state, checkout_fingerprint, command_exists, copy_item, fnv1a,
+        git_has_conflicts, git_pull, gitconfig_identity_is_placeholder, gitconfig_lacks_include,
+        greetd_is_replaceable, greetd_session_command, link_dotfiles, link_item, login_action,
+        marker_still_valid_at, memlock_user, noctalia_plan, npu_pack, os_release_value,
+        pacman_conf_has_repo, pacman_pkg_installed, parse_distro, parse_pci_id,
+        patch_hexstrike_bind, patch_hexstrike_host_guard, patch_pkgbuild_unistd, pci_devices,
+        platform_devices, preferred_aur_helper, refresh_aur_clone, refuse_conflicted_tree,
+        sddm_theme_conf_body, sddm_theme_is_ours, setup_gitconfig, sync_db_path, venv_ready,
+        AsusPack, BindState, ChaoticAur, ChaoticState, Distro, HostGuardState, LoginAction,
+        NoctaliaPlan, NpuPack, ALL_INTERFACE_BINDS, AMD_PCI_VENDOR, ASUS_PLATFORM_DEVICE,
+        AUR_HELPERS, BASE_DESKTOP_HINT, BASE_DESKTOP_MARKER, BUILT_FROM, CURSOR_THEME_NAME,
+        FNV_OFFSET, GITCONFIG_STUB, GREETD_CONFIG_BODY, HEXSTRIKE_HOST_GUARD, HOST_GUARD_SENTINEL,
+        LOOPBACK_BINDS, REGREET_CSS, REGREET_TOML, SELF_SOURCE, XDNA_PCI_DEVICE_IDS,
     };
     use std::env;
     use std::fs;
@@ -3650,6 +3792,77 @@ mod tests {
         // `Present` is decided by the sentinel. If the asset's first line drifted
         // from it, every run would insert the guard again.
         assert!(HEXSTRIKE_HOST_GUARD.starts_with(HOST_GUARD_SENTINEL));
+    }
+
+    #[test]
+    fn fnv1a_matches_the_published_test_vectors() {
+        assert_eq!(fnv1a(FNV_OFFSET, b""), 0xcbf2_9ce4_8422_2325);
+        assert_eq!(fnv1a(FNV_OFFSET, b"a"), 0xaf63_dc4c_8601_ec8c);
+        assert_eq!(fnv1a(FNV_OFFSET, b"foobar"), 0x8594_4171_f739_67e8);
+    }
+
+    #[test]
+    fn the_source_tree_fingerprints_to_what_was_compiled() {
+        // The tests are built from this tree, so hashing it at run time must
+        // reproduce BUILT_FROM. If it does not, SELF_SOURCE and the
+        // include_bytes! list in BUILT_FROM have drifted apart, and every
+        // `dotctl all` would rebuild itself for nothing.
+        let tree = Path::new(env!("CARGO_MANIFEST_DIR"));
+        assert_eq!(checkout_fingerprint(tree), Some(BUILT_FROM));
+        assert!(!binary_is_stale(tree));
+    }
+
+    #[test]
+    fn a_changed_or_missing_source_file_is_noticed() {
+        let tree = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let tmp = TempDir::new().expect("tempdir");
+        for rel in SELF_SOURCE {
+            let dest = tmp.path().join(rel);
+            fs::create_dir_all(dest.parent().unwrap()).unwrap();
+            fs::copy(tree.join(rel), &dest).unwrap();
+        }
+        assert!(!binary_is_stale(tmp.path()), "an exact copy is not stale");
+
+        // One byte of the lockfile: a dependency bump is a different binary.
+        let lock = tmp.path().join("Cargo.lock");
+        let mut bytes = fs::read(&lock).unwrap();
+        bytes.push(b'\n');
+        fs::write(&lock, bytes).unwrap();
+        assert!(binary_is_stale(tmp.path()), "a changed file is stale");
+
+        // Not a dotctl checkout at all: nothing to compare, so not stale.
+        fs::remove_file(&lock).unwrap();
+        assert_eq!(checkout_fingerprint(tmp.path()), None);
+        assert!(!binary_is_stale(tmp.path()));
+    }
+
+    #[test]
+    fn every_compiled_in_file_is_fingerprinted() {
+        // A new include_str! asset changes what dotctl does; if SELF_SOURCE
+        // missed it, editing that asset would never trigger a rebuild.
+        let src = include_str!("main.rs");
+        let mut rest = src;
+        let mut seen = 0;
+        while let Some(i) = rest.find("include_") {
+            rest = &rest[i + "include_".len()..];
+            let Some(arg) = ["str!(\"", "bytes!(\""]
+                .iter()
+                .find_map(|p| rest.strip_prefix(p))
+            else {
+                continue;
+            };
+            let path = &arg[..arg.find('"').unwrap()];
+            let rel = path
+                .strip_prefix("../")
+                .map(str::to_owned)
+                .unwrap_or_else(|| format!("src/{path}"));
+            assert!(
+                SELF_SOURCE.contains(&rel.as_str()),
+                "{rel} is compiled in but not in SELF_SOURCE"
+            );
+            seen += 1;
+        }
+        assert!(seen >= SELF_SOURCE.len(), "found only {seen} includes");
     }
 
     #[test]
