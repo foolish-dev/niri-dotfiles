@@ -104,21 +104,20 @@ export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
 [[ -f /usr/share/fzf/key-bindings.zsh ]] && source /usr/share/fzf/key-bindings.zsh
 [[ -f /usr/share/fzf/completion.zsh ]]    && source /usr/share/fzf/completion.zsh
 
-# ── CachyOS zsh defaults ───────────────────────────────────────────────────
-# CachyOS ships its zsh setup as a single sourced file (cachyos-zsh-config);
-# /etc/skel/.zshrc is literally just that one `source` line, and there is no
-# system-wide /etc/zsh/zshrc to re-add it. Deploying this .zshrc over ~/.zshrc
-# would otherwise discard it silently. No-op on stock Arch (file absent).
+# ── Command not found ──────────────────────────────────────────────────────
+# pkgfile names the package a missing command lives in, from the database
+# pkgfile-update.timer keeps (`dotctl install` enables it). With no database
+# yet, it falls back to zsh's plain "command not found".
 #
-# It sources oh-my-zsh, whose lib/key-bindings.zsh does a bare `bindkey -e` and
-# whose ENABLE_CORRECTION adds `correct_all` — both of which land *after* the
-# Options/Vi-mode blocks above and silently undo them (verified: main keymap
-# flips viins -> emacs, `^p` demotes to up-line-or-history). Re-assert both.
-# `bindkey -v` alone restores the `^p`/`^n`/… binds above: they were written
-# into the viins keymap, which `bindkey -e` never touched.
-[[ -r /usr/share/cachyos-zsh-config/cachyos-config.zsh ]] && source /usr/share/cachyos-zsh-config/cachyos-config.zsh
-bindkey -v
-unsetopt correct_all
+# This used to source CachyOS's whole zsh setup (cachyos-config.zsh), which
+# /etc/skel/.zshrc consists of, so that deploying this file would not drop it.
+# It brought oh-my-zsh, a powerlevel10k prompt that starship then replaced,
+# second copies of zsh-autosuggestions and zsh-syntax-highlighting (zinit
+# loads both above), and aliases nobody here used: ~80% of interactive
+# startup, paid by every tmux pane, plus p10k and oh-my-zsh hooks before every
+# prompt. It also undid this file's vi keymap and re-enabled correct_all,
+# which needed re-asserting after it. This handler was the part worth keeping.
+[[ -r /usr/share/doc/pkgfile/command-not-found.zsh ]] && source /usr/share/doc/pkgfile/command-not-found.zsh
 
 # ── Aliases: General ───────────────────────────────────────────────────────
 alias v="nvim"
