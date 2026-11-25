@@ -1,0 +1,28 @@
+name: mcp-pins
+
+# Dependabot's stand-in for the MCP servers the agent configs pin by version
+# inside TOML/JSONC argument lists, where Dependabot cannot see them. A red run
+# means a pin is no longer npm's `latest`, or its package is deprecated; the
+# job summary says which. Weekly, an hour after the Dependabot runs, plus any
+# push that touches a pin or this check.
+on:
+  schedule:
+    - cron: "43 7 * * 3"
+  workflow_dispatch:
+  push:
+    paths:
+      - .config/teleia/config.toml
+      - .config/opencode/opencode.json
+      - .github/scripts/check-mcp-pins.py
+      - .github/workflows/mcp-pins.yml
+
+# Least privilege: it reads the repo and the public npm registry, nothing else.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: python3 .github/scripts/check-mcp-pins.py

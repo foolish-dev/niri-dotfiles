@@ -151,6 +151,8 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── config-syntax.sh                     # parses every tracked config
 │   └── dotfiles-check.sh                    # cases over the health check
 ├── .github/workflows/ci.yml                 # rust job + shell job (shellcheck, then the suites)
+├── .github/workflows/mcp-pins.yml           # weekly: is every pinned MCP server still npm's latest?
+├── .github/scripts/check-mcp-pins.py        # what mcp-pins.yml runs
 ├── Cargo.toml                               # crate manifest (clap-derive + anyhow)
 └── Cargo.lock                               # locked
 ```
