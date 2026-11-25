@@ -24,10 +24,11 @@ An AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP
 > **The base desktop.** `dotctl install` installs the Niri base desktop (`niri`, `fuzzel`, `kitty`, the `wl-clipboard`/`wl-clip-persist`/`cliphist` clipboard stack, `xwayland-satellite`, and the `wireplumber`/`brightnessctl` the media and brightness keys call) alongside the curated tools (grogu, teleia, HexStrike, Neovim, tmux, zsh + starship, fastfetch, Noctalia, the greeter), then `dotctl deploy` lays down the dotfiles. Running `dotctl deploy` on its own installs nothing, so it warns if `niri` is missing — run `dotctl install` (or `dotctl all`) first. For the heavier full bundle (ghostty, lazygit, GTK/Qt theming, 300+ BlackArch tools), see **[foolish-dev/distro-work](https://github.com/foolish-dev/distro-work)**.
 
 ```bash
-cargo install --git https://github.com/foolish-dev/niri-dotfiles --locked && dotctl all
+git clone https://github.com/foolish-dev/niri-dotfiles.git ~/niri-dotfiles \
+  && cargo install --path ~/niri-dotfiles --locked && dotctl all
 ```
 
-Needs `cargo` (install rustup if you don't have it). `cargo install` fetches the source, builds, and drops `dotctl` into `~/.cargo/bin`. `dotctl all` then clones (or pulls) the repo into `~/niri-dotfiles`, runs `install`, and runs `deploy`.
+Needs `git` and `cargo` (install rustup if you don't have it). The clone is the only copy of the repo you download: `cargo install --path` builds `dotctl` from it into `~/.cargo/bin`, and `dotctl all` pulls it, rebuilds itself if its own source changed, then runs `install` and `deploy`. (`cargo install --git` would download the whole ~200 MiB repo, wallpapers included, into `~/.cargo/git` to build a 0.2 MiB crate, and `dotctl all` would then clone it a second time.)
 
 Manual:
 
