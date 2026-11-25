@@ -1,5 +1,7 @@
 # dotfiles
 
+[![ci](https://github.com/foolish-dev/niri-dotfiles/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/foolish-dev/niri-dotfiles/actions/workflows/ci.yml?query=branch%3Amain)
+
 <p align="center">
   <img src="assets/desktop.png" alt="Desktop — niri scrolling-tile Wayland session, tmux running nvim + teleia side-by-side under the Tokyo Night palette" width="900"/>
 </p>
