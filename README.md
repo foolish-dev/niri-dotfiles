@@ -13,7 +13,7 @@ An AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP
 | | |
 | --- | --- |
 | **Binary** | `dotctl` — one Rust crate, three subcommands |
-| **Editor** | Neovim with **109 plugins**, **35 LSPs**, 21 formatters/linters, 4 DAP adapters |
+| **Editor** | Neovim with **108 plugins**, **35 LSPs**, 21 formatters/linters, 4 DAP adapters |
 | **Agent** | `teleia` wired to **9 MCP servers** (context7 · filesystem · github · fetch · hexstrike-ai · playwright · sequential-thinking · memory · weather) |
 | **Offsec** | HexStrike AI on a sandboxed systemd unit + BlackArch repo (5,000+ packages, `pacman -S` away) |
 | **Theming** | `grogu` repaints **9 targets** from the current wallpaper, in one shot |
@@ -107,7 +107,7 @@ instance CachyOS's `noctalia-greeter` — is left alone, config and unit both.
 
 **Neovim** — lazy.nvim + Mason, kitchen-sink config:
 
-- **109 plugins** lazy-loaded by event, ft, or key.
+- **108 plugins** lazy-loaded by event, ft, or key.
 - **35 LSPs** auto-installed via `mason-lspconfig` — lua, rust, go, python (pyright + ruff), C/C++, zig, every JS/TS framework (ts, vue, svelte, astro, prisma, tailwind, graphql), the IaC set (yaml, terraform, helm, ansible, docker), and the long tail (elixir, kotlin, jdtls, intelephense, solargraph, texlab, marksman). `ocamllsp`, `hls`, `nil_ls`, `cmake` are omitted by default — install opam / ghcup / etc. and append to `lsp.lua` to re-enable.
 - **21 formatters + linters** auto-installed via `mason-tool-installer` (stylua, prettierd, ruff, black, shellcheck, hadolint, eslint_d, gofumpt, alejandra, buf, …) and **4 DAP adapters** via `mason-nvim-dap` (codelldb, debugpy, delve, js-debug-adapter). `nvim-lint` silently skips any binary that hasn't landed yet.
 - **AI**: `opencode` (built-in teleia popup), `copilot.lua` (inline ghost text, `<M-l>` to accept), `avante`, `codecompanion`.
@@ -132,7 +132,7 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 ├── wallpapers/                              # the curated set deploy copies into ~/Pictures/Wallpapers
 ├── .config/
 │   ├── teleia/config.toml                   # 9 MCP servers
-│   ├── nvim/                                # lazy.nvim + Mason, 109 plugins, 35 LSPs
+│   ├── nvim/                                # lazy.nvim + Mason, 108 plugins, 35 LSPs
 │   ├── tmux/                                # tmux.conf, scripts/mem.sh
 │   ├── noctalia/                            # settings.json, plugins.json, colorschemes/Grogu/
 │   ├── fastfetch/config.jsonc               # terminal banner

@@ -79,10 +79,14 @@ return {
         auto_apply_diff_after_generation = false,
         support_paste_from_clipboard   = true,
       },
+      -- snacks.input, the same vim.ui.input everything else gets (ui.lua).
+      -- avante used to pull in stevearc/dressing.nvim for this, which is
+      -- archived and, the moment avante loaded, re-patched vim.ui.input and
+      -- vim.ui.select away from snacks for the rest of the session.
+      input = { provider = "snacks" },
     },
     build = "make",
     dependencies = {
-      "stevearc/dressing.nvim",
       "nvim-lua/plenary.nvim",
       "MunifTanjim/nui.nvim",
       "hrsh7th/nvim-cmp",
