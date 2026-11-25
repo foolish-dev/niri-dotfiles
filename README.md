@@ -133,7 +133,7 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 
 **tmux** — `C-a` prefix, Tokyo Night powerline status, RAM-bar fragment under `.config/tmux/scripts/mem.sh`, and a `grogu.conf` slot (gitignored) the wallpaper-driven theme propagator writes to.
 
-[**Noctalia**](https://github.com/noctalia-dev/noctalia-shell) is a Quickshell-based Wayland shell: bar, dock, panels, notifications, lock screen, app launcher. `settings.json` + `plugins.json` + bundled `Grogu` colorscheme. Bar tuned to transparency-blur (`backgroundOpacity: 0.2`, global `enableBlurBehind: true`) and `ActiveWindow` widget dropped from the layout.
+[**Noctalia**](https://github.com/noctalia-dev/noctalia) v5 is a Wayland shell: bar, dock, panels, notifications, lock screen, app launcher. It replaced the Quickshell-based v4, whose `settings.json` stays beside it as a reference v5 never reads. `config.toml` selects the `Grogu` palette grogu writes (through `palettes/Grogu.json`), runs grogu on every wallpaper change, and blurs the wallpaper into niri's overview backdrop. Bar tuned to transparency-blur (`background_opacity = 0.2` over the compositor blur) on v4's widget layout, with no active-window title.
 
 **fastfetch** — a Tokyo-Night-tinted `config.jsonc` for [fastfetch](https://github.com/fastfetch-cli/fastfetch) — terminal banner with OS, kernel, shell, and color blocks.
 
@@ -147,7 +147,7 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── teleia/config.toml                   # 9 MCP servers
 │   ├── nvim/                                # lazy.nvim + Mason, 108 plugins, 35 LSPs
 │   ├── tmux/                                # tmux.conf, scripts/mem.sh
-│   ├── noctalia/                            # settings.json, plugins.json, colorschemes/Grogu/
+│   ├── noctalia/                            # config.toml (v5); palettes/Grogu.json → colorschemes/Grogu/
 │   ├── fastfetch/config.jsonc               # terminal banner
 │   └── systemd/user/                        # deployed as a REAL dir; units symlinked one by one
 │       ├── hexstrike-server.service         # :8888, loopback-pinned at install

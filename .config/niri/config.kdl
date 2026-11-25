@@ -172,9 +172,9 @@ window-rule {
 // ---------------------------------------------------------------------------
 // Layer rules  (Noctalia shell layers)
 // ---------------------------------------------------------------------------
-// Blurred overview wallpaper on the backdrop.
+// Blurred overview wallpaper on the backdrop: Noctalia's [backdrop] layer.
 layer-rule {
-    match namespace="^noctalia-overview*"
+    match namespace="^noctalia-backdrop"
     place-within-backdrop true
 }
 
@@ -253,7 +253,10 @@ environment {
 // ---------------------------------------------------------------------------
 // Spawn at startup
 // ---------------------------------------------------------------------------
-spawn-at-startup "qs" "-c" "noctalia-shell"
+// Noctalia v5, the native shell. The v4 line ran under Quickshell as
+// `qs -c noctalia-shell`; the 2026-11-25 update replaced it, and that
+// command has started nothing since.
+spawn-at-startup "noctalia"
 spawn-at-startup "xwayland-satellite"
 
 // IBus input method setup (Korean Hangul + general IME). Run this once to
@@ -270,8 +273,8 @@ spawn-at-startup "wl-paste" "--watch" "cliphist" "store"
 // arboard, wl-copy in scripts, etc.
 spawn-at-startup "wl-clip-persist" "--clipboard" "regular"
 
-// Idle / lock is handled by noctalia-shell's built-in idle daemon
-// (Control Center → Idle).
+// Idle / lock is handled by Noctalia's idle behaviors ([idle.behavior.*],
+// all disabled by default, as v4's were here); it locks before suspend.
 
 // Polkit agent: bb-auth.service, from noctalia-unofficial-auth-agent-git.
 // It ships its own /usr/lib/systemd/user unit and `dotctl deploy` enables
@@ -389,13 +392,13 @@ binds {
     // ── Core ──────────────────────────────────────────────────────────
     Mod+Return          { spawn "kitty"; }
     Mod+Shift+Return    { spawn "kitty" "--class" "floating-term"; }
-    Mod+D               { spawn-sh "qs -c noctalia-shell ipc call launcher toggle"; }
+    Mod+D               { spawn "noctalia" "msg" "panel-toggle" "launcher"; }
     Mod+Q               { close-window; }
     Mod+Shift+E         { quit; }
     Mod+Shift+Slash     { show-hotkey-overlay; }
 
     // ── Noctalia Launcher ─────────────────────────────────────────────
-    Mod+Space           { spawn-sh "qs -c noctalia-shell ipc call launcher toggle"; }
+    Mod+Space           { spawn "noctalia" "msg" "panel-toggle" "launcher"; }
     // ── Reload ────────────────────────────────────────────────────────
     Mod+Shift+C         { spawn "niri" "msg" "action" "load-config-file"; }
 
@@ -479,7 +482,7 @@ binds {
     XF86Launch1           { spawn "rog-control-center" "--windowed"; }
 
     // ── Lock / Power ──────────────────────────────────────────────────
-    Mod+Escape           { spawn-sh "qs -c noctalia-shell ipc call lockScreen lock"; }
+    Mod+Escape           { spawn "noctalia" "msg" "session" "lock"; }
     Mod+Shift+P          { power-off-monitors; }
 
     // ── Clipboard ─────────────────────────────────────────────────────
@@ -510,14 +513,15 @@ binds {
 
     // ── Noctalia shell toggle (overview / control center) ────────────
     // Launcher already bound above (Mod+D, Mod+Space).
-    Mod+S     { spawn-sh "qs -c noctalia-shell ipc call controlCenter toggle"; }
-    Mod+Comma { spawn-sh "qs -c noctalia-shell ipc call settings toggle"; }
+    Mod+S     { spawn "noctalia" "msg" "panel-toggle" "control-center"; }
+    Mod+Comma { spawn "noctalia" "msg" "settings-toggle"; }
     // Opens Noctalia's wallpaper selector. Picking a wallpaper fires
-    // Noctalia's `wallpaperChange` hook, which runs grogu to repaint
-    // niri/kitty/ghostty/tmux/vim/telia + Noctalia itself.
-    Mod+W     { spawn-sh "qs -c noctalia-shell ipc call wallpaper toggle"; }
+    // Noctalia's `wallpaper_changed` hook (~/.config/noctalia/config.toml),
+    // which runs grogu to repaint niri/kitty/ghostty/tmux/vim/telia +
+    // Noctalia itself.
+    Mod+W     { spawn "noctalia" "msg" "panel-toggle" "wallpaper"; }
     // Randomize: one random wallpaper applied to all monitors (fires grogu too).
-    Mod+R     { spawn-sh "qs -c noctalia-shell ipc call wallpaper random all"; }
+    Mod+R     { spawn "noctalia" "msg" "wallpaper-random"; }
 }
 
 // grogu — wallpaper-driven focus-ring colours, regenerated on every Meta+W pick.

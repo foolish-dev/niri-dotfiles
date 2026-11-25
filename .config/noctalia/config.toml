@@ -1,0 +1,44 @@
+# Noctalia v5 config, tracked. v5 merges every *.toml in this directory, in
+# alphabetical order; what its Settings window changes is saved to
+# ~/.local/state/noctalia/settings.toml and wins over all of them. v4's
+# settings.json, plugins.json, plugins/ and colors.json beside this file are
+# not read by v5.
+
+[theme]
+# The palette grogu extracts from each wallpaper. v5 reads custom palettes from
+# palettes/<name>.json, in the JSON format v4 called a color scheme;
+# palettes/Grogu.json links to colorschemes/Grogu/Grogu.json, where grogu
+# writes it.
+source         = "custom"
+custom_palette = "Grogu"
+
+[wallpaper]
+# The curated set `dotctl deploy` copies. Left empty, v5 would browse all of
+# ~/Pictures.
+directory = "~/Pictures/Wallpapers"
+
+[backdrop]
+# v4's blurred overview wallpaper, at v4's strengths. niri's layer rule for
+# noctalia-backdrop puts it behind the workspaces in the overview.
+enabled        = true
+blur_intensity = 0.7
+tint_intensity = 0.5
+
+[bar.default]
+# v4's bar: see-through over the compositor blur (on by default), widgets in
+# capsules, and v4's widget layout. v4's one SystemMonitor showed CPU usage,
+# CPU temperature and memory; v5 has a widget per statistic.
+background_opacity = 0.2
+capsule            = true
+capsule_opacity    = 0.85
+start  = ["launcher", "clock", "cpu", "temp", "ram", "media"]
+center = ["workspaces"]
+end    = ["tray", "notifications", "battery", "volume", "brightness", "control-center"]
+
+[hooks]
+# v4 ran grogu as hooks.wallpaperChange: repaint kitty, tmux, Neovim and the
+# rest from the new wallpaper, and rewrite the Grogu palette. The reload then
+# makes this shell read that palette; grogu's own nudge still speaks v4's IPC.
+# One command, not an array: v5 starts array entries without waiting for one
+# another, so the reload would race grogu's write.
+wallpaper_changed = '"$HOME/.cargo/bin/grogu" apply --extract="$NOCTALIA_WALLPAPER_PATH" --reload; noctalia msg config-reload'
