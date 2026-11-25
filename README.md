@@ -12,7 +12,7 @@ An AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP
 | --- | --- |
 | **Binary** | `dotctl` — one Rust crate, three subcommands |
 | **Editor** | Neovim with **109 plugins**, **35 LSPs**, 21 formatters/linters, 4 DAP adapters |
-| **Agent** | `teleia` wired to **10 MCP servers** (context7 · filesystem · github · fetch · hexstrike-ai · playwright · sequential-thinking · memory · git · weather) |
+| **Agent** | `teleia` wired to **9 MCP servers** (context7 · filesystem · github · fetch · hexstrike-ai · playwright · sequential-thinking · memory · weather) |
 | **Offsec** | HexStrike AI on a sandboxed systemd unit + BlackArch repo (5,000+ packages, `pacman -S` away) |
 | **Theming** | `grogu` repaints **9 targets** from the current wallpaper, in one shot |
 | **Palette** | Grogu (`#0e112b` surface · `#6ecfdc` on-surface · `#61c3cf` primary) across every themed target |
@@ -68,7 +68,7 @@ instance CachyOS's `noctalia-greeter` — is left alone, config and unit both.
 
 ## Architecture
 
-`dotctl` is the only thing that needs to run. What you end up with: `teleia` driving 10 MCP servers (the `hexstrike-ai` edge is the offsec one), and `grogu` repainting Neovim · tmux · Noctalia · kitty every time the wallpaper changes.
+`dotctl` is the only thing that needs to run. What you end up with: `teleia` driving 9 MCP servers (the `hexstrike-ai` edge is the offsec one), and `grogu` repainting Neovim · tmux · Noctalia · kitty every time the wallpaper changes.
 
 ## Showcase
 
@@ -96,7 +96,7 @@ instance CachyOS's `noctalia-greeter` — is left alone, config and unit both.
 
 **`dotctl`** is the in-tree Rust binary that replaced the old `install.sh` + `deploy.sh` pair. Clap-derive CLI, anyhow errors, no async runtime. See the subcommand table under [Install](#install).
 
-[**teleia**](https://github.com/foolish-dev/teleia) (τέλεια — "perfect") is a single-binary TUI coding agent. `.config/teleia/config.toml` wires `context7`, `filesystem`, `github`, `fetch`, `hexstrike-ai`, `playwright`, `sequential-thinking`, `memory`, `git`, and `weather` — drop-in compatible with any other MCP client. `dotctl install` cargo-installs it from upstream, the same way it installs grogu; before that it was deployed as a keybind and a config with no binary behind them.
+[**teleia**](https://github.com/foolish-dev/teleia) (τέλεια — "perfect") is a single-binary TUI coding agent. `.config/teleia/config.toml` wires `context7`, `filesystem`, `github`, `fetch`, `hexstrike-ai`, `playwright`, `sequential-thinking`, `memory`, and `weather` — drop-in compatible with any other MCP client. `dotctl install` cargo-installs it from upstream, the same way it installs grogu; before that it was deployed as a keybind and a config with no binary behind them.
 
 [**grogu**](https://github.com/foolish-dev/grogu) extracts a palette from the current wallpaper and writes themed fragments for niri, kitty, ghostty, tmux, Neovim, teleia, Noctalia, the SDDM greeter background, and the keyboard backlight in one shot. `dotctl install` cargo-installs it from upstream.
 
@@ -128,7 +128,7 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 ├── assets/                                  # README screenshots, the avatar, greetd/ReGreet config compiled into dotctl
 ├── wallpapers/                              # the curated set deploy copies into ~/Pictures/Wallpapers
 ├── .config/
-│   ├── teleia/config.toml                   # 10 MCP servers
+│   ├── teleia/config.toml                   # 9 MCP servers
 │   ├── nvim/                                # lazy.nvim + Mason, 109 plugins, 35 LSPs
 │   ├── tmux/                                # tmux.conf, scripts/mem.sh
 │   ├── noctalia/                            # settings.json, plugins.json, colorschemes/Grogu/
