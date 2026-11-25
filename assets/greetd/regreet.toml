@@ -4,7 +4,8 @@
 
 [background]
 # Root-owned + readable by the `greeter` user, unlike anything under /home.
-path = "/etc/xdg/quickshell/noctalia-shell/Assets/Wallpaper/noctalia.png"
+# Shipped by the `noctalia` package; v4's image went with the v4 shell.
+path = "/usr/share/noctalia/assets/noctalia-wallpaper.png"
 fit = "Cover"
 
 [GTK]
