@@ -2435,6 +2435,16 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         &["neovim"],
         "the deployed nvim config has no editor to load it",
     );
+    // Neovim's <leader>gG (lazygit.nvim) and tmux's `C-a g` popup both run
+    // lazygit, and deploy lays down .config/lazygit, but nothing installed it --
+    // the README left it to distro-work's heavier bundle -- so both bindings
+    // opened onto "command not found". A single binary in `extra`.
+    optional_pacman(
+        "lazygit",
+        "lazygit",
+        &["lazygit"],
+        "Neovim's <leader>gG and tmux's C-a g open onto a missing lazygit",
+    );
     // Firmware updates. `fwupd-check.timer` (armed by `dotctl deploy`) runs
     // `fwupdmgr refresh` + `get-updates` monthly and speaks up only when LVFS
     // has something. Nothing in dotctl ever installed the package, so
