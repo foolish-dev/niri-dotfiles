@@ -71,9 +71,11 @@ args    = ["-y", "@modelcontextprotocol/server-memory@2026.8.31"]
 # on a name any of them could later fill — and whatever landed there would be
 # executed by an agent without anyone choosing it.
 
+# opencode runs this one through its own `opencode x`; teleia has no opencode
+# to lean on, so it goes through npx like the rest.
 [mcps.weather]
-command = "opencode"
-args    = ["x", "@h1deya/mcp-server-weather@0.1.3"]
+command = "npx"
+args    = ["-y", "@h1deya/mcp-server-weather@0.1.3"]
     env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 

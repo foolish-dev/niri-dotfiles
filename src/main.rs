@@ -2147,6 +2147,16 @@ fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         "teleia's `c` language server fails to start in C/C++ projects",
     );
     ensure_rust_analyzer();
+    // Most of the MCP servers in the tracked teleia and opencode configs launch
+    // through `npx`, and nothing installed node: on this machine every one of
+    // them failed to start, leaving teleia with HexStrike as its only server.
+    // `npm` ships npx; `nodejs` is its runtime.
+    optional_pacman(
+        "Node.js + npm (npx runs teleia's MCP servers)",
+        "npx",
+        &["nodejs", "npm"],
+        "every npx-launched MCP server in the teleia and opencode configs fails to start",
+    );
 
     optional_pacman(
         "tmux",
