@@ -158,7 +158,7 @@
     },
     "filesystem": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem@2026.8.31", "{env:HOME}"]
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem@2.4.0", "{env:HOME}"]
     },
     // GitHub's own server (AUR github-mcp-server-bin, via dotctl install);
     // @modelcontextprotocol/server-github is archived and unmaintained.
@@ -187,15 +187,15 @@
     },
     "playwright": {
       "type": "local",
-      "command": ["npx", "-y", "@playwright/mcp@0.0.80"]
+      "command": ["npx", "-y", "@playwright/mcp@0.0.86"]
     },
     "sequential-thinking": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking@2026.8.31"]
+      "command": ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking@2.2.0"]
     },
     "memory": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-memory@2026.8.31"]
+      "command": ["npx", "-y", "@modelcontextprotocol/server-memory@2.2.1"]
     },
     // No "git" server. It named ~/.local/bin/mcp-server-git, which does not
     // exist and which nothing creates — and ~/.local/bin is where dotctl deploy

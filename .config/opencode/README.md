@@ -41,10 +41,9 @@ Commented-out stubs for `anthropic` and `google` exist in `opencode.json` for wh
 | `filesystem` | local stdio | `@modelcontextprotocol/server-filesystem`, rooted at `$HOME` |
 | `github` | local stdio | GitHub's `github-mcp-server stdio` (AUR `github-mcp-server-bin`, installed by `dotctl install`; needs `GITHUB_PERSONAL_ACCESS_TOKEN`) |
 | `fetch` | local stdio | `@tokenizin/mcp-npx-fetch` — generic HTTP fetcher |
-| `playwright` | local stdio | `@playwright/mcp@latest` — headless browser automation |
+| `playwright` | local stdio | `@playwright/mcp` (version-pinned in `opencode.json`) — headless browser automation |
 | `sequential-thinking` | local stdio | `@modelcontextprotocol/server-sequential-thinking` — multi-step reasoning |
 | `memory` | local stdio | `@modelcontextprotocol/server-memory` — session memory store |
-| `git` | local stdio | `mcp-server-git` from `~/.local/bin` |
 | `weather` | local stdio | `@h1deya/mcp-server-weather` via `opencode x` (demo, from heimdall_opencode) |
 
 ## Agents

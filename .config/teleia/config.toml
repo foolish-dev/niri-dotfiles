@@ -12,7 +12,7 @@
 
 [mcps.context7]
 command = "npx"
-args    = ["-y", "@upstash/context7-mcp@4.0.4"]
+args    = ["-y", "@upstash/context7-mcp@4.8.0"]
 
 # teleia's credential scrub only drops LLM provider keys — it walks
 # teleia_llm::PROVIDERS (ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY / …)
@@ -27,7 +27,7 @@ args    = ["-y", "@upstash/context7-mcp@4.0.4"]
 # teleia's own /proc/<pid>/environ. This removes the accident, not the attacker.
 [mcps.filesystem]
 command = "npx"
-args    = ["-y", "@modelcontextprotocol/server-filesystem@2026.8.31", "/home/fool"]
+args    = ["-y", "@modelcontextprotocol/server-filesystem@2.4.0", "/home/fool"]
     env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 # GitHub's own MCP server; `dotctl install` gets it from the AUR as
@@ -54,17 +54,17 @@ args    = [
 
 [mcps.playwright]
 command = "npx"
-args    = ["-y", "@playwright/mcp@0.0.80"]
+args    = ["-y", "@playwright/mcp@0.0.86"]
     env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 [mcps.sequential-thinking]
 command = "npx"
-args    = ["-y", "@modelcontextprotocol/server-sequential-thinking@2026.8.31"]
+args    = ["-y", "@modelcontextprotocol/server-sequential-thinking@2.2.0"]
     env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 [mcps.memory]
 command = "npx"
-args    = ["-y", "@modelcontextprotocol/server-memory@2026.8.31"]
+args    = ["-y", "@modelcontextprotocol/server-memory@2.2.1"]
     env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 # No [mcps.git]. It named /home/fool/.local/bin/mcp-server-git, which does not
