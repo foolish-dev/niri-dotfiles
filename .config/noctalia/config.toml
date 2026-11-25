@@ -12,6 +12,11 @@
 source         = "custom"
 custom_palette = "Grogu"
 
+[shell]
+# The tracked avatar, at the path v4's general.avatarImage named. Unset, v5
+# looks for ~/.face, which nothing here creates.
+avatar_path = "~/niri-dotfiles/assets/avatar.jpg"
+
 [wallpaper]
 # The curated set `dotctl deploy` copies. Left empty, v5 would browse all of
 # ~/Pictures.
