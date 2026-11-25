@@ -138,7 +138,6 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── fastfetch/config.jsonc               # terminal banner
 │   └── systemd/user/                        # deployed as a REAL dir; units symlinked one by one
 │       ├── hexstrike-server.service         # :8888, loopback-pinned at install
-│       ├── cliphist.service                 # wl-paste --watch cliphist store
 │       ├── fwupd-check.service              # report-only LVFS check, no sudo
 │       └── fwupd-check.timer                # monthly, armed by dotctl deploy
 ├── .local/bin/
