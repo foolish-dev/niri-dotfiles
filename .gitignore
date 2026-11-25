@@ -31,11 +31,6 @@
 .config/opencode/package-lock.json
 .config/opencode/*.bak
 
-# wal — grogu/pywal-generated palettes (templates/ are tracked, output is not)
-.config/wal/colorschemes/
-.config/wal/*.json
-!.config/wal/templates/
-
 # Per-machine git identity (generated at deploy, deliberately local)
 .gitconfig.local
 

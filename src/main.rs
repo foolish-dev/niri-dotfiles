@@ -3046,13 +3046,13 @@ fn refuse_conflicted_tree(repo: &Path) -> Result<()> {
 ///
 /// Two conditions, both necessary. The link must dangle — a live link is a
 /// path the repo still owns, and sweeping one would delete a link `link_item`
-/// had just correctly created, which is a real ordering hazard now that this
-/// list names paths the repo could plausibly carry again. And its target must
+/// had just correctly created, which matters because the sweep visits every
+/// link in the directories deploy writes. And its target must
 /// be inside the repo, read with `read_link` rather than `canonicalize`, since
 /// canonicalize fails on exactly the dangling links this exists to clear. A link pointing
-/// anywhere else is the user's own and is left exactly as found: dotctl no
-/// longer deploys anything at these paths, so it has no claim on the name and
-/// nothing to put there. Pre-fix this tested only `is_symlink()` at a
+/// anywhere else is the user's own and is left exactly as found: dotctl
+/// deploys nothing there, so it has no claim on the name and nothing to put
+/// there. Pre-fix this tested only `is_symlink()` at a
 /// hardcoded path — "something is linked here" — and then `let _ =
 /// fs::remove_file`, so a link the user made themselves was deleted with no
 /// "Backed up:" line, no backup-dir entry, and no report even when the removal
@@ -3140,12 +3140,10 @@ fn link_dotfiles(repo: &Path, home: &Path) -> Result<()> {
         "gtk-4.0",
         "kitty",
         "lazygit",
-        "neofetch",
         "niri",
         "opencode",
         "qt5ct",
         "qt6ct",
-        "wal",
         "starship.toml",
     ] {
         let src = repo.join(".config").join(d);
@@ -3210,25 +3208,6 @@ fn link_dotfiles(repo: &Path, home: &Path) -> Result<()> {
         }
     }
 
-    // Paths this repo used to own and no longer does. Nothing above revisits
-    // them — `link_item` only ever walks what the repo still has — so the last
-    // deploy's symlink stays behind pointing at a file that is gone.
-    //   noctalia-auth-agent.service — superseded by the packaged bb-auth.service.
-    //   .config/telia               — `telia` was renamed to `teleia`.
-    //   awww.service, .local/bin/wallpaper — the awww/pywal wallpaper stack,
-    //     dropped because awww/awww-daemon/swww are in no repo dotctl configures
-    //     and it never installed any of them; wallpaper is noctalia's picker plus
-    //     grogu now. Left behind, the unit made every `daemon-reload` report
-    //     awww.service as not-found and kept a broken `wallpaper` on PATH.
-    for stale in [
-        ".config/systemd/user/noctalia-auth-agent.service",
-        ".config/systemd/user/awww.service",
-        ".config/telia",
-        ".local/bin/wallpaper",
-    ] {
-        drop_stale_repo_link(&h.join(stale), repo);
-    }
-
     let bin_src = repo.join(".local/bin");
     let bin_dest = h.join(".local/bin");
     fs::create_dir_all(&bin_dest)?;
@@ -3242,6 +3221,31 @@ fn link_dotfiles(repo: &Path, home: &Path) -> Result<()> {
         }
     }
 
+    // Links an older deploy left for paths the repo no longer carries: a
+    // dropped unit (awww, cliphist, noctalia-auth-agent), a renamed config
+    // (telia, now teleia), a retired one (wal, neofetch), a removed script
+    // (wallpaper). `link_item` only walks what the repo still has, so each
+    // would stay a symlink into the repo that resolves to nothing — a
+    // not-found unit on every daemon-reload, a broken command on PATH, a FAIL
+    // in dotfiles-check — until someone deleted it by hand. Every directory
+    // this deploys into is swept, rather than a list of names that has to grow
+    // with each retirement (cliphist.service dangled for months because
+    // nobody added it). drop_stale_repo_link takes only links that dangle
+    // *and* point into this repo, so the user's own links and every live one
+    // stay.
+    for dir in [
+        h.clone(),
+        h.join(".config"),
+        h.join(".config/systemd/user"),
+        h.join(".local/bin"),
+    ] {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            drop_stale_repo_link(&entry.path(), repo);
+        }
+    }
     // Wallpapers: copy the curated set into ~/Pictures/Wallpapers, the
     // directory noctalia's wallpaper picker watches (setWallpaperOnAllMonitors
     // is on, so they apply to every output). Copies, NOT symlinks: noctalia's
@@ -4382,6 +4386,51 @@ mod tests {
             home.join(".config/systemd/user/cliphist.service")
                 .is_symlink(),
             "a unit the repo still owns must still be linked"
+        );
+    }
+
+    #[test]
+    fn link_dotfiles_sweeps_dangling_repo_links_at_names_no_list_named() {
+        // The stale paths were a hand-kept list, so each retirement left a
+        // dangling link until someone added its name: cliphist.service
+        // dangled for months. The sweep covers every directory deploy writes.
+        let tmp = TempDir::new().expect("tempdir");
+        let repo = tmp.path().join("repo");
+        let home = tmp.path().join("home");
+        fs::create_dir_all(repo.join(".config/kitty")).expect("mkdir kitty");
+        fs::write(repo.join(".config/kitty/kitty.conf"), "font_size 12\n").expect("seed conf");
+        for d in [".config/systemd/user", ".local/bin"] {
+            fs::create_dir_all(home.join(d)).expect("mkdir home dir");
+        }
+        let repo_real = repo.canonicalize().expect("canonicalize repo");
+        let stale = [
+            ".config/wal",
+            ".config/systemd/user/cliphist.service",
+            ".local/bin/retired-script",
+            ".retired-dotfile",
+        ];
+        for s in stale {
+            symlink(repo_real.join(s), home.join(s)).expect("seed stale link");
+        }
+        // The user's own dangling link, aimed outside the repo.
+        let theirs = home.join(".config/their-dangling");
+        symlink(tmp.path().join("nowhere"), &theirs).expect("seed their link");
+
+        link_dotfiles(&repo, &home).expect("link_dotfiles");
+
+        for s in stale {
+            assert!(
+                !home.join(s).is_symlink(),
+                "{s}: a dangling link into the repo must be swept"
+            );
+        }
+        assert!(
+            theirs.is_symlink(),
+            "a dangling link aimed outside the repo is the user's own and must stay"
+        );
+        assert!(
+            home.join(".config/kitty").is_symlink(),
+            "the live link this deploy just made must stay"
         );
     }
 

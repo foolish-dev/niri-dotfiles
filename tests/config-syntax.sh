@@ -13,9 +13,9 @@
 # JSON, JSONC, TOML and INI need nothing but python3's standard library, so
 # they are always parsed. The rest need a tool this suite will not install and
 # so gates on: `niri validate` for KDL, LuaJIT -- standalone or the copy inside
-# nvim -- for Lua, `systemd-analyze verify` for units, PyYAML for YAML, and
-# bash's own `-n` for the one .conf that is a shell script. Where the tool is
-# missing the files are named in an explicit SKIP giving the reason, because
+# nvim -- for Lua, `systemd-analyze verify` for units and PyYAML for YAML.
+# Where the tool is missing the files are named in an explicit SKIP giving the
+# reason, because
 # the failure this file exists to prevent is a green run that quietly checked
 # nothing.
 #
@@ -281,19 +281,6 @@ if python3 -c 'import yaml' >/dev/null 2>&1 \
   YAML_TOOL=pyyaml
 fi
 
-# `bash -n` compiles without executing, which is the whole requirement: this
-# file is sourced by neofetch, and it sets colours and calls out to other
-# programs.
-conf_bash_check() {  # conf_bash_check <path>
-  local err
-  present "$1" || return 0
-  if err="$(bash -n "$1" 2>&1)"; then
-    ok "$1"
-  else
-    bad "$1" "$err"
-  fi
-}
-
 # -z everywhere, and `read -d ''`, because git C-quotes any path holding a
 # quote, a backslash or a control character -- `git ls-files` prints
 # "quo\"te.json" with the quotes -- and the checker would then be handed a name
@@ -301,9 +288,6 @@ conf_bash_check() {  # conf_bash_check <path>
 echo "==> JSON"
 while IFS= read -r -d '' f; do
   case "$f" in
-    .config/wal/templates/*)
-      # pywal templates: {color0} placeholders, not JSON until grogu renders them.
-      skip "$f" "pywal template, not JSON until rendered" ;;
     .config/opencode/opencode.json)
       check jsonc "$f" ;;
     *)
@@ -397,18 +381,11 @@ fi
 
 echo
 echo "==> INI and .conf"
-# One .conf extension, five formats behind it. Each is dispatched by name and
+# One .conf extension, three formats behind it. Each is dispatched by name and
 # the ones with no offline parser are named individually rather than summed,
 # so the reason travels with the file.
 while IFS= read -r -d '' f; do
   case "$f" in
-    .config/wal/templates/*)
-      # Same as the pywal JSON above: {color0} placeholders, not their format
-      # until grogu renders them.
-      skip "$f" "pywal template, not a conf file until rendered" ;;
-    .config/neofetch/*)
-      # Not INI at all -- neofetch sources it as shell.
-      conf_bash_check "$f" ;;
     .config/kitty/*)
       skip "$f" "kitty's own space-separated dialect; its parser needs a running kitty" ;;
     .config/tmux/*)

@@ -3,10 +3,6 @@
 # ~/.zshrc
 # =============================================================================
 
-# ── Pywal -- restore terminal colors ─────────────────────────────────────
-(cat ~/.cache/wal/sequences 2>/dev/null &)
-source ~/.cache/wal/colors.sh 2>/dev/null || true
-
 # ── Zinit plugin manager ──────────────────────────────────────────────────
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
 if [[ ! -d "$ZINIT_HOME" ]]; then
@@ -431,8 +427,6 @@ fi
 # ── Greeting ───────────────────────────────────────────────────────────────
 if command -v fastfetch &>/dev/null; then
   fastfetch
-elif command -v neofetch &>/dev/null; then
-  neofetch
 else
   printf '\e[34m'
   cat << 'BANNER'
@@ -454,7 +448,7 @@ fi
 
 
 # bun completions
-[ -s "/home/fool/.bun/_bun" ] && source "/home/fool/.bun/_bun"
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
 
 # bun
 export BUN_INSTALL="$HOME/.bun"

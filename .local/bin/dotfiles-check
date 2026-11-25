@@ -45,7 +45,7 @@ DOTFILES="${DOTFILES_REPO:-${DOTFILES:-$HOME/niri-dotfiles}}"
 # same order as the Rust so a drift diff reads cleanly.
 CONFIG_ITEMS=(
   teleia nvim noctalia fastfetch tmux fuzzel gtk-3.0 gtk-4.0 kitty
-  lazygit neofetch niri opencode qt5ct qt6ct wal starship.toml
+  lazygit niri opencode qt5ct qt6ct starship.toml
 )
 HOME_ITEMS=(.zshrc .editorconfig .gitignore_global)
 # setup_gitconfig() links the tracked .gitconfig to a neutral XDG path. The
