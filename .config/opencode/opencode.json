@@ -158,7 +158,13 @@
     },
     "filesystem": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem@2.4.0", "{env:HOME}"]
+      // Project folders, not all of ~ (see teleia's config.toml); the server
+      // expands ~ itself and skips a folder that does not exist.
+      "command": [
+        "npx", "-y", "@modelcontextprotocol/server-filesystem@2.4.0",
+        "~/Projects", "~/niri-dotfiles", "~/teleia", "~/odysseus", "~/command-center",
+        "~/led-board", "~/solar-system", "~/strix-halo-lib", "~/strix-halo-linux-setup"
+      ]
     },
     // GitHub's own server (AUR github-mcp-server-bin, via dotctl install);
     // @modelcontextprotocol/server-github is archived and unmaintained.

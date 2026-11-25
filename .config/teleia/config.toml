@@ -7,8 +7,9 @@
 # CONTEXT7_API_KEY / GITHUB_PERSONAL_ACCESS_TOKEN / etc. are picked up
 # automatically if exported in the shell.
 #
-# Note: teleia does no `~` / `$HOME` expansion in command/args, so the
-# host-specific MCPs (filesystem root, hexstrike-ai venv) are pinned to /home/fool/... — adjust if cloning to another box.
+# Note: teleia does no `~` / `$HOME` expansion in command/args. The
+# filesystem server expands `~` in its own arguments, and hexstrike-ai runs
+# through the hexstrike-mcp wrapper on PATH, so nothing here names a home.
 
 [mcps.context7]
 command = "npx"
@@ -27,7 +28,14 @@ args    = ["-y", "@upstash/context7-mcp@4.8.0"]
 # teleia's own /proc/<pid>/environ. This removes the accident, not the attacker.
 [mcps.filesystem]
 command = "npx"
-args    = ["-y", "@modelcontextprotocol/server-filesystem@2.4.0", "/home/fool"]
+# Project folders, not all of ~: ~/.ssh, the keyring and browser profiles stay
+# out of its reach. The server expands ~ itself and skips a folder that does
+# not exist, so the list holds on a machine that lacks some of these.
+args    = [
+    "-y", "@modelcontextprotocol/server-filesystem@2.4.0",
+    "~/Projects", "~/niri-dotfiles", "~/teleia", "~/odysseus", "~/command-center",
+    "~/led-board", "~/solar-system", "~/strix-halo-lib", "~/strix-halo-linux-setup",
+]
     env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 # GitHub's own MCP server; `dotctl install` gets it from the AUR as
@@ -49,12 +57,9 @@ args    = ["-y", "@tokenizin/mcp-npx-fetch@1.0.0"]
     env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 [mcps.hexstrike-ai]
-command = "/home/fool/tools/hexstrike-ai/hexstrike-env/bin/python"
-args    = [
-    "/home/fool/tools/hexstrike-ai/hexstrike_mcp.py",
-    "--server",
-    "http://127.0.0.1:8888",
-]
+# ~/.local/bin/hexstrike-mcp: the venv's python on hexstrike_mcp.py, aimed at
+# the loopback server.
+command = "hexstrike-mcp"
     env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "", CONTEXT7_API_KEY = "" }
 
 [mcps.playwright]
