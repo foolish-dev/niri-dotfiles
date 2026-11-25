@@ -15,7 +15,7 @@ An AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP
 | **Agent** | `teleia` wired to **9 MCP servers** (context7 · filesystem · github · fetch · hexstrike-ai · playwright · sequential-thinking · memory · weather) |
 | **Offsec** | HexStrike AI on a sandboxed systemd unit + BlackArch repo (5,000+ packages, `pacman -S` away) |
 | **Theming** | `grogu` repaints **9 targets** from the current wallpaper, in one shot |
-| **Palette** | Grogu (`#0e112b` surface · `#6ecfdc` on-surface · `#61c3cf` primary) across every themed target |
+| **Palette** | Grogu — extracted from the current wallpaper, so it changes whenever the wallpaper does |
 
 ## Install
 
