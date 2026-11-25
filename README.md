@@ -21,7 +21,7 @@ An AI coding agent, a wallpaper-driven theming engine, an offensive-security MCP
 
 ## Install
 
-> **The base desktop.** `dotctl install` installs the Niri base desktop (`niri`, `fuzzel`, `kitty`, the `wl-clipboard`/`wl-clip-persist`/`cliphist` clipboard stack, `xwayland-satellite`, and the `wireplumber`/`brightnessctl` the media and brightness keys call) alongside the curated tools (grogu, teleia, HexStrike, Neovim, tmux, zsh + starship, fastfetch, Noctalia, the greeter), then `dotctl deploy` lays down the dotfiles. Running `dotctl deploy` on its own installs nothing, so it warns if `niri` is missing — run `dotctl install` (or `dotctl all`) first. For the heavier full bundle (ghostty, GTK/Qt theming, 300+ BlackArch tools), see **[foolish-dev/distro-work](https://github.com/foolish-dev/distro-work)**.
+> **The base desktop.** `dotctl install` installs the niri base desktop and the curated tools (grogu, teleia, HexStrike, Neovim, tmux, zsh + starship, fastfetch, Noctalia, the greeter); `dotctl deploy` lays down the dotfiles. `deploy` alone installs nothing, so it warns when `niri` is missing — run `dotctl install` (or `dotctl all`) first. For the heavier full bundle (ghostty, GTK/Qt theming, 300+ BlackArch tools), see **[foolish-dev/distro-work](https://github.com/foolish-dev/distro-work)**.
 
 ```bash
 git clone --depth 1 https://github.com/foolish-dev/niri-dotfiles.git ~/niri-dotfiles \
@@ -43,11 +43,36 @@ cargo build --release
 
 Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-symlink files to `~/.dotfiles-backup/<unix-ts>/` before replacing them. `--repo <path>` or the `DOTFILES_REPO` env var overrides the default `~/niri-dotfiles` source.
 
-| Subcommand | What it does |
+| Subcommand | In one line |
 |---|---|
-| `dotctl install` | Wire BlackArch, plus Chaotic AUR on non-CachyOS hosts (both idempotent); ensure an AUR helper (`yay` from `[cachyos]` on CachyOS, from Chaotic-AUR on Arch, or whichever of `yay`/`paru` is already present), `cargo install` grogu and teleia (rebuilding a grogu older than 0.2.0, the first to write Noctalia v5's palette), plus clangd and rust-analyzer + `rust-src` for teleia's language servers (rustup components under rustup), Node.js + npm for its `npx`-launched MCP servers, and GitHub's own `github-mcp-server` (AUR) for its GitHub one, clone+venv HexStrike AI, `pacman -S` the base desktop (niri/fuzzel/kitty) plus the pieces `config.kdl` and `.zshrc` already call — wl-clipboard/wl-clip-persist/cliphist, xwayland-satellite, wireplumber, brightnessctl, zsh, starship, pkgfile (enabling its daily database timer, which zsh's command-not-found reads) and the JetBrainsMono Nerd font — plus tmux/fastfetch/neovim/lazygit/fwupd and `noctalia` (Noctalia v5, from Arch `extra`), AUR-install the Bibata cursor theme every tracked config names and `sddm-theme-noctalia-git` (via yay or paru, a themed SDDM fallback), `pacman -S` `greetd`/`greetd-regreet`/`cage` (then select the noctalia **SDDM** theme via `/etc/sddm.conf.d/` and enable `sddm.service` as the graphical login screen — disabling `greetd`, but never overriding a third-party display manager; greetd + a noctalia-themed ReGreet config under `/etc/greetd/` are kept as a disabled fallback), and build `noctalia-unofficial-auth-agent-git` from a locally patched PKGBUILD (GCC 16 fix). |
-| `dotctl deploy` | Symlink the full `.config` set (`teleia, nvim, noctalia, fastfetch, tmux, fuzzel, gtk-3.0/4.0, kitty, lazygit, niri, opencode, qt5ct/6ct, starship.toml`), home dotfiles (`.zshrc, .editorconfig, .gitignore_global`), and every `.local/bin/*`. Copy the images in `wallpapers/` — the owner's private wallpapers clone, see `dotctl all` — into `~/Pictures/Wallpapers` as real files (applied on all monitors; copies, not symlinks, so a stray wallpaper `cp` — e.g. the greeter background-sync — can't write back into the repo). Deploy the tracked `.gitconfig` via an untracked `~/.gitconfig` include-stub + seed `~/.gitconfig.local` identity. Symlink the user systemd units (real dir), `daemon-reload`, then `enable --now` hexstrike-server, `bb-auth.service` and `fwupd-check.timer` (each skipped, with a hint, when its prerequisite binary is absent). Back up displaced files. |
-| `dotctl all` | Clone or pull the repo; if that left `dotctl`'s own source different from the running binary, rebuild it (`cargo install --path`) and continue as the new one; clone or update the private `foolish-dev/niri-wallpapers` into `wallpapers/` (owner-only: their redistribution was never cleared, so they left this public repo; anyone else gets no wallpapers and brings their own to `~/Pictures/Wallpapers`); then `install` and `deploy`. `install` and `deploy` on their own only warn about a stale binary. |
+| `dotctl install` | Install every package and tool the tracked configs call |
+| `dotctl deploy` | Link the configs into `~`, copy the wallpapers, enable the user units |
+| `dotctl all` | Update the repo and `dotctl` itself, then `install` and `deploy` |
+
+**`dotctl install`**
+
+- **Repos:** BlackArch everywhere, plus Chaotic AUR on non-CachyOS hosts (both idempotent), and an AUR helper: `yay` from `[cachyos]` on CachyOS, from Chaotic AUR on Arch, or whichever of `yay`/`paru` is already present.
+- **Base desktop** (`pacman -S`): niri, fuzzel and kitty, plus what `config.kdl` and `.zshrc` call: wl-clipboard, wl-clip-persist, cliphist, xwayland-satellite, wireplumber, brightnessctl, zsh, starship, pkgfile (with its daily database timer, which zsh's command-not-found reads) and the JetBrainsMono Nerd font.
+- **Tools:** tmux, fastfetch, neovim, lazygit, fwupd, and `noctalia` (Noctalia v5, from Arch `extra`).
+- **Our crates** (`cargo install --git`): grogu and teleia. A grogu older than 0.2.0, the first to write Noctalia v5's palette, is rebuilt.
+- **For teleia:** clangd, rust-analyzer + `rust-src` (rustup components under rustup), Node.js + npm for the `npx`-launched MCP servers, and GitHub's own `github-mcp-server` (AUR).
+- **HexStrike AI:** cloned, its venv built, its server made to bind loopback and answer only loopback names.
+- **AUR:** the Bibata cursor theme every tracked config names, `sddm-theme-noctalia-git`, and the polkit agent `noctalia-unofficial-auth-agent-git`, built from a locally patched PKGBUILD (GCC 16 fix).
+- **Login:** the noctalia SDDM theme selected via `/etc/sddm.conf.d/` and `sddm.service` enabled, never overriding a third-party display manager; `greetd` + `greetd-regreet` + `cage` with a noctalia-themed ReGreet config under `/etc/greetd/`, kept as a disabled fallback.
+
+**`dotctl deploy`**
+
+- Symlinks the `.config` set (`teleia, nvim, noctalia, fastfetch, tmux, fuzzel, gtk-3.0/4.0, kitty, lazygit, niri, opencode, qt5ct/6ct, starship.toml`), the home dotfiles (`.zshrc, .editorconfig, .gitignore_global`) and every `.local/bin/*`, backing up whatever it displaces.
+- Clears the links an older deploy left for anything the repo has since dropped.
+- Copies the images in `wallpapers/` into `~/Pictures/Wallpapers` as real files, so a stray `cp` (the greeter's background sync) cannot write back into the repo.
+- Deploys the tracked `.gitconfig` through an untracked `~/.gitconfig` include-stub, and seeds the `~/.gitconfig.local` identity.
+- Links the user systemd units into a real directory, runs `daemon-reload`, and enables hexstrike-server, `bb-auth.service` and `fwupd-check.timer`, each skipped with a hint when its binary is absent.
+
+**`dotctl all`**
+
+- Clones or pulls the repo. If that changed `dotctl`'s own source, it rebuilds itself (`cargo install --path`) and carries on as the new binary; `install` and `deploy` on their own only warn about a stale one.
+- Clones or updates the private `foolish-dev/niri-wallpapers` into `wallpapers/`. That is owner-only: their redistribution was never cleared, so anyone else brings their own to `~/Pictures/Wallpapers`.
+- Then runs `install` and `deploy`.
 
 ### Secrets
 
@@ -112,11 +137,18 @@ instance CachyOS's `noctalia-greeter` — is left alone, config and unit both.
 
 **`dotctl`** is the in-tree Rust binary that replaced the old `install.sh` + `deploy.sh` pair. Clap-derive CLI, anyhow errors, no async runtime. See the subcommand table under [Install](#install).
 
-[**teleia**](https://github.com/foolish-dev/teleia) (τέλεια — "perfect") is a single-binary TUI coding agent. `.config/teleia/config.toml` wires `context7`, `filesystem`, `github`, `fetch`, `hexstrike-ai`, `playwright`, `sequential-thinking`, `memory`, and `weather` — drop-in compatible with any other MCP client. `dotctl install` cargo-installs it from upstream, the same way it installs grogu; before that it was deployed as a keybind and a config with no binary behind them.
+[**teleia**](https://github.com/foolish-dev/teleia) (τέλεια — "perfect") is a single-binary TUI coding agent. `.config/teleia/config.toml` wires `context7`, `filesystem`, `github`, `fetch`, `hexstrike-ai`, `playwright`, `sequential-thinking`, `memory`, and `weather` — drop-in compatible with any other MCP client. Its `filesystem` server reaches the project folders, not all of `~`. `dotctl install` cargo-installs it from upstream, the same way it installs grogu; before that it was deployed as a keybind and a config with no binary behind them.
 
 [**grogu**](https://github.com/foolish-dev/grogu) extracts a palette from the current wallpaper and writes themed fragments for niri, kitty, ghostty, tmux, Neovim, teleia, Noctalia, the SDDM greeter background, and the keyboard backlight in one shot. `dotctl install` cargo-installs it from upstream.
 
-[**HexStrike AI**](https://github.com/0x4m4/hexstrike-ai) is a Flask MCP backend exposing 150+ offensive-security tools. Shipped here as a systemd user unit (`ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp`, `NoNewPrivileges`, plus an `InaccessiblePaths=` mask over the credential stores a file-read primitive goes for first — `.ssh`, `.gnupg`, `.claude`, the login keyring, the cloud CLI configs) plus the `hexstrike-mcp` stdio bridge MCP clients call. **The API is unauthenticated — `/api/command` executes arbitrary shell as your user — so it must never be reachable off loopback.** Upstream hardcodes `app.run(host="0.0.0.0")`, ignoring its own `HEXSTRIKE_HOST`; `dotctl install` rewrites that to honour it, on every run. That rewrite is one Rust pattern match against one line of a 17k-line file it doesn't own, so a second, independent guard checks the property itself rather than a proxy for it: `ExecStartPost=` runs `hexstrike-assert-loopback`, which asks `ss` what the main process actually bound and takes the unit back down if the answer is anything but `127.0.0.1`/`[::1]` — or if it cannot be established at all. Both fail closed. A loopback bind does not keep out the browser on the same machine, though: a web page that DNS-rebinds its own hostname to `127.0.0.1` reaches the port same-origin, so `dotctl install` also inserts a guard (`assets/hexstrike-host-guard.py`) that answers only requests whose `Host` is a loopback name, and `dotctl deploy` will not enable the unit without it. Do not rely on systemd's `IPAddress*` directives here: a *user* manager cannot install a cgroup BPF firewall, and silently doesn't. The underlying CLI tools live in [BlackArch](https://blackarch.org) — `dotctl install` wires its repo via the upstream `strap.sh` so `pacman -S <tool>` reaches over 5,000 packages.
+[**HexStrike AI**](https://github.com/0x4m4/hexstrike-ai) is a Flask MCP backend exposing 150+ offensive-security tools, shipped as a systemd user unit plus the `hexstrike-mcp` stdio bridge MCP clients call. **The API is unauthenticated — `/api/command` executes arbitrary shell as your user — so it must never be reachable off loopback.** The layers, each failing closed:
+
+- **Sandbox:** the unit runs with `ProtectSystem=strict`, `ProtectHome=read-only`, `PrivateTmp`, `NoNewPrivileges`, and an `InaccessiblePaths=` mask over the credential stores a file-read primitive goes for first — `.ssh`, `.gnupg`, `.claude`, the login keyring, the cloud CLI configs.
+- **Bind:** upstream hardcodes `app.run(host="0.0.0.0")`, ignoring its own `HEXSTRIKE_HOST`; `dotctl install` rewrites that to honour it, on every run.
+- **The bind, checked:** that rewrite is one Rust pattern match against one line of a 17k-line file dotctl doesn't own, so a second, independent guard checks the property itself. `ExecStartPost=` runs `hexstrike-assert-loopback`, which asks `ss` what the main process actually bound and takes the unit back down if the answer is anything but `127.0.0.1`/`[::1]`, or if it cannot be established at all.
+- **Host:** a loopback bind does not keep out the browser on the same machine. A web page that DNS-rebinds its own hostname to `127.0.0.1` reaches the port same-origin, so `dotctl install` also inserts a guard (`assets/hexstrike-host-guard.py`) that answers only requests whose `Host` is a loopback name, and `dotctl deploy` will not enable the unit without it.
+
+Do not rely on systemd's `IPAddress*` directives here: a *user* manager cannot install a cgroup BPF firewall, and silently doesn't. The underlying CLI tools live in [BlackArch](https://blackarch.org): `dotctl install` wires its repo via the upstream `strap.sh`, so `pacman -S <tool>` reaches over 5,000 packages.
 
 **Neovim** — lazy.nvim + Mason, kitchen-sink config:
 
@@ -126,7 +158,7 @@ instance CachyOS's `noctalia-greeter` — is left alone, config and unit both.
 - **AI**: `opencode` (built-in teleia popup), `copilot.lua` (inline ghost text, `<M-l>` to accept), `avante`, `codecompanion`.
 - **Testing & debug**: `neotest` (python · go · rust · jest · vitest · plenary), `nvim-dap` + `dap-ui` + `dap-virtual-text`, `rustaceanvim`, `crates.nvim`, `go.nvim`, `typescript-tools`, `venv-selector`.
 - **Editor**: `flash`, `vim-illuminate`, `nvim-spectre`, `nvim-ufo`, `harpoon` v2, `oil`, `mini.{ai,bracketed,indentscope}`, `yanky`, `undotree`.
-- **UI**: `lualine`, `bufferline`, `barbecue` winbar, `noice`, `alpha`, `fidget`, `aerial`, `zen-mode`, `twilight`, `nvim-colorizer`, `rainbow-delimiters`, `treesitter-context`.
+- **UI**: `lualine`, `bufferline`, `dropbar` winbar, `noice`, `alpha`, `fidget`, `aerial`, `zen-mode`, `twilight`, `nvim-colorizer`, `rainbow-delimiters`, `treesitter-context`.
 - **Sessions & projects**: `persistence.nvim`, `project.nvim`.
 
 Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored). `nvim-treesitter` and `-textobjects` pinned to `master` so the legacy `configs.setup()` API stays available.
