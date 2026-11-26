@@ -333,7 +333,11 @@ return {
           for _, name in ipairs(linters) do
             local cfg = lint.linters[name]
             local cmd = type(cfg) == "table" and (cfg.cmd or name) or name
-            if vim.fn.executable(cmd) == 1 then table.insert(available, name) end
+            -- Some linters resolve their binary at run time (eslint_d prefers
+            -- ./node_modules/.bin), so cmd can be a function; executable()
+            -- takes only a string, and erred on every JS/TS buffer event.
+            if type(cmd) == "function" then cmd = cmd() end
+            if type(cmd) == "string" and vim.fn.executable(cmd) == 1 then table.insert(available, name) end
           end
           if #available > 0 then pcall(lint.try_lint, available) end
         end,

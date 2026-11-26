@@ -57,7 +57,10 @@ return {
           fzf = { fuzzy = true, override_generic_sorter = true, override_file_sorter = true },
         },
       })
-      telescope.load_extension("fzf")
+      -- fzf-native is a C library its build step compiles; without a compiler
+      -- the extension is missing, and telescope falls back to its own sorter
+      -- instead of failing its whole config.
+      pcall(telescope.load_extension, "fzf")
       telescope.load_extension("file_browser")
       telescope.load_extension("live_grep_args")
     end,

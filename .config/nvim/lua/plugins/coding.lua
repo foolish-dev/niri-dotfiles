@@ -258,7 +258,8 @@ return {
   -- ── venv-selector: pick a Python venv per project ──────────────────────
   {
     "linux-cultist/venv-selector.nvim",
-    branch = "regexp",
+    -- Its default branch again: `regexp` ends in a commit that only raises an
+    -- error on every Python buffer, telling users to move to `main`.
     dependencies = { "neovim/nvim-lspconfig", "nvim-telescope/telescope.nvim", "mfussenegger/nvim-dap-python" },
     ft   = "python",
     cmd  = "VenvSelect",
