@@ -2,7 +2,7 @@ use crate::hexstrike::{
     patch_hexstrike_bind, patch_hexstrike_host_guard, BindState, HostGuardState,
 };
 use crate::update::git_has_conflicts;
-use crate::util::{command_exists, info, ok, run, warn};
+use crate::util::{command_exists, info, ok, run, run_in, warn};
 use anyhow::{anyhow, Context, Result};
 use std::fs;
 use std::os::unix::fs::symlink;
@@ -423,6 +423,7 @@ fn link_dotfiles(repo: &Path, home: &Path) -> Result<()> {
         "opencode",
         "qt5ct",
         "qt6ct",
+        "bat",
         "starship.toml",
     ] {
         let src = repo.join(".config").join(d);
@@ -554,6 +555,21 @@ fn link_dotfiles(repo: &Path, home: &Path) -> Result<()> {
 /// this way; this brings `deploy` in line with it.
 pub(crate) fn deploy(repo: &Path, home: &Path) -> Result<()> {
     link_dotfiles(repo, home)?;
+    // bat loads custom themes (.config/bat/themes, linked just above) only from
+    // its compiled cache, and delta only from bat's cache in its default place.
+    // Until this runs, .gitconfig's delta syntax-theme exists for neither, and
+    // every paged git command warns "Unknown theme". Rebuilt on every deploy
+    // because a bat upgrade invalidates the cache. Run inside the theme dir:
+    // bat reads `bat cache` as a file name when the working directory holds
+    // anything called `cache`.
+    if command_exists("bat") {
+        let bat_dir = repo.join(".config/bat");
+        if let Err(e) = run_in(&bat_dir.to_string_lossy(), "bat", &["cache", "--build"]) {
+            warn(&format!(
+                "bat cache --build failed: {e} — delta keeps warning about its syntax theme"
+            ));
+        }
+    }
     let h = home.to_path_buf();
 
     if let Err(e) = run("systemctl", &["--user", "daemon-reload"]) {

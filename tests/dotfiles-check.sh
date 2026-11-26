@@ -89,7 +89,13 @@ stub() {  # stub <name> <line>... -- a bash script in STUB_BIN
   { printf '#!%s\n' "$BASH_BIN"; printf '%s\n' "$@"; } >"$STUB_BIN/$name"
   chmod +x "$STUB_BIN/$name"
 }
-for t in npx github-mcp-server lazygit clangd delta fzf bat btop rg unzip; do stub "$t" 'exit 0'; done
+for t in npx github-mcp-server lazygit clangd delta fzf btop rg unzip; do stub "$t" 'exit 0'; done
+# `bat --list-themes` lists ~/.fake-bat-themes, one name per line.
+# shellcheck disable=SC2016
+stub bat \
+  '[[ "${1:-}" == --list-themes ]] || exit 0' \
+  '[[ -f "$HOME/.fake-bat-themes" ]] && printf "%s\n" "$(<"$HOME/.fake-bat-themes")"' \
+  'exit 0'
 # rustup's proxy answers on PATH even without the component; ~/.fake-ra-broken
 # makes this one behave like that proxy.
 # shellcheck disable=SC2016  # the stubs' $vars expand when they run
@@ -847,6 +853,31 @@ expect_out "$FHOME/.config/wal -> $FREPO/.config/wal (dangling"
 expect_out "$FHOME/.retired-dotfile -> $FREPO/.retired-dotfile (dangling"
 expect_no_out "their-own"
 expect_fail_count 2
+end_case
+
+# delta's syntax theme must be one bat has compiled, or every paged git command
+# warns. The fixture .gitconfig names one; the fake bat lists what is "cached".
+start_case "deltas_syntax_theme_in_bats_cache_is_reported_ok"
+seed_repo
+seed_home
+seed_installed
+printf '[delta]\n\tsyntax-theme = tokyonight_night\n' >>"$FREPO/.gitconfig"
+printf 'Dracula\ntokyonight_night\n' >"$FHOME/.fake-bat-themes"
+run_check
+expect_rc 0
+expect_out "OK   delta's syntax theme tokyonight_night is in bat's cache"
+end_case
+
+start_case "deltas_syntax_theme_missing_from_bats_cache_warns"
+seed_repo
+seed_home
+seed_installed
+printf '[delta]\n\tsyntax-theme = tokyonight_night\n' >>"$FREPO/.gitconfig"
+printf 'Dracula\n' >"$FHOME/.fake-bat-themes"
+run_check
+expect_rc 0
+expect_out "WARN delta's syntax theme tokyonight_night is not in bat's cache"
+expect_no_out "FAIL"
 end_case
 
 # =============================================================================

@@ -62,8 +62,9 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
 
 **`dotctl deploy`**
 
-- Symlinks the `.config` set (`teleia, nvim, noctalia, fastfetch, tmux, fuzzel, gtk-3.0/4.0, kitty, lazygit, niri, opencode, qt5ct/6ct, starship.toml`), the home dotfiles (`.zshrc, .editorconfig, .gitignore_global`) and every `.local/bin/*`, backing up whatever it displaces.
+- Symlinks the `.config` set (`teleia, nvim, noctalia, fastfetch, tmux, fuzzel, gtk-3.0/4.0, kitty, lazygit, niri, opencode, qt5ct/6ct, bat, starship.toml`), the home dotfiles (`.zshrc, .editorconfig, .gitignore_global`) and every `.local/bin/*`, backing up whatever it displaces.
 - Clears the links an older deploy left for anything the repo has since dropped.
+- Rebuilds bat's theme cache, so delta (git's pager) finds the Tokyo Night theme `.gitconfig` names.
 - Copies the images in `wallpapers/` into `~/Pictures/Wallpapers` as real files, so a stray `cp` (the greeter's background sync) cannot write back into the repo.
 - Deploys the tracked `.gitconfig` through an untracked `~/.gitconfig` include-stub, and seeds the `~/.gitconfig.local` identity.
 - Links the user systemd units into a real directory, runs `daemon-reload`, and enables hexstrike-server, `bb-auth.service` and `fwupd-check.timer`, each skipped with a hint when its binary is absent.
@@ -181,6 +182,7 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── tmux/                                # tmux.conf, scripts/mem.sh
 │   ├── noctalia/                            # config.toml (v5), avatar.jpg → assets/; grogu writes palettes/Grogu.json
 │   ├── fastfetch/config.jsonc               # terminal banner
+│   ├── bat/themes/                          # Tokyo Night for delta's diffs (tokyonight.nvim, Apache-2.0)
 │   └── systemd/user/                        # deployed as a REAL dir; units symlinked one by one
 │       ├── hexstrike-server.service         # :8888, loopback-pinned at install
 │       ├── fwupd-check.service              # report-only LVFS check, no sudo

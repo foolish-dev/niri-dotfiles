@@ -46,7 +46,7 @@ DOTFILES="${DOTFILES_REPO:-${DOTFILES:-$HOME/niri-dotfiles}}"
 # same order as the Rust so a drift diff reads cleanly.
 CONFIG_ITEMS=(
   teleia nvim noctalia fastfetch tmux fuzzel gtk-3.0 gtk-4.0 kitty
-  lazygit niri opencode qt5ct qt6ct starship.toml
+  lazygit niri opencode qt5ct qt6ct bat starship.toml
 )
 HOME_ITEMS=(.zshrc .editorconfig .gitignore_global)
 # setup_gitconfig() links the tracked .gitconfig to a neutral XDG path. The
@@ -342,6 +342,20 @@ else
     bad "grogu $ver predates 0.2.0 and cannot write Noctalia v5's palette (run \`dotctl install\`)"
   else
     ok "grogu $ver"
+  fi
+fi
+# delta takes its syntax theme from bat's compiled cache; one missing from it
+# means a warning on every paged git command. `dotctl deploy` rebuilds it.
+delta_theme="$(git config --get delta.syntax-theme 2>/dev/null || true)"
+if [[ -n "$delta_theme" ]] && command -v bat >/dev/null 2>&1; then
+  found=0
+  while IFS= read -r t; do
+    [[ "$t" == "$delta_theme" ]] && found=1
+  done < <(bat --list-themes 2>/dev/null)
+  if ((found)); then
+    ok "delta's syntax theme $delta_theme is in bat's cache"
+  else
+    warn "delta's syntax theme $delta_theme is not in bat's cache, so every paged git command warns (\`dotctl deploy\` rebuilds it)"
   fi
 fi
 if [[ -f "$HOME/.config/noctalia/palettes/Grogu.json" ]]; then
