@@ -92,6 +92,8 @@ fi
 #   n.out       stdout for the unattributed sweep (ss -ltnH)
 #   rc          exit status to return instead of answering
 #   hang        seconds to block forever-ish, via exec so `timeout` can reap it
+#   hang_after  answer this many calls, then block on every later one (5s,
+#               past the copy's probe timeout)
 #   kill_after  kill the pid in `victim` once the call count passes this
 #   argv.log    every argument received, one per line, for the injection case
 # ---------------------------------------------------------------------------
@@ -117,6 +119,7 @@ printf '%s\n' "$n" >"$d/calls"
 # exec, not a child: `timeout` must be able to kill the thing holding the
 # guard's command-substitution pipe open, or the probe timeout does nothing.
 if [[ -f "$d/hang" ]]; then exec sleep "$(<"$d/hang")"; fi
+if [[ -f "$d/hang_after" ]] && ((n > $(<"$d/hang_after"))); then exec sleep 5; fi
 
 if [[ -f "$d/kill_after" && -f "$d/victim" ]] && ((n > $(<"$d/kill_after"))); then
   v="$(<"$d/victim")"
@@ -498,6 +501,20 @@ expect_err "could not be attributed"
 expect_err "ExecStartPost="
 expect_err "\`+\`"
 expect_no_err "held by something else"
+end_case
+
+# 7b. The same nameless socket, but the probes start stalling past their
+#     timeout partway through, the way a loaded CI runner made one do. A probe
+#     the timeout killed has seen nothing; the diagnostic must still come from
+#     the probes that answered, not blame the port.
+start_case "a_probe_killed_by_its_timeout_does_not_erase_what_earlier_probes_saw"
+bin_fixture
+ss_fixture "$(bare_line "127.0.0.1:8888")"
+printf '3\n' >"$SSDIR/hang_after"
+run_guard MAINPID="$$" HEXSTRIKE_PORT=8888
+expect_refused
+expect_err "could not be attributed"
+expect_no_err "Check that ExecStart's --port"
 end_case
 
 # =============================================================================
