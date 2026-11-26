@@ -100,7 +100,7 @@ nvim cheatsheet (leader = Space)
   <leader>ca    code action        <leader>rn    rename
   gd            go to definition   gr            references
   <leader>db    breakpoint         <leader>dc    debug continue
-  <leader>th    terminal (horiz)   <leader>tf    terminal (float)
+  <leader>Th    terminal (horiz)   <leader>Tf    terminal (float)
   <leader>gg    git fugitive       <leader>gs    git status
   <leader>cf    format buffer      <leader>xx    diagnostics
 EOF

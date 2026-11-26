@@ -7,9 +7,9 @@ return {
     "akinsho/toggleterm.nvim",
     version = "*",
     keys = {
-      { "<leader>th", "<cmd>ToggleTerm direction=horizontal size=15<cr>", desc = "Terminal (horizontal)" },
-      { "<leader>tv", "<cmd>ToggleTerm direction=vertical   size=80<cr>", desc = "Terminal (vertical)" },
-      { "<leader>tf", "<cmd>ToggleTerm direction=float<cr>",              desc = "Terminal (float)" },
+      { "<leader>Th", "<cmd>ToggleTerm direction=horizontal size=15<cr>", desc = "Terminal (horizontal)" },
+      { "<leader>Tv", "<cmd>ToggleTerm direction=vertical   size=80<cr>", desc = "Terminal (vertical)" },
+      { "<leader>Tf", "<cmd>ToggleTerm direction=float<cr>",              desc = "Terminal (float)" },
       { "<C-\\>",     "<cmd>ToggleTerm direction=float<cr>",              desc = "Toggle float terminal" },
     },
     opts = {

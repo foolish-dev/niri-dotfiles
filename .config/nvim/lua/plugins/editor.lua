@@ -166,7 +166,7 @@ return {
         { "<leader>g", group = "git" },
         { "<leader>h", group = "hunks" },
         { "<leader>r", group = "rename / http" },
-        { "<leader>t", group = "terminal / tree" },
+        { "<leader>T", group = "terminal" },
         { "<leader>n", group = "neotest" },
         { "<leader>o", group = "opencode" },
         { "<leader>x", group = "diagnostics/hex" },
@@ -186,17 +186,6 @@ return {
       require("nvim-autopairs").setup({ check_ts = true })
       local cmp_autopairs = require("nvim-autopairs.completion.cmp")
       require("cmp").event:on("confirm_done", cmp_autopairs.on_confirm_done())
-    end,
-  },
-
-  -- ── Comment.nvim ────────────────────────────────────────────────────────
-  {
-    "numToStr/Comment.nvim",
-    event = { "BufReadPost", "BufNewFile" },
-    dependencies = { "JoosepAlviste/nvim-ts-context-commentstring" },
-    opts = function()
-      local ok, ts = pcall(require, "ts_context_commentstring.integrations.comment_nvim")
-      return { pre_hook = ok and ts.create_pre_hook() or nil }
     end,
   },
 
@@ -227,7 +216,9 @@ return {
     event = { "BufReadPost", "BufNewFile" },
     opts = {
       indent  = { char = "│" },
-      scope   = { enabled = true, show_start = false, show_end = false },
+      -- mini.indentscope (below) draws the current scope; ibl drawing it too
+      -- put two lines on the same column.
+      scope   = { enabled = false },
       exclude = { filetypes = { "help", "dashboard", "neo-tree", "Trouble", "lazy", "mason" } },
     },
   },

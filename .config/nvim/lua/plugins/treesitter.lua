@@ -97,10 +97,22 @@ return {
   },
 
   -- ── ts-context-commentstring: language-aware commentstring ─────────────
+  -- Commenting is Neovim's own gc/gcc. Every time it asks for 'commentstring',
+  -- this answers for the language under the cursor (JSX, embedded CSS, ...),
+  -- computed then rather than on CursorHold: the integration the plugin's wiki
+  -- gives for native commenting.
   {
     "JoosepAlviste/nvim-ts-context-commentstring",
     lazy = true,
     opts = { enable_autocmd = false },
+    init = function()
+      local get_option = vim.filetype.get_option
+      vim.filetype.get_option = function(filetype, option)
+        return option == "commentstring"
+            and require("ts_context_commentstring.internal").calculate_commentstring()
+          or get_option(filetype, option)
+      end
+    end,
   },
 
   -- ── treesitter-context: sticky scope at the top of the buffer ──────────
