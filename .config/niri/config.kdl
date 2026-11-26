@@ -119,13 +119,25 @@ layout {
 // ---------------------------------------------------------------------------
 // Window rules  (Noctalia integration + general)
 // ---------------------------------------------------------------------------
-// Rounded corners + transparency. niri does not blur windows itself
-// (no compositor blur); apps like kitty/ghostty handle their own blur.
-// Opacity here stacks multiplicatively with the app's own opacity.
+// Rounded corners, transparency and blur. Opacity here stacks
+// multiplicatively with the app's own opacity.
+//
+// `blur true` puts the blurred wallpaper behind every window. kitty
+// (background_blur) and Noctalia's bar and dock (compositor_blur) request
+// the same blur themselves through ext-background-effect; this rule
+// covers the windows that never ask. niri defaults to xray blur: it shows
+// the wallpaper, not the windows beneath, and the wallpaper is blurred
+// once and reused, so it adds almost no GPU work per frame. Strength is
+// a top-level `blur {}` section (defaults: passes 3, offset 3,
+// saturation 1.5). See Window-Effects in niri's wiki (since 26.04).
 window-rule {
     geometry-corner-radius 14
     clip-to-geometry true
     opacity 0.98
+
+    background-effect {
+        blur true
+    }
 }
 
 // Focused window is more transparent so the wallpaper bleeds through
