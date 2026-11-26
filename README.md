@@ -212,7 +212,7 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── bin-helpers.sh                       # sddm-theme, gclone, proj, dev, cheat and the rest
 │   ├── hexstrike-host-guard.py              # the Host guard against a real Flask
 │   └── dotctl-selfupdate.sh                 # dotctl's self-rebuild, on the built binary
-├── .github/workflows/ci.yml                 # rust job + shell job (shellcheck, then the suites)
+├── .github/workflows/ci.yml                 # rust; shell (shellcheck + the suites); configs (every parser, in Arch)
 ├── .github/workflows/mcp-pins.yml           # weekly: is every pinned MCP server still npm's latest?
 ├── .github/scripts/check-mcp-pins.py        # what mcp-pins.yml runs
 ├── Cargo.toml                               # crate manifest (clap-derive + anyhow)
