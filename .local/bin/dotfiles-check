@@ -24,7 +24,7 @@
 # Units and .local/bin scripts are enumerated the way link_dotfiles() does. The
 # two by-name lists below are copies of its literals; bash cannot share them
 # with the Rust, so tests/dotfiles-check.sh diffs `dotfiles-check --list`
-# against src/main.rs and fails when the two drift.
+# against src/deploy.rs and fails when the two drift.
 #
 # Usage: dotfiles-check          (run any time; exits 1 if anything is red)
 #        dotfiles-check --list   (repo-relative paths it expects deployed)
@@ -42,7 +42,7 @@ shopt -s nullglob dotglob
 # existing muscle memory keeps working: DOTFILES_REPO > DOTFILES > default.
 DOTFILES="${DOTFILES_REPO:-${DOTFILES:-$HOME/niri-dotfiles}}"
 
-# Mirrors of the two by-name lists in link_dotfiles() (src/main.rs), in the
+# Mirrors of the two by-name lists in link_dotfiles() (src/deploy.rs), in the
 # same order as the Rust so a drift diff reads cleanly.
 CONFIG_ITEMS=(
   teleia nvim noctalia fastfetch tmux fuzzel gtk-3.0 gtk-4.0 kitty
@@ -256,7 +256,7 @@ echo "==> HexStrike answers only loopback names"
 # The bind itself is verified where it matters, at every start, by
 # hexstrike-assert-loopback; a failure there surfaces as a failed unit above.
 # Nothing at runtime checks the Host guard, so it is checked here, by the same
-# sentinel patch_hexstrike_host_guard() uses (src/main.rs HOST_GUARD_SENTINEL).
+# sentinel patch_hexstrike_host_guard() uses (src/hexstrike.rs HOST_GUARD_SENTINEL).
 HEX_SERVER="$HOME/tools/hexstrike-ai/hexstrike_server.py"
 if [[ ! -f "$HEX_SERVER" ]]; then
   skip "HexStrike not installed ($HEX_SERVER absent)"

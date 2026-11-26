@@ -13,7 +13,7 @@ shopt -s nullglob
 ROOT="${SDDM_THEME_ROOT:-}"
 SDDM_THEMES="$ROOT/usr/share/sddm/themes"
 
-# The drop-in dotctl owns (SDDM_THEME_CONF, src/main.rs). Verified against
+# The drop-in dotctl owns (SDDM_THEME_CONF, src/login.rs). Verified against
 # sddm 0.21.0 -- man 5 sddm.conf, plus stracing the order it opens them --
 # SDDM reads every *file* in /etc/sddm.conf.d, not just *.conf, in name order,
 # then /etc/sddm.conf, and the last value read wins. A second drop-in of our

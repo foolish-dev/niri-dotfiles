@@ -190,7 +190,18 @@ Tokyo Night base, repainted live by `grogu` via `colors/grogu.vim` (gitignored).
 │   ├── github-mcp                           # GitHub's MCP server, token from the keyring
 │   ├── hexstrike-assert-loopback            # ExecStartPost= bind check, fails closed
 │   └── dotfiles-check                       # health check: links, units, the shell, and what dotctl install set up
-├── src/main.rs                              # dotctl — Rust installer/deployer
+├── src/                                     # dotctl — Rust installer/deployer
+│   ├── main.rs                              # CLI, main(), SELF_SOURCE (the files the self-rebuild fingerprints)
+│   ├── install.rs                           # install(): every step of dotctl install, in order
+│   ├── deploy.rs                            # deploy(): config/unit/bin symlinks, wallpapers, gitconfig stub, user units
+│   ├── update.rs                            # clone/pull the checkout + conflict guards; fingerprint and self-rebuild
+│   ├── packages.rs                          # pacman, AUR and cargo install --git helpers; AUR helper choice
+│   ├── distro.rs                            # os-release → Distro; pacman.conf, chaotic-aur and BlackArch repos
+│   ├── login.rs                             # SDDM theme + cursor, greetd/ReGreet fallback, display-manager guard
+│   ├── hexstrike.rs                         # HexStrike clone + venv; loopback-bind and Host-guard patches
+│   ├── hardware.rs                          # AMD XDNA NPU and ASUS ROG detection, NPU memlock drop-in
+│   ├── util.rs                              # info/ok/warn, run, command_exists, sudo_write
+│   └── testutil.rs                          # test-only git() helper the unit tests share
 ├── tests/                                   # hermetic suites (bash, one Python), all run in CI
 │   ├── hexstrike-assert-loopback.sh         # cases over the bind check
 │   ├── mkproj.sh                            # cases over the scaffolder

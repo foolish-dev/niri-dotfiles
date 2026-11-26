@@ -196,9 +196,9 @@ expect_call "fzf --prompt=SDDM Theme>"
 end_case
 
 start_case "sddm_theme_writes_the_drop_in_and_cursor_dotctl_owns"
-# bash cannot share src/main.rs's consts, so the spellings are diffed here.
-WANT_CONF="$(sed -n 's/^const SDDM_THEME_CONF: &str = "\(.*\)";$/\1/p' "$REPO_ROOT/src/main.rs")"
-WANT_CURSOR="$(sed -n 's/^const CURSOR_THEME_NAME: &str = "\(.*\)";$/\1/p' "$REPO_ROOT/src/main.rs")"
+# bash cannot share src/login.rs's consts, so the spellings are diffed here.
+WANT_CONF="$(sed -n 's/^const SDDM_THEME_CONF: &str = "\(.*\)";$/\1/p' "$REPO_ROOT/src/login.rs")"
+WANT_CURSOR="$(sed -n 's/^const CURSOR_THEME_NAME: &str = "\(.*\)";$/\1/p' "$REPO_ROOT/src/login.rs")"
 grep -qF "SDDM_DROPIN=\"\$ROOT$WANT_CONF\"" "$BIN/sddm-theme" ||
   note "sddm-theme does not write dotctl's drop-in ($WANT_CONF)"
 grep -qF "CursorTheme=$WANT_CURSOR" "$BIN/sddm-theme" ||

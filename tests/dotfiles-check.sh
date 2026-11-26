@@ -18,7 +18,7 @@
 # Hermetic by construction. Every case builds its own fake repo and fake home
 # under one mktemp -d and hands them to the check as $DOTFILES and $HOME; the
 # real ~ and the real repo are never read except by the last case, which reads
-# src/main.rs to compare the deploy lists. A fake `systemctl` goes first on
+# src/deploy.rs to compare the deploy lists. A fake `systemctl` goes first on
 # PATH so the units section is a fixed "no failed units" and cannot make a
 # case depend on the developer's session.
 #
@@ -33,7 +33,7 @@ set -euo pipefail
 SUITE_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 REPO_ROOT="$(cd -- "$SUITE_DIR/.." && pwd)"
 CHECK="${1:-${DOTFILES_CHECK:-$REPO_ROOT/.local/bin/dotfiles-check}}"
-MAIN_RS="${DOTCTL_MAIN_RS:-$REPO_ROOT/src/main.rs}"
+DEPLOY_RS="${DOTCTL_DEPLOY_RS:-$REPO_ROOT/src/deploy.rs}"
 
 if [[ ! -r "$CHECK" ]]; then
   printf 'cannot read subject: %s\n' "$CHECK" >&2
@@ -526,13 +526,13 @@ end_case
 # `dotfiles-check --list` prints that half, repo-relative. Anything added to
 # either Rust list, or dropped from it, fails here.
 # =============================================================================
-start_case "the_checks_deploy_list_still_matches_link_dotfiles_in_src_main_rs"
-if [[ ! -r "$MAIN_RS" ]]; then
-  note "cannot read $MAIN_RS -- the drift guard cannot run (DOTCTL_MAIN_RS=...)"
+start_case "the_checks_deploy_list_still_matches_link_dotfiles_in_src_deploy_rs"
+if [[ ! -r "$DEPLOY_RS" ]]; then
+  note "cannot read $DEPLOY_RS -- the drift guard cannot run (DOTCTL_DEPLOY_RS=...)"
 else
   # Only link_dotfiles()'s own body: `for d in [` also appears in the tests
-  # further down main.rs.
-  _body="$(awk '/^fn link_dotfiles/{inside = 1} inside {print} inside && /^}/{exit}' "$MAIN_RS")"
+  # further down deploy.rs.
+  _body="$(awk '/^fn link_dotfiles/{inside = 1} inside {print} inside && /^}/{exit}' "$DEPLOY_RS")"
   _configs="$(printf '%s\n' "$_body" |
     awk '/for d in \[/{grab = 1; next} grab && /^ *\] \{/{exit} grab' |
     grep -o '"[^"]*"' | tr -d '"' | sed 's|^|.config/|' || true)"
@@ -541,7 +541,7 @@ else
   if [[ -z "$_configs" || -z "$_homes" ]]; then
     # The parse, not the lists, is what broke. Say so: a guard that quietly
     # compares two empty sets is worse than no guard.
-    note "could not parse the deploy lists out of $MAIN_RS -- this case is testing nothing"
+    note "could not parse the deploy lists out of $DEPLOY_RS -- this case is testing nothing"
   else
     # .gitconfig is deployed by setup_gitconfig(), which is not one of the two
     # array literals, so it is added here by hand rather than parsed.
@@ -552,7 +552,7 @@ else
       while IFS= read -r _line; do
         note "  $_line"
       done < <(diff <(printf '%s\n' "$_expected") <(printf '%s\n' "$_actual") |
-        sed 's/^</  only in src\/main.rs:/; s/^>/  only in dotfiles-check:/')
+        sed 's/^</  only in src\/deploy.rs:/; s/^>/  only in dotfiles-check:/')
     fi
   fi
 fi
@@ -761,9 +761,9 @@ end_case
 
 start_case "the_guard_sentinel_checked_is_the_one_dotctl_writes"
 # bash cannot share the Rust const, so the two spellings are diffed here.
-WANT="$(sed -n 's/^const HOST_GUARD_SENTINEL: &str = "\(.*\)";$/\1/p' "$REPO_ROOT/src/main.rs")"
+WANT="$(sed -n 's/^const HOST_GUARD_SENTINEL: &str = "\(.*\)";$/\1/p' "$REPO_ROOT/src/hexstrike.rs")"
 if [[ -z "$WANT" ]]; then
-  note "HOST_GUARD_SENTINEL not found in src/main.rs"
+  note "HOST_GUARD_SENTINEL not found in src/hexstrike.rs"
 elif ! grep -qF "*\"$WANT\"*" "$CHECK"; then
   note "dotfiles-check does not test for the sentinel dotctl writes: $WANT"
 fi
