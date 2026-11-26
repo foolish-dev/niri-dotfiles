@@ -493,6 +493,52 @@ pub(crate) fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         &["direnv"],
         "the `command -v` guard in .zshrc means every .envrc is silently ignored",
     );
+    // What the tracked configs call outright, with no `command -v` guard and no
+    // fallback, so a missing one is a broken command, not a missing feature.
+    // None of them was installed by anything: this machine had all but delta
+    // from CachyOS's defaults, and lost every paged git command to its absence.
+    //   delta   — .gitconfig's core.pager and interactive.diffFilter.
+    //   fzf     — tmux's C-a f popup, proj, sddm-theme's picker.
+    //   bat     — the C-a f preview; zsh's `cat` alias, behind a guard.
+    //   btop    — tmux's C-a b popup.
+    //   ripgrep — telescope's live grep (<leader>fg) runs rg.
+    //   unzip   — Mason unpacks many of its language servers with it.
+    // All plain repo packages on both distros, each with a binary of its own.
+    for (label, cmd, pkg, lost) in [
+        (
+            "delta",
+            "delta",
+            "git-delta",
+            "every paged git command fails: .gitconfig names delta as its pager",
+        ),
+        (
+            "fzf",
+            "fzf",
+            "fzf",
+            "tmux's C-a f, proj and sddm-theme's picker fail",
+        ),
+        (
+            "bat",
+            "bat",
+            "bat",
+            "the C-a f preview is empty and zsh's `cat` stays plain cat",
+        ),
+        ("btop", "btop", "btop", "tmux's C-a b popup exits at once"),
+        (
+            "ripgrep",
+            "rg",
+            "ripgrep",
+            "telescope's live grep (<leader>fg) fails",
+        ),
+        (
+            "unzip",
+            "unzip",
+            "unzip",
+            "Mason cannot unpack many of the language servers it installs",
+        ),
+    ] {
+        optional_pacman(label, cmd, &[pkg], lost);
+    }
     // pkgfile's command-not-found handler, which .zshrc sources, names the
     // package a missing command lives in -- from a database that
     // pkgfile-update.timer builds, and the timer ships disabled. Nothing enabled

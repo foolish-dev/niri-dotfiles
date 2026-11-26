@@ -89,7 +89,7 @@ stub() {  # stub <name> <line>... -- a bash script in STUB_BIN
   { printf '#!%s\n' "$BASH_BIN"; printf '%s\n' "$@"; } >"$STUB_BIN/$name"
   chmod +x "$STUB_BIN/$name"
 }
-for t in npx github-mcp-server lazygit clangd; do stub "$t" 'exit 0'; done
+for t in npx github-mcp-server lazygit clangd delta fzf bat btop rg unzip; do stub "$t" 'exit 0'; done
 # rustup's proxy answers on PATH even without the component; ~/.fake-ra-broken
 # makes this one behave like that proxy.
 # shellcheck disable=SC2016  # the stubs' $vars expand when they run
@@ -133,7 +133,8 @@ stub grogu \
   '[[ "${1:-}" == --version ]] || exit 0' \
   'v=0.2.0; [[ -f "$HOME/.fake-grogu-version" ]] && v="$(<"$HOME/.fake-grogu-version")"' \
   'echo "grogu $v"'
-for t in npx github-mcp-server lazygit clangd rust-analyzer secret-tool pkgfile curl noctalia grogu; do
+for t in npx github-mcp-server lazygit clangd delta fzf bat btop rg unzip rust-analyzer secret-tool pkgfile \
+  curl noctalia grogu; do
   ln -sf "$STUB_BIN/$t" "$NOSYSTEMD_BIN/$t"
 done
 
@@ -627,7 +628,7 @@ expect_rc 0
 expect_out "OK: all checks passed"
 expect_no_out "FAIL"
 expect_no_out "WARN"
-for t in npx github-mcp-server secret-tool lazygit clangd pkgfile rust-analyzer; do
+for t in npx github-mcp-server secret-tool lazygit clangd pkgfile rust-analyzer delta fzf bat btop rg unzip; do
   expect_healthy_line "$t"
 done
 expect_out "Host guard present"

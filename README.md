@@ -53,7 +53,7 @@ Both `install` and `deploy` are idempotent. `deploy` moves pre-existing non-syml
 
 - **Repos:** BlackArch everywhere, plus Chaotic AUR on non-CachyOS hosts (both idempotent), and an AUR helper: `yay` from `[cachyos]` on CachyOS, from Chaotic AUR on Arch, or whichever of `yay`/`paru` is already present.
 - **Base desktop** (`pacman -S`): niri, fuzzel and kitty, plus what `config.kdl` and `.zshrc` call: wl-clipboard, wl-clip-persist, cliphist, xwayland-satellite, wireplumber, brightnessctl, zsh, starship, pkgfile (with its daily database timer, which zsh's command-not-found reads) and the JetBrainsMono Nerd font.
-- **Tools:** tmux, fastfetch, neovim, lazygit, fwupd, and `noctalia` (Noctalia v5, from Arch `extra`).
+- **Tools:** tmux, fastfetch, neovim, lazygit, fwupd, `noctalia` (Noctalia v5, from Arch `extra`), and what the configs call with no fallback: `git-delta` (git's pager), `fzf`, `bat`, `btop`, `ripgrep` and `unzip`.
 - **Our crates** (`cargo install --git`): grogu and teleia. A grogu older than 0.2.0, the first to write Noctalia v5's palette, is rebuilt.
 - **For teleia:** clangd, rust-analyzer + `rust-src` (rustup components under rustup), Node.js + npm for the `npx`-launched MCP servers, and GitHub's own `github-mcp-server` (AUR).
 - **HexStrike AI:** cloned, its venv built, its server made to bind loopback and answer only loopback names.

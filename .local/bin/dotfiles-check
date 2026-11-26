@@ -235,6 +235,12 @@ TOOLS=(
   "lazygit|Neovim's <leader>gG and tmux's C-a g"
   "clangd|teleia's C/C++ language server"
   "pkgfile|zsh's command-not-found package hints"
+  "delta|git's pager: every paged git command fails without it"
+  "fzf|tmux's C-a f, proj and sddm-theme's picker"
+  "bat|the C-a f preview and zsh's cat"
+  "btop|tmux's C-a b"
+  "rg|telescope's live grep (<leader>fg)"
+  "unzip|Mason's language-server installs"
 )
 for entry in "${TOOLS[@]}"; do
   tool="${entry%%|*}"

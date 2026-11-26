@@ -137,7 +137,8 @@ else
   alias la="ls -a"
 fi
 
-alias cat="bat --paging=never"
+# cat -> bat, when it is there (dotctl installs it); plain cat otherwise.
+command -v bat &>/dev/null && alias cat="bat --paging=never"
 alias grep="grep --color=auto"
 alias df="df -h"
 alias du="du -h"
