@@ -28,6 +28,10 @@ enabled        = true
 blur_intensity = 0.7
 tint_intensity = 0.5
 
+# Lock behind a blurred capture of the desktop instead of the wallpaper.
+[lockscreen]
+blurred_desktop = true
+
 [bar.default]
 # v4's bar: see-through over the compositor blur (on by default), widgets in
 # capsules, and v4's widget layout. v4's one SystemMonitor showed CPU usage,

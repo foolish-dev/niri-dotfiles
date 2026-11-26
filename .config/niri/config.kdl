@@ -144,7 +144,7 @@ window-rule {
 // the one you're actively working in.
 window-rule {
     match is-focused=true
-    opacity 0.88
+    opacity 0.80
 }
 
 // Browser: keep fully opaque so page content (images, video, dark themes)
