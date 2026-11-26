@@ -130,7 +130,7 @@ instance CachyOS's `noctalia-greeter` — is left alone, config and unit both.
 </p>
 
 <p align="center">
-  <img src="assets/noctalia.png" alt="Noctalia bar — clock + date, CPU/MEM/GPU mini-stats, active-window title, workspace pills, notification / battery / volume / brightness / timer tray" width="900"/>
+  <img src="assets/noctalia.png" alt="Noctalia v5 bar — launcher, clock, CPU / temperature / RAM, media, workspace pills, tray, notifications, battery / volume / brightness, control center" width="900"/>
 </p>
 
 ## Components
