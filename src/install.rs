@@ -171,6 +171,22 @@ pub(crate) fn install(distro: Distro, no_aur_helper: bool) -> Result<()> {
         &["kvantum", "kvantum-qt5"],
         "`style=kvantum-dark` in qt5ct.conf and qt6ct.conf resolves to nothing and Qt keeps Fusion",
     );
+    // The Qt platform plugins for Wayland. niri's environment sends Qt apps there
+    // (QT_QPA_PLATFORM), and nothing installed either: qt6-wayland came only as a
+    // dependency of v4's noctalia-qs, and qt5-wayland never came at all, so qt5ct
+    // itself aborted at start (`Could not find the Qt platform plugin "wayland"`).
+    optional_pacman_pkg(
+        "Qt 5 Wayland plugin",
+        "qt5-wayland",
+        &["qt5-wayland"],
+        "Qt 5 apps, qt5ct among them, run through XWayland",
+    );
+    optional_pacman_pkg(
+        "Qt 6 Wayland plugin",
+        "qt6-wayland",
+        &["qt6-wayland"],
+        "Qt 6 apps run through XWayland",
+    );
 
     // Spawned at startup by config.kdl and in exactly the same boat as
     // wl-clipboard: Arch `extra`, never installed here, present on this box only
