@@ -508,7 +508,12 @@ binds {
     Mod+N                { spawn "kitty" "-e" "nvim"; }
     // Telia (TUI coding agent) in a floating kitty. The `telia-float`
     // app-id matches the window-rule above (open-floating + sized).
-    Mod+T                { spawn "kitty" "--class" "telia-float" "-e" "teleia"; }
+    // SUDO_ASKPASS lets teleia's agent run `sudo` without a tty (its bash
+    // tool detaches via setsid): sudo then pops ~/.local/bin/sudo-askpass
+    // (a zenity password dialog) instead of hanging. Set via `sh -c` so
+    // $HOME expands at runtime — niri's `environment {}` does not expand it
+    // — and scoped to teleia rather than the whole session.
+    Mod+T                { spawn "kitty" "--class" "telia-float" "-e" "sh" "-c" "SUDO_ASKPASS=$HOME/.local/bin/sudo-askpass exec teleia"; }
 
     // ── Cybersecurity Quick-Launch ────────────────────────────────────
     Mod+Ctrl+W           { spawn "kitty" "--class" "wireshark-term" "-e" "sudo" "wireshark"; }
